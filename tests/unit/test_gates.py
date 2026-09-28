@@ -126,6 +126,7 @@ def test_process_parallel_cross_validation_matches_sequential(cls, kwargs, grid,
     ]
 
 
+@pytest.mark.gpu
 @pytest.mark.parametrize("cls, kwargs, grid", SUPERVISED)
 def test_grid_search_over_a_pipeline_runs_on_mlx(cls, kwargs, grid, data):
     """Parameters routed through ``Pipeline`` into a cloned estimator, fitted on the
@@ -180,6 +181,7 @@ def _inference_events(model, X):
     return recorded
 
 
+@pytest.mark.gpu
 @pytest.mark.parametrize("backend", ["mlx", "cpu"])
 @pytest.mark.parametrize("cls, kwargs, grid", BOTH)
 def test_inference_reuses_the_fitted_backend(cls, kwargs, grid, backend, data):

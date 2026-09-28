@@ -398,6 +398,7 @@ def test_small_problems_use_the_cpu_path(small_classification_data):
     assert model.execution_backend_ == "cpu"
 
 
+@pytest.mark.gpu
 def test_large_problems_use_mlx(classification_data):
     X, y = classification_data
     model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
@@ -419,6 +420,7 @@ def test_inference_reuses_the_fitted_backend(classification_data):
     assert all(e.reason == "sticky" for e in inference)
 
 
+@pytest.mark.gpu
 def test_refit_may_change_backend(small_classification_data, classification_data):
     small_X, small_y = small_classification_data
     big_X, big_y = classification_data
