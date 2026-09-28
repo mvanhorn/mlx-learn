@@ -127,6 +127,11 @@ _PROBE_ROWS = 64
 #: The exact search packs a training index into 32 bits of its sort key.
 _MAX_TRAIN_ROWS = 2**32
 
+#: Training matrices up to this many elements have their column extremes found on
+#: the host at build: faster than the device round trip that reduction otherwise
+#: costs (0.1 ms on the GPU), up to about 8000 x 32, where the two measured even.
+_HOST_REDUCE_ELEMENTS = 1 << 18
+
 
 @dataclass(frozen=True, slots=True)
 class BlockPlan:
@@ -244,10 +249,8 @@ def _kernels(device: str) -> SimpleNamespace:
     """
     import mlx.core as mx
 
-    # The center is a float32 pair too, center + center_lo: every row, training or
-    # query, residual or not, has to be translated into the same frame.
-    def center_scale(hi, center, center_lo, scale):
-        return ((hi - center) - center_lo) * scale
+    def center_scale(hi, center, scale):
+        return (hi - center) * scale
 
     def center_scale_lo(hi, lo, center, center_lo, scale):
         return ((hi - center) + (lo - center_lo)) * scale
@@ -274,6 +277,21 @@ def _kernels(device: str) -> SimpleNamespace:
     if device == "gpu":
         fns = {name: mx.compile(fn) for name, fn in fns.items()}
     return SimpleNamespace(**fns)
+
+
+def _translate(fns, hi, lo, center, center_lo, scale, zero):
+    """``(hi + lo − center − center_lo) · scale`` in float32, into the index's frame.
+
+    ``lo`` is a float64 row's residual and ``center_lo`` a float64 center's, either
+    of them ``None``. Every row, training or query, residual or not, is translated
+    here, so all of them share one frame; with neither residual it is the plain
+    ``(hi − center) · scale`` it always was.
+    """
+    if lo is None and center_lo is None:
+        return fns.center_scale(hi, center, scale)
+    lo = zero if lo is None else lo
+    center_lo = zero if center_lo is None else center_lo
+    return fns.center_scale_lo(hi, lo, center, center_lo, scale)
 
 
 def _gamma(n: int) -> float:
@@ -340,7 +358,7 @@ class _DeviceState:
     sel_t: Any  # sel.T
     sel_sq: Any  # (n,) squared row norms of sel
     center: Any  # (d,) float32
-    center_lo: Any  # (d,) float32 residual of a float64 center; zeros for a float32 one
+    center_lo: Any  # (d,) float32 residual of a float64 center, or None
     scale: Any  # 0-d, 2**-exponent
     zero: Any  # 0-d, 0.0
     exponent: int
@@ -689,10 +707,7 @@ class _Search:
 
         hi = mx.array(hi_np)
         lo = None if lo_np is None else mx.array(lo_np)
-        if lo is None:
-            sel = fns.center_scale(hi, state.center, state.center_lo, state.scale)
-        else:
-            sel = fns.center_scale_lo(hi, lo, state.center, state.center_lo, state.scale)
+        sel = _translate(fns, hi, lo, state.center, state.center_lo, state.scale, state.zero)
         sq = mx.sum(sel * sel, axis=1, keepdims=True)
 
         raw_norm = None
@@ -1207,9 +1222,16 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         # rows; nothing below allocates another.
         raw = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT))
         raw_lo = None if X_lo is None else mx.array(np.ascontiguousarray(X_lo, dtype=NUMPY_FLOAT))
-        col_max = mx.max(raw, axis=0)
-        col_min = mx.min(raw, axis=0)
-        mx.eval(raw, col_max, col_min, *([] if raw_lo is None else [raw_lo]))
+        # The column extremes set the scale, which everything below needs on the
+        # host. A small matrix is reduced there in less than a device round trip.
+        if n * d <= _HOST_REDUCE_ELEMENTS:
+            host = np.asarray(X, dtype=NUMPY_FLOAT)
+            col_max = host.max(axis=0)
+            col_min = host.min(axis=0)
+        else:
+            col_max = mx.max(raw, axis=0)
+            col_min = mx.min(raw, axis=0)
+            mx.eval(raw, col_max, col_min, *([] if raw_lo is None else [raw_lo]))
 
         c64 = np.asarray(center, dtype=np.float64)
         hi_col = np.asarray(col_max, dtype=np.float64)
@@ -1234,21 +1256,24 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         exponent = _span_exponent(spread, d)
         scale = mx.array(math.ldexp(1.0, -exponent), dtype=mx.float32)
         c_hi = c64.astype(NUMPY_FLOAT)
+        c_lo = (c64 - c_hi).astype(NUMPY_FLOAT)
         center_dev = mx.array(c_hi)
-        center_lo = mx.array((c64 - c_hi).astype(NUMPY_FLOAT))
+        center_lo = mx.array(c_lo) if c_lo.any() else None
+        zero = mx.array(0.0, dtype=mx.float32)
 
-        if raw_lo is None:
-            sel = fns.center_scale(raw, center_dev, center_lo, scale)
-        else:
-            sel = fns.center_scale_lo(raw, raw_lo, center_dev, center_lo, scale)
+        sel = _translate(fns, raw, raw_lo, center_dev, center_lo, scale, zero)
         sel_sq = _row_sq_norms(mx, sel)
-        norms = mx.sort(mx.sqrt(sel_sq))
         # Everything that goes into the state is evaluated here, the transposes
         # included: an unevaluated node belongs to this thread's stream, and a query
         # from another thread that forces it fails with "There is no Stream(gpu, N)
         # in current thread".
         sel_t = sel.T
-        pending = [sel, sel_t, sel_sq, norms]
+        pending = [raw, sel, sel_t, sel_sq, *([] if raw_lo is None else [raw_lo])]
+        # The certificate's sorted norms. MLX's CPU sort took a third of a CPU
+        # build, four times NumPy's; the float32 square roots are the same either way.
+        norms = mx.sort(mx.sqrt(sel_sq)) if device == "gpu" else None
+        if norms is not None:
+            pending.append(norms)
 
         # Small integers — binary, one-hot, counts — make the raw Gram identity
         # exact in float32: every product and partial sum is an integer below 2**24.
@@ -1258,7 +1283,11 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         int_limit = int(math.isqrt((1 << 24) // (4 * d))) if d else 0
         raw_t = raw_sq = None
         if raw_lo is None and 0 < int_limit and max_abs <= int_limit:
-            if _all_integral(mx, raw):
+            # Real-valued data within the bound — standardized features, say —
+            # nearly always shows it in its first rows, which the host can check
+            # without a pass over the device copy or a synchronization.
+            head = np.asarray(X[:256], dtype=NUMPY_FLOAT)
+            if np.array_equal(head, np.rint(head)) and _all_integral(mx, raw):
                 raw_t = raw.T
                 raw_sq = _row_sq_norms(mx, raw)
                 pending += [raw_t, raw_sq]
@@ -1277,10 +1306,12 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         center=center_dev,
         center_lo=center_lo,
         scale=scale,
-        zero=mx.array(0.0, dtype=mx.float32),
+        zero=zero,
         exponent=exponent,
         spread=spread,
-        norms_sorted=np.asarray(norms, dtype=np.float64),
+        norms_sorted=(
+            np.sort(np.sqrt(np.asarray(sel_sq))) if norms is None else np.asarray(norms)
+        ).astype(np.float64),
         raw_norm_bound=float(np.sqrt(np.sum(np.maximum(np.abs(hi_col), np.abs(lo_col)) ** 2))),
         int_limit=int_limit,
         int_max=max_abs,
