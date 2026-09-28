@@ -87,6 +87,22 @@ def _overflow_events():
     return [e for e in get_backend_diagnostics() if e.reason == "float32-overflow"]
 
 
+def _layer2_fit_headed_for_mlx(cls, X, y):
+    """Fit a patched estimator on a problem it would otherwise run on MLX.
+
+    ``data`` is below every crossover, and patched mode hands such fits to
+    scikit-learn on size alone, before any data scan — by design, so that
+    handing work away costs no more than stock scikit-learn. Forcing the MLX
+    backend takes the size rule out, which is where the range check has to
+    turn an overflow into a fallback; a capability mismatch still outranks the
+    forced backend.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with tuning_context(force_backend="mlx"):
+            return cls().fit(X, y)
+
+
 # ----------------------------------------------------------------------------------
 # non-NumPy array-likes
 # ----------------------------------------------------------------------------------
@@ -202,9 +218,7 @@ def test_layer2_falls_back_on_overflow_in_a_non_numpy_container(cls, data):
     X, y = data
     X = X.copy()
     X[0, 0] = OVERFLOW
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        model = cls().fit(_ForeignArray(X), y)
+    model = _layer2_fit_headed_for_mlx(cls, _ForeignArray(X), y)
     assert model.execution_backend_ == "sklearn"
     assert _overflow_events()
 
@@ -248,9 +262,7 @@ def test_layer2_object_array_overflow_falls_back(cls, data):
     X, y = data
     X = X.astype(object)
     X[3, 2] = OVERFLOW
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        model = cls().fit(X, y)
+    model = _layer2_fit_headed_for_mlx(cls, X, y)
     assert model.execution_backend_ == "sklearn"
     assert _overflow_events()
 
@@ -314,11 +326,24 @@ def test_layer2_mixed_frame_overflow_falls_back(cls, data):
     X, y = data
     frame = _mixed_frame(X, pd)
     frame.loc[5, "f2"] = OVERFLOW
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        model = cls().fit(frame, y)
+    model = _layer2_fit_headed_for_mlx(cls, frame, y)
     assert model.execution_backend_ == "sklearn"
     assert _overflow_events()
+
+
+@pytest.mark.parametrize("cls", LAYER2, ids=_ids)
+def test_layer2_below_the_crossover_hands_overflow_to_sklearn_by_size(cls, data):
+    """No scan at all: the fit is scikit-learn's on size, and it serves the overflow."""
+    X, y = data
+    X = X.astype(object)
+    X[3, 2] = OVERFLOW
+    with warnings.catch_warnings():
+        # scikit-learn's own lbfgs reports 1e39 as ABNORMAL; not what is tested.
+        warnings.simplefilter("ignore")
+        model = cls().fit(X, y)
+    assert model.execution_backend_ == "sklearn"
+    assert model.fit_event_.reason == "below-crossover"
+    assert not _overflow_events()
 
 
 # ----------------------------------------------------------------------------------

@@ -85,18 +85,20 @@ def test_the_requirement_variable(monkeypatch, value, required):
 
 def test_the_probe_reports_a_broken_metal_device_as_no_gpu(monkeypatch):
     # The policy is only as honest as gpu_available(). Asserting it returns a bool
-    # says nothing; this breaks the GPU stream and checks the probe notices.
+    # says nothing; this makes GPU evaluation fail and checks the probe notices.
+    # Evaluation, not mx.stream: the probe runs on explicit streams so that it never
+    # touches MLX's process-global default device, and any probe has to evaluate.
     import mlx.core as mx
 
     from mlxlearn._common.device import gpu_available, reset_device_cache
 
-    def broken_stream(*args, **kwargs):
+    def broken_eval(*args, **kwargs):
         raise RuntimeError("Metal device unavailable")
 
     reset_device_cache()
     try:
         with monkeypatch.context() as patch:
-            patch.setattr(mx, "stream", broken_stream)
+            patch.setattr(mx, "eval", broken_eval)
             assert gpu_available() is False
     finally:
         reset_device_cache()  # the next caller re-probes the real device
