@@ -111,21 +111,31 @@ def predict(self, X):
 plain function (`predict`, `predict_proba`, `decision_function`, `kneighbors`, and
 scikit-learn's own `score`, `kneighbors_graph`, `radius_neighbors_graph`, …), so one
 public call records one event, named after the method the caller invoked, however many of
-the others it reaches internally. `available_if` descriptors are left alone. An inference
-path that records something other than a sticky event — a fallback at inference — claims
-the call's one event with `_claim_call_event`.
+the others it reaches internally. `available_if` descriptors are left alone, because
+wrapping one would make the method exist on estimators that do not have it; a class whose
+`available_if` method must record its call redeclares it as
+`available_if(check)(_public_call(name, fn))`, as `SVC` does for `predict_proba` and
+`predict_log_proba`. An inference path that records something other than a sticky event —
+a fallback at inference — claims the call's one event with `_claim_call_event`.
 
 Inference never re-decides the backend. That is the sticky invariant, and it is what stops
 an MLX-fitted model from wandering into scikit-learn's inference path holding state that
-path cannot read. There is one carve-out, and it is Layer 2's: a sparse query to a
-neighbor estimator fitted on MLX is answered by scikit-learn's brute-force search, which
-reads the fitted state the MLX path populates for it (`_fit_X`, `_fit_method="brute"`,
-`effective_metric_`), and is recorded as a fallback. A GPU-fitted model running on MLX's
-CPU in a process without a GPU (`inference_device`) is not a carve-out: it is the same
-code on another MLX device, recorded as `"gpu-unavailable"`. Inference that is host code
-on the fitted state (`LogisticRegression`'s, `NearestNeighbors.radius_neighbors`) uses no
-device: `_note_inference(..., host=True)` records it as `"sticky"` and resolves no device,
-so `device="gpu"` has nothing to refuse.
+path cannot read. There is one carve-out, and it is Layer 2's: a sparse query to
+`kneighbors`, `kneighbors_graph`, `predict` or `predict_proba` of a neighbor estimator
+fitted on MLX is answered by scikit-learn's brute-force search, which reads the fitted
+state the MLX path populates for it (`_fit_X`, `_fit_method="brute"`,
+`effective_metric_`), and is recorded as a fallback. The query is cast to `_fit_X`'s
+float32 first: scikit-learn's search needs the two to share a dtype, and a float64 query
+fell to a slower pairwise path that cannot compute `"sqeuclidean"` on sparse input. A
+GPU-fitted model running on MLX's CPU in a process without a GPU (`inference_device`) is
+not a carve-out: it is the same code on another MLX device, recorded as
+`"gpu-unavailable"`. Inference that is host code on the fitted state
+(`LogisticRegression`'s, `NearestNeighbors.radius_neighbors` and
+`radius_neighbors_graph`) uses no device: `_note_inference(..., host=True)` records it as
+`"sticky"` and resolves no device, so `device="gpu"` has nothing to refuse. The radius
+methods take a sparse query that way too, in both layers — scikit-learn's code serves
+it — so it is an ordinary sticky call, not a fallback, and `fallback_policy` does not
+apply to it.
 
 Wrap every MLX block in `mlx_guard(...)` so an unexpected failure becomes
 `BackendExecutionError` rather than a silent fallback.
@@ -237,9 +247,19 @@ mechanically needs a reviewed entry in `LICENSE_OVERRIDES`, with a reason.
 
 - **GPU.** Tests that need a working Metal device either carry `@pytest.mark.gpu` or reach
   the GPU implicitly and fail with `DeviceError` without one. On a machine with no GPU,
-  both are skipped with a reason rather than failing by the dozen. CI sets
+  both are skipped with a reason rather than failing by the dozen. The implicit skip only
+  catches a `DeviceError` that reaches pytest unwrapped — not one inside `GridSearchCV`'s
+  "all fits failed" — and without a GPU most MLX work raises nothing: auto-selection picks
+  the CPU, and a forced MLX fit runs on MLX's CPU device. So a test that asserts the MLX
+  path ran must carry the marker. The slow test `tests/tooling/test_gpu_policy.py` runs the
+  default suite on a simulated GPU-less host to hold every test to that. CI sets
   `MLXLEARN_REQUIRE_GPU=1`, under which a missing GPU stops the session instead, so a
   runner that loses Metal cannot skip its way to green. The policy is `tests/_gpu.py`.
+- **pandas** is a test dependency (`pandas>=2.2.3` in the `test` and `dev` extras, the floor
+  installed exactly by the minimum-versions job), so the tests of how mlxlearn reads data
+  frames run on every CI leg. torch is not: the torch container cases in
+  `tests/unit/test_validation.py` run only where it is installed — the nightly job, and
+  local runs.
 - **Doctests** run as their own CI step: `pytest --doctest-modules src/mlxlearn`.
 - **`tests/tooling/`** tests the repository's tooling — this file's gates, the benchmark
   harness and gate, the workflows' pins — and is left out of the sdist with the tooling.
@@ -264,8 +284,15 @@ with the settings they were measured under (Layer 1, forced onto MLX).
 Each result records the backend the mlxlearn side ran on, and the gate judges those
 decisions — the configured `Tuning` — rather than a crossover inferred from the run it is
 judging: a problem `Tuning` sends to MLX that loses, and a patched handoff whose own
-overhead loses, both fail. A difference counts only when the medians are three standard
-errors apart, each estimated from a real interquartile range.
+overhead loses, both fail. A backend forced with `--force-backend` or with
+`MLXLEARN_FORCE_BACKEND` is recorded as forced, the same way, so the gate does not charge
+it to `Tuning`; the environment record includes the effective `Tuning` and every
+`MLXLEARN_*` variable. A difference counts only when the medians are three standard
+errors apart, each estimated from a real interquartile range. That bounds the false-alarm
+rate per case; a run gates over a hundred cases, so the runner re-measures any case the
+gate would fail over three times the iterations, records it as the result's
+`confirmation`, and the gate fails the case only if the loss reproduces there. A case's
+own iteration count caps `--iterations`; it never raises it.
 
 Shared CI runners do correctness only: CI runs the smoke profile with one iteration, which
 checks the harness, the gate, and the result schema, and can never be significant.
@@ -277,7 +304,9 @@ waits for the repository variable `MLXLEARN_BENCH_RUNNER` to be `true`, which sa
 Everything is `mx.eval`-synchronized — MLX is lazy, so an unsynchronized benchmark times
 how long it took to *schedule* the work — warmed up, reported as a median with its spread,
 and compared against scikit-learn in interleaved pairs so a thermal ramp degrades both
-sides equally rather than whichever ran second.
+sides equally rather than whichever ran second. Within a pair the two sides take turns
+going first, and every timed call gets the same preparation, whichever backend it runs
+on: a garbage collection before it and a synchronization inside its window.
 
 ## Releasing
 
@@ -290,10 +319,13 @@ sides equally rather than whichever ran second.
    install time and otherwise keeps reporting the old version.
 4. README links stay absolute (`https://github.com/tabulai/mlx-learn/...`): the README is
    also the PyPI page, where a relative link is a 404. `tests/tooling/` checks this.
-5. Tag `vX.Y.Z`. The release workflow runs the whole CI workflow on the tagged commit,
-   builds, checks that the wheel is `py3-none-any`, installs it into a clean environment,
-   and requires the wheel's filename, its metadata, `mlxlearn.__version__` and the tag to
-   agree. Only then does it publish, through PyPI Trusted Publishing from a `pypi`
-   environment that requires manual approval. No API token is stored in this repository.
-   Publishing takes both a `v*` tag push and that approval; a manual run of the workflow
-   is a dry run that never publishes.
+5. Tag `vX.Y.Z`. The release workflow runs the whole CI workflow on the tagged commit and
+   does not build anything itself: CI's build job builds the `dist` artifact and checks
+   it — a `py3-none-any` wheel that installs into a clean environment with metadata that
+   agrees with `mlxlearn.__version__`, an sdist that carries the test suite, and that
+   suite collecting against the installed wheel. The release workflow's `version` job
+   then requires the wheel's filename, its metadata, the sdist's filename and the tag to
+   agree. Only then does it publish exactly those files, through PyPI Trusted Publishing
+   from a `pypi` environment that requires manual approval. No API token is stored in this
+   repository. Publishing takes both a `v*` tag push and that approval; a manual run of
+   the workflow is a dry run that never publishes.

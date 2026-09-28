@@ -11,22 +11,24 @@ under (Layer 1 classes forced onto the MLX device, 25 iterations). `--profile sm
 quick check and `--profile full` the regression grid; see
 [`development.md`](development.md#benchmarks).
 
-**These numbers were measured on 0.1.0a2.** Several changes since then — listed under
-Unreleased in `CHANGELOG.md` — move them: neighbor queries and index builds, the
-logistic solver's per-iteration cost, SVC fits past the kernel cache, and the patched
-handoff overhead of all three. They are re-measured on fixed hardware before the next
-release, and the thresholds with them.
+**These numbers were measured on 0.1.0a2**, with that release's harness, which timed the
+mlxlearn side of every pair first (see **Interleaved** below). Several changes since then
+— listed under Unreleased in `CHANGELOG.md` — move them: neighbor queries and index
+builds, the logistic solver's per-iteration cost, SVC fits past the kernel cache, and the
+patched handoff overhead of all three. They are re-measured on fixed hardware before the
+next release, and the thresholds with them.
 
 <!-- perf-phase: re-measure every table and crossover; knn_tree_density, knn_min_work and
 the logreg thresholds were flagged for re-measurement by the groups that changed them.
-Integration smoke run (shared M4 Max, 7 iterations): the gate flagged knn/kneighbors
-1000x32 and 8000x32 at q=256 (0.77x, 0.67x) and logreg/fit 20000x1024 (0.46x) on the MLX
-path. The KNN flags are the harness's interleaving: the GPU idles while the stock call
-runs, and 0.1.0a2 measures the same way (0.64-0.76x at 8000x32 interleaved; both trees
-are ~2.5x stock back to back). logreg 20000x1024 is 1.8x faster than 0.1.0a2 but still
-~0.5x stock on this easy data (10 iterations), so logreg_min_samples/logreg_min_work send
-it to MLX too early. Handoff flags there (logreg 5000x32, knn 50000x3, 0.82x) did not
-reproduce at 41-101 interleaved reps (1.02-1.05x). -->
+An earlier integration smoke run flagged knn/kneighbors 1000x32 and 8000x32 at q=256 on
+the MLX path and the logreg 5000x32 and knn 50000x3 handoffs; those flags were the
+harness's own order bias (mlxlearn always timed first, straight after gc.collect(), and
+alone in paying mx.synchronize()), fixed since. With the fixed harness, a 7-iteration
+smoke run (shared M4 Max) read: knn/kneighbors 1000x32/q256 1.20x, 8000x32/q256 1.23x,
+50000x3/q256 1.01x; logreg/fit 20000x1024 0.46x, reproduced at 0.47x over 21 iterations,
+so real: logreg_min_samples/logreg_min_work send it to MLX too early (1.8x faster than
+0.1.0a2, but ~0.5x stock on this easy data, 10 iterations); and the logreg/fit 5000x32
+handoff 0.93x, reproduced at about 0.95x, so real patched-dispatch overhead. -->
 
 ## Method
 
@@ -34,9 +36,14 @@ reproduce at 41-101 interleaved reps (1.02-1.05x). -->
 measures how long it took to *schedule* — a spectacular and meaningless number. Every
 timing forces evaluation first.
 
-**Interleaved.** mlxlearn and scikit-learn are timed A, B, A, B rather than all of one then
+**Interleaved.** mlxlearn and scikit-learn are timed in pairs rather than all of one then
 all of the other, so a thermal ramp or a background process degrades both sides equally
-instead of whichever ran second.
+instead of whichever ran second. Within a pair the two sides take turns going first —
+A B, B A, A B — and every timed call gets the same preparation, whichever backend it runs
+on: a garbage collection before it and a synchronization inside its window. A harness
+that always timed mlxlearn first, straight after the collection, and made only that side
+pay the synchronization read identical stock work in both slots as 0.77–0.85× and failed
+the gate in 18–19 of 20 trials.
 
 **Median with its spread, and best case too.** At small sizes scikit-learn's timings are
 heavy-tailed: thread-pool scheduling and garbage collection produce occasional outliers
@@ -51,8 +58,13 @@ range as `1.2533 · (IQR / 1.349) / √n` — and combined in quadrature. Not th
 which for a heavy-tailed distribution declared a measured 10× "within noise"; and a real
 interquartile range, not the full min–max range, so one outlier cannot hide a regression.
 Fewer than five samples on either side is never significant. The `z = 3` rather than 1.96
-is deliberate: the standard errors come from a handful of samples, and a nightly run gates
-well over a hundred cases.
+is deliberate: the standard errors come from a handful of samples, and it keeps the
+false-alarm rate per case near 1%. That rate is per case, and a nightly run gates well over
+a hundred: simulated with 137 cases of identical work, 73–79% of nights would fail on one
+measurement each. So the runner re-measures any case the gate would fail, over three
+times the iterations, and records that as the result's `confirmation`; the gate fails the
+case only if the loss reproduces there, which brings the simulated share of failing nights
+to 0.4–0.7%. The report's `re-measured` column shows the confirmation.
 
 **Patched dispatch is what is gated.** The performance claim is about the classes
 `patch_sklearn()` installs, and those hand sub-crossover problems to scikit-learn outright.

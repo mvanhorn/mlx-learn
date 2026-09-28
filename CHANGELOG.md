@@ -27,17 +27,34 @@ come first under **Changed**.
   coordinates.
 - float64 input was cast to float32 before centering, so large offsets such as Unix
   timestamps or projected coordinates were quantized away. The index now translates by the
-  float64 mean and keeps a float32 residual beside each float32 value.
+  float64 mean — carried, like each row, as a float32 value plus a float32 residual — so
+  data whose spread is comparable to a float32 rounding of its mean (timestamps a few
+  seconds apart) certifies on the first pass, where a float32-rounded mean sent every
+  query to the second: 172 → 38 ms at 50 000 rows and 4096 queries. (preliminary;
+  re-measured before release)
 - Rows tied at the k-th distance now follow the documented `(distance, index)` order:
   `kneighbors(k)` is a prefix of `kneighbors(k + m)`, results no longer depend on block
   sizes, and GPU and CPU agree wherever distances are exact (binary, integer and one-hot
-  features). 0.1.0a1 described this order, but on tie-heavy data it did not hold.
+  features). `kneighbors()` with no query follows the same order with each row left out,
+  so a row with more than `k` exact duplicates before it gets the first `k` of them, and
+  `predict(None)` does not change with `k`. 0.1.0a1 described this order, but on
+  tie-heavy data it did not hold.
 - Data whose squares overflow or underflow float32 (`|x|` around 1e19 or 1e-20) no longer
   yields infinite or zero distances and arbitrary neighbors; it is scaled by an exact
   power of two. Training data spanning more than float32's largest value / 8 from its
-  mean (a single 1e38, say) raises `UnsupportedInputError` at `fit` directly imported and
-  falls back to scikit-learn under `patch_sklearn()`. Queries still out of range raise
-  `UnsupportedInputError`.
+  mean (a single 1e38, say), or so wide beside the gaps between its rows that no scale
+  holds both (a 1e30 fill value among unit-scale rows), raises `UnsupportedInputError`
+  (`"float32-overflow"`) at `fit` directly imported and falls back to scikit-learn under
+  `patch_sklearn()`. Queries still out of range raise `UnsupportedInputError`, and so does
+  a query nearer a training row than the scale chosen at `fit` resolves, instead of getting
+  a distance of zero; an exact duplicate of a training row is exempt.
+- One unmasked fill value among unit-scale rows, such as CMIP's 1e20, made the other rows'
+  neighbor distances zero and their neighbor sets wrong, on both devices and without an
+  error. The index scales a large span down only as far as float32 needs — ordinary data
+  is not scaled at all — so such a value is now served on both devices, through the exact
+  search of [`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1, and one float32 cannot
+  resolve beside the gaps between the other rows (1e30, or NetCDF's default 9.97e36) is
+  refused at `fit` as above.
 - Concurrent first queries on an unpickled neighbors model could segfault or raise
   `BackendExecutionError`. The device state is now built, evaluated and published once,
   under a per-model lock.
@@ -49,12 +66,20 @@ come first under **Changed**.
   shape under `patch_sklearn()` depended on the size of the data.
 - `KNeighborsRegressor` copies `y`: writing into a float64 `y` after `fit` no longer
   changes the predictions.
-- String arrays are rejected with scikit-learn's error instead of being parsed as numbers.
+- String arrays in `X`, in queries and, on the MLX path, in `KNeighborsRegressor`'s `y` are
+  rejected with scikit-learn's error instead of being parsed as numbers (`"1.5"` as 1.5).
+  Under `patch_sklearn()`, whether string targets worked used to depend on the size of the
+  data.
 - `kneighbors` reports the `n_neighbors` bound error with scikit-learn's full message
   (`n_samples = …`), and only after validating the query.
-- Under `patch_sklearn()`, a model fitted on MLX answers sparse queries with
-  scikit-learn's brute-force search instead of raising `SparseInputError`. This is
-  recorded as a fallback and honors `fallback_policy`.
+- Under `patch_sklearn()`, a model fitted on MLX answers a sparse query to `kneighbors`,
+  `kneighbors_graph`, `predict` or `predict_proba` with scikit-learn's brute-force search
+  instead of raising `SparseInputError`. The query is cast to float32 to match the
+  training copy, so the search runs at stock speed and its distances carry that copy's
+  float32 rounding; a sparse value float32 cannot hold raises `UnsupportedInputError`, as
+  a dense one does. This is recorded as a fallback and honors `fallback_policy`.
+  `radius_neighbors` and `radius_neighbors_graph` take a sparse query in both layers as
+  ordinary calls.
 - Under `patch_sklearn()`, a prebuilt `KDTree`, `BallTree` or fitted estimator passed as
   `X` falls back to scikit-learn instead of raising `TypeError`.
 - `effective_metric_` is set as scikit-learn sets it (`metric="l2"` stays `"l2"`).
@@ -81,8 +106,18 @@ come first under **Changed**.
 - A `LogisticRegression` built by assigning `coef_`, `intercept_` and `classes_` now
   predicts, in both layers.
 - Regression targets get scikit-learn's exact "Unknown label type" message.
-- An exception raised by a scikit-learn 1.9 callback is re-raised as itself, not reported
-  as a `BackendExecutionError`.
+- `ConvergenceWarning` messages start with scikit-learn's `"lbfgs failed to converge after
+  N iteration(s)"`, so message filters and `pytest.warns(match=...)` written for
+  scikit-learn match on the MLX path too.
+- A `ConvergenceWarning` that a warnings filter escalates to an error leaves the estimator
+  unfitted. Before, it stayed fitted and was recorded as a completed fit.
+- `MLXLEARN_FORCE_BACKEND=mlx` on a host without a usable GPU fits on MLX's CPU, as the
+  neighbor estimators and `SVC` do. Before, it raised a `DeviceError` claiming
+  `device="gpu"` had been requested. An explicit `device="gpu"` still raises.
+- An exception raised by a scikit-learn 1.9 callback is re-raised as itself, with its own
+  `__cause__` and `__context__`, as scikit-learn re-raises it, not reported as a
+  `BackendExecutionError`; the failed fit's device copy of `X` is not kept alive in a
+  reference cycle until the next garbage collection.
 
 #### SVC
 
@@ -92,8 +127,33 @@ come first under **Changed**.
 - Kernel inputs are mapped exactly in float64 before the float32 cast: the rbf training
   mean is subtracted first, so large offsets are no longer rounded away, and an exact
   power-of-two scale is folded into `gamma`, so data around 1e±19, and `gamma` values
-  outside float32's range, match scikit-learn instead of returning a NaN model. Results
-  are bit-identical for data already in range.
+  outside float32's range, match scikit-learn instead of returning a NaN model. The
+  power-of-two scale is exact, so it leaves results for data already in range
+  bit-identical; the rbf translation does not, because the mean is now subtracted before
+  rounding, and moved in-range rbf decision values by up to 6e-4 against 0.1.0a2 (on
+  `N(3, 1)` data), within the solver's `tol`.
+- rbf entries between rows close to each other but far from the training mean came out of
+  float32's Gram identity wrong by up to 0.58: tight clusters far apart with `gamma`
+  matched to them, or an explicit `gamma` on unscaled multi-modal data. Fits returned
+  decision values 3–6 away from scikit-learn's, silently, under `patch_sklearn()` too.
+  Those entries are now recomputed on the host in float64 — in the Gram, in the rows
+  evaluated on demand and at inference — so two clusters 2 000 apart match scikit-learn to
+  1.1e-3 and 40 clusters at 2 400 × 512 to 3.1e-4. Ordinary data never takes that path
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.4).
+- The SMO solver takes its curvature from the closed-form kernel diagonal; every kernel
+  row it reads now carries that value in its self-entry, so its steps and its gradient
+  updates describe one quadratic. A poly fit on offset data used to circle its whole
+  10⁷-iteration budget: 376 s against scikit-learn's 0.001 s. In-range fits can move
+  within `tol`: up to 2.3e-3 in poly decision values measured, and 1.5e-2 in a linear one.
+- `linear` and `poly` fits on data whose variation float32's inner product cannot resolve —
+  a large offset with a small spread, or rows that all round to the same nonzero row —
+  raise `UnsupportedInputError` (reason `"float32-cancellation"`), which `patch_sklearn()`
+  hands to scikit-learn. Such fits used to return models up to 13 points less accurate,
+  silently.
+- A class whose every sample has zero effective weight raises `UnsupportedInputError`
+  (reason `"empty-class"`, still a `ValueError`) before any device work, so
+  `patch_sklearn()` hands the fit to scikit-learn, which fits the remaining classes. It
+  was a plain `ValueError` in both layers.
 - A fit whose float32 kernel overflowed returned a model with a NaN intercept and
   `fit_status_=0`. It now raises scikit-learn's "dual coefficients or intercepts are not
   finite" `ValueError` as soon as a one-vs-one pair stops on a non-finite value. The SMO
@@ -105,6 +165,10 @@ come first under **Changed**.
   product that overflows float32, and float64 or object-dtype input past 3.4e38.
 - `predict` and `decision_function` raise `UnsupportedInputError` for queries float32
   cannot represent, instead of returning NaN decision values and silently flipped labels.
+  A query that float32 holds but that lies far outside the training data — a CMIP `1e20`
+  or netCDF `9.97e36` fill value — is still answered as scikit-learn answers it, on the
+  rbf, sigmoid and linear kernels; only one whose inner product with a support vector
+  float32 cannot hold raises.
 - `SVC(kernel="linear", gamma=0.0)` fits, as in scikit-learn.
 - Negative `sample_weight` values are treated as zero weights, exactly as LIBSVM treats
   them, so patched `SVC` no longer raises where stock scikit-learn fits.
@@ -112,6 +176,8 @@ come first under **Changed**.
   `TypeError`.
 - The `max_iter=-1` `ConvergenceWarning` names the budget mlxlearn resolved `-1` to,
   instead of the contradictory "max_iter=-1".
+- `SVC(max_iter=0)` records the KKT violation at its initial iterate in its private
+  diagnostics, instead of an unmeasured 0.0.
 - The SMO gradient update ran in float32 on NumPy 1.x (value-based casting), losing
   precision against the float64 gradient. It is float64 on every NumPy, and bit-identical
   on NumPy 2.
@@ -136,18 +202,23 @@ come first under **Changed**.
   `BrokenProcessPool`.
 - Diagnostics record exactly one event per fit, matching `execution_backend_`: the
   phantom `fit -> mlx` event on below-crossover fits is gone, and patched sub-crossover
-  and `tree-wins` fits record one event instead of two. One public inference call
-  records one event, named after the method called — `predict`, `predict_proba`,
-  `predict_log_proba`, and scikit-learn's inherited `score`, `kneighbors_graph` and
-  `radius_neighbors_graph` included, which were recorded under the inner method's name —
-  whichever backend fitted the model. A patched neighbor estimator's sparse-query
+  and `tree-wins` fits record one event instead of two; a `LogisticRegression` fit that
+  stops without converging records its stop on that event (see **Added**). One public
+  inference call records one event, named after the method called — `predict`,
+  `predict_proba`, `predict_log_proba`, and scikit-learn's inherited `score`,
+  `kneighbors_graph` and `radius_neighbors_graph` included, which were recorded under the
+  inner method's name — whichever backend fitted the model; a patched
+  `SVC(probability=True)`, always fitted by scikit-learn, used to record none for
+  `predict_proba` and `predict_log_proba`. A patched neighbor estimator's sparse-query
   fallback is that call's one event. A fit forced to scikit-learn with
   `MLXLEARN_FORCE_BACKEND=sklearn` is recorded with `fallback=True`.
 - A refit that falls back to scikit-learn, or fails, no longer keeps the previous fit's
   MLX state — the neighbor index and its training copy, `SVC`'s pair weights and
   device-resident support vectors — alive in memory and in pickles.
-- Inference after a refit that failed raises `NotFittedError` (an `IncompleteFitError`,
-  which is also an `MLXLearnError`) instead of a bare `MLXLearnError`.
+- Inference after a refit that failed raises scikit-learn's `NotFittedError`, as it does
+  on an estimator never fitted, instead of a bare `MLXLearnError`. It is not an
+  `MLXLearnError`, so code that caught `MLXLearnError` there should catch
+  `NotFittedError`.
 - A model fitted on the MLX GPU and loaded on a host without a usable GPU predicts on
   MLX's CPU device under `device="auto"` or `"cpu"`, recorded once per call as
   `"gpu-unavailable"` (with the fitted backend, `"mlx"`), instead of raising
@@ -229,6 +300,12 @@ come first under **Changed**.
 - The benchmark "IQR" was the full min–max range at the default 7 iterations, so one
   outlier could hide a 2× regression. The gate also excused MLX-path regressions using a
   crossover derived from the run it was judging.
+- The benchmark harness penalized mlxlearn: `compare()` timed the mlxlearn side first in
+  every pair, straight after `gc.collect()`, and only that side paid
+  `mx.synchronize()`. Identical work in both slots read 0.77–0.85× and failed the
+  performance gate in almost every trial. Every timed call is now collected and
+  synchronized the same way, and the two sides take turns going first; identical work
+  reads 1.00×.
 
 #### Documentation
 
@@ -252,6 +329,12 @@ come first under **Changed**.
 - [`docs/fp32_policy.md`](docs/fp32_policy.md) no longer offers `device="cpu"` as a
   float64 escape hatch: it is the same float32 algorithm on MLX's CPU. It now describes
   what the SVC sigmoid and KKT tests actually assert.
+- [`docs/fp32_policy.md`](docs/fp32_policy.md) §3 gave `LogisticRegression`'s probability
+  tolerance, `atol=2e-3` at default `tol`, without saying it was measured on a fixed grid
+  (n ≤ 5 000, d ≤ 20). At default `tol` a wide problem stops elsewhere: at
+  25 000 × 1 000, which the crossover sends to MLX, the probabilities differed by up to
+  4.9e-3, as much as stock lbfgs and stock newton-cg differ from each other. Such a
+  problem is judged on the objective, and on probabilities at `tol=1e-6` (7.2e-5).
 
 ### Changed
 
@@ -261,8 +344,11 @@ come first under **Changed**.
   LIBSVM's shrinking heuristic when `shrinking=True`, which is scikit-learn's default, so
   default fits change path. The optimum and the stopping test are the same — the test is
   evaluated over every sample before the solver may stop — but, as in LIBSVM, where inside
-  `tol` the solver stops can differ ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.4).
-  `shrinking=False` runs the plain loop.
+  `tol` the solver stops can differ, on every kernel and by the same order as LIBSVM's
+  own shrinking ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.4). The gradient of the
+  samples set aside is rebuilt one row at a time in index order, as LIBSVM rebuilds it, so
+  a fit does not depend on how `cache_size` batches that work or on the NumPy/BLAS build.
+  `shrinking=False` never sets a sample aside.
 - **Multi-output targets are accelerated** in `KNeighborsClassifier` and
   `KNeighborsRegressor`: the neighbor search does not depend on `y`, and votes and averages
   are taken per output. The Layer 1 tags now advertise multi-output (and, for the
@@ -281,7 +367,17 @@ come first under **Changed**.
 - **`set_config` is process-wide** and `config_context` is context-local (see **Fixed**).
 - Patched `SVC` routes one-vs-one problems with many small classes to scikit-learn: the
   mean pair's work, `(2n/K) · n_features`, must also clear a new private
-  `svc_min_pair_work` threshold (default 250 000, `MLXLEARN_SVC_MIN_PAIR_WORK`).
+  `svc_min_pair_work` threshold (default 250 000, `MLXLEARN_SVC_MIN_PAIR_WORK`). The class
+  count comes from the raw labels, so such a handoff, too, is decided before any scan or
+  copy of `X`.
+- A callable `weights` in `KNeighborsClassifier` and `KNeighborsRegressor` is served on the
+  MLX path and applied to the returned distances on the host, as scikit-learn applies it.
+  Before, Layer 1 raised `UnsupportedParameterError`, Layer 2 fell back to scikit-learn,
+  and one set with `set_params` after an MLX fit made `predict` raise "weights not
+  recognized".
+- Neighbor training sets of more than 2³² rows, whose indices the exact search cannot
+  address, raise `UnsupportedInputError` at `fit`, which `patch_sklearn()` hands to
+  scikit-learn.
 - The logistic crossover's work proxy counts one weight vector per class
   (`n × d × n_targets`). The threshold values are unchanged.
 - `metric_params={"p": ...}` with `metric="minkowski"` is accepted and resolved as
@@ -292,14 +388,17 @@ come first under **Changed**.
   compute with a float32 query (see **Performance**), so a float64 query float32 cannot
   hold raises `UnsupportedInputError` (reason `"float32-overflow"`, a `ValueError`), as
   `kneighbors` does. 0.1.0a2 upcast it and answered in float64.
-- On the GPU, kernel rows evaluated on demand are bit-identical to the rows of the
-  materialized Gram, so `cache_size` crossing the Gram boundary no longer changes the
-  fitted model there (measured on all four kernels; MLX's CPU device still moves decision
-  values by up to 2.2e-3 at 2 000 × 10).
+- On the GPU at narrow widths, kernel rows evaluated on demand are bit-identical to the
+  rows of the materialized Gram, so `cache_size` crossing the Gram boundary no longer
+  changes the fitted model there (measured on all four kernels at 2 000 × 10). At a
+  thousand features and more MLX can pick another matmul kernel for the Gram's shape or
+  for a batch of rows, and `cache_size=5` moved decision values by up to 9.2e-4 at
+  2 048 × 2 048; MLX's CPU device moves them at any width, by up to 2.2e-3 at 2 000 × 10.
+  Pin `cache_size` for bit-reproducible fits, on either device.
 - `mlx_guard` lets only mlxlearn's own errors, `MemoryError` and escalated warnings pass
   through. A deliberate input error detected inside guarded code — `SVC`'s non-finite
-  model, a class whose every sample has zero weight — is an `InvalidInputError`, which is
-  a `ValueError`, so scikit-learn-facing behavior is unchanged.
+  model — is an `InvalidInputError`, which is a `ValueError`, so scikit-learn-facing
+  behavior is unchanged.
 - `import mlxlearn; mlxlearn.svm.SVC` works: the estimator subpackages load lazily on first
   access, and `import mlxlearn` still imports neither scikit-learn nor MLX.
 - An `mx.array` converted to NumPy through mlxlearn's array helpers is a read-only view,
@@ -312,7 +411,9 @@ come first under **Changed**.
 - A fitted neighbors model keeps one private copy of the training rows, shared read-only
   between host and device (`_fit_X` is a view of it), beside the translated copy the search
   runs on; fitting no longer allocates full-size host copies or temporaries. float64 input
-  additionally keeps a float32 residual.
+  additionally keeps a float32 residual. A model loaded with `pickle` or `joblib`, or
+  deep-copied, returns to that one copy on its first query, rather than keeping a second
+  full copy of its training rows that doubled the file when it was saved again.
 - The fitted `SVC` keeps its support vectors mapped into the compute frame and resident on
   the device, built lazily on the first prediction and dropped from pickles.
 
@@ -323,11 +424,24 @@ come first under **Changed**.
 - The version is defined once, in `src/mlxlearn/__init__.py`; `pyproject.toml` reads it.
 - `pytest` deselects tests marked `slow` by default (`pytest -m slow`, `pytest -m ""`).
 - Without a working GPU, tests that need one are skipped with a reason.
-  `MLXLEARN_REQUIRE_GPU=1`, set in CI, makes a missing GPU stop the run instead.
+  `MLXLEARN_REQUIRE_GPU=1`, set in CI, makes a missing GPU stop the run instead. Tests
+  that assert the MLX path ran are marked `gpu`, since without a GPU nothing raises —
+  auto-selection picks the CPU — and a slow tooling test runs the suite on a simulated
+  GPU-less host to hold every test to that.
+- pandas is in the `test` extra (floor 2.2.3, installed exactly by the minimum-versions
+  job), so the pandas input-handling tests run on every CI leg. The nightly job also
+  installs torch for the torch container cases.
 - Benchmark significance requires the medians to be three standard errors apart, each
   estimated from a real interquartile range, with at least five samples on each side.
+- The performance gate controls its false-failure rate per run, not only per case: the
+  runner re-measures any case the gate would fail over three times the iterations, records
+  it as that result's `confirmation`, and the gate fails the case only if the loss
+  reproduces. In a simulation of 137 gated cases with no real change, the share of
+  failing nights drops from 73–79% to under 1%.
 - The performance gate judges the backend each case actually ran on under the configured
-  `Tuning`.
+  `Tuning`. A backend forced with `--force-backend` or `MLXLEARN_FORCE_BACKEND` is
+  recorded as forced, so the gate does not blame `Tuning` for it, and results record the
+  effective `Tuning` and every `MLXLEARN_*` variable.
 - The stock KNN baseline in the benchmark grid is scikit-learn's default
   `algorithm="auto"`.
 - ruff is pinned, in the dev extra, and CI lints with that pin.
@@ -339,10 +453,17 @@ come first under **Changed**.
   configuration setting reaches (threads, `asyncio`, process workers), what `device`
   selects, the error taxonomy, and the two cases inference runs off its fitted device.
 - [`docs/fp32_policy.md`](docs/fp32_policy.md) describes the neighbor certificate and tie
-  contract, float64 translation in each estimator, `SVC`'s compute frame and shrinking,
-  the L-BFGS float32 floor, and range checking at inference. `deterministic` and
-  `random_state` are documented as having no observable effect in 0.1.x, and Rule C as
-  reserved.
+  contract and what its second pass costs, float64 translation in each estimator, `SVC`'s
+  compute frame, rbf refinement, resolution check, self-entries, shrinking and
+  `cache_size`, the L-BFGS float32 floor, and range checking at inference. `deterministic`
+  and `random_state` are documented as having no observable effect in 0.1.x, and Rule C
+  as reserved.
+- `radius_neighbors` and `radius_neighbors_graph` are documented as rounding float64
+  input at its raw magnitude: unlike `kneighbors`, they do not translate it by its mean, so
+  a large constant offset costs them precision (Unix timestamps round to 128-second steps).
+  The README, the `NearestNeighbors` docstring, `docs/fp32_policy.md` §3.4 and the support
+  matrix say so, and that the radius methods take sparse queries in both layers. The
+  `kneighbors` docstring says `metric="sqeuclidean"` returns squared distances.
 - [`docs/support_matrix.md`](docs/support_matrix.md) lists what each estimator falls back
   for, which problems patched dispatch hands to scikit-learn by size, and the deliberate
   differences from scikit-learn.
@@ -373,11 +494,15 @@ come first under **Changed**.
 - scikit-learn 1.9 callbacks (`set_callbacks`) are driven on `LogisticRegression`'s MLX
   path with scikit-learn's own lbfgs task tree: the fit, plus one subtask per iteration.
 - scikit-learn's fit-time deprecation warnings are emitted on the MLX path too:
-  `LogisticRegression`'s `penalty`, `l1_ratio=None`, `n_jobs` and, on 1.7, `multi_class`;
+  `LogisticRegression`'s `penalty`, `l1_ratio=None`, `n_jobs` and, on 1.7, `multi_class`
+  (in the installed patch release's own words: 1.7.0 and 1.7.1 say "will be removed in
+  1.7");
   `SVC`'s `probability` on 1.9.
 - Diagnostics:
-  - non-converged `LogisticRegression` fits are recorded as `"lbfgs"` events with the stop
-    reason, `n_iter`, `n_fev`, `grad_max_abs`, `tol` and `at_resolution_floor`;
+  - a `LogisticRegression` fit that stops without converging records the stop on its one
+    fit event: `fit_event_.extra` gains `stop_reason`, `n_iter`, `n_fev`,
+    `grad_max_abs`, `tol` and `at_resolution_floor`, and `fit_event_.detail` the
+    explanation;
   - new reasons `"tree-wins"`, `"prebuilt-index"`, `"gpu-unavailable"`,
     `"forked-process"`, `"array-api-dispatch"` and, for a `LogisticRegression` predicting
     from assigned attributes, `"external-state"`;
@@ -411,7 +536,9 @@ come first under **Changed**.
   - stronger logistic parity: objective-level unpenalized parity, every capability gate
     isolated, forced-GPU parity for weighted and no-intercept fits, and an independent
     check of the parity oracle.
-- Python 3.14 support (classifier and CI leg).
+- Python 3.14 support (classifier and CI leg). That leg is unpinned: it tests the newest
+  scikit-learn the declared range admits, so a pull request that raises the cap, a
+  Dependabot one included, runs the suite on the new release.
 - A minimum-versions CI leg that installs every declared floor exactly, a weekly job
   against upstream pre-releases, and Dependabot configuration.
 - The `layering` compliance gate: no scikit-learn, user-configuration or estimator imports
@@ -422,8 +549,9 @@ come first under **Changed**.
 - CI runs doctests, the benchmark harness and gate at one iteration, and the slow tests in
   a job of their own.
 - The benchmark `published` profile, which reproduces `docs/benchmarks.md`, and a
-  `--force-backend` flag. New benchmark cases: low-dimensional KNN (`d` = 2, 3), large
-  query batches (10 000 and 50 000), and many-class SVC.
+  `--force-backend` flag. A case may carry its own iteration count, which caps
+  `--iterations` and never raises it. New benchmark cases: low-dimensional KNN
+  (`d` = 2, 3), large query batches (10 000 and 50 000), and many-class SVC.
 - README notes on fork safety, MLX's buffer cache, and pickles of patched models needing
   mlxlearn to load.
 - A `Documentation` project URL.
@@ -444,10 +572,13 @@ come first under **Changed**.
   permissions, and every job has a timeout.
 - The release workflow published without running the tests, skipped its tag check on a
   manual dispatch, and never checked the wheel it described. It now runs the whole CI
-  workflow on the tagged commit, checks that the wheel is pure-Python and installs
-  cleanly, requires the tag, the wheel metadata and `mlxlearn.__version__` to agree, and
-  publishes only on a `v*` tag push, through PyPI Trusted Publishing from an environment
-  that requires approval. A manual run is a dry run.
+  workflow on the tagged commit and publishes the distributions that run's build job
+  built and checked — a pure-Python wheel that installs cleanly and whose metadata agrees
+  with `mlxlearn.__version__`, and an sdist whose own suite collects against it — rather
+  than building them a second time. A `version` job requires the wheel's filename and
+  metadata, the sdist's filename and the tag to agree. It publishes only on a `v*` tag
+  push, through PyPI Trusted Publishing from an environment that requires approval. A
+  manual run is a dry run.
 - The license gate walks the full installed runtime dependency closure and parses SPDX
   expressions. It used to check direct dependencies only, by substring, and accepted, for
   example, "Proprietary; unlicensed".
@@ -455,22 +586,32 @@ come first under **Changed**.
 ### Performance
 
 Every number here is an interleaved A/B measurement by the change's author on a shared
-M4 Max, against the 0.1.0a2 code. They are preliminary; the benchmarks and crossovers are
-re-measured on fixed hardware before release.
+M4 Max, against the 0.1.0a2 code unless the entry names another baseline. They are
+preliminary; the benchmarks and crossovers are re-measured on fixed hardware before
+release.
 
 - Neighbor queries on the GPU use two-stage segmented selection and fused tile
   expressions: large queries are 2.0–2.4× faster — 100 000 × 32 with 20 000 queries from
   956 to 403 ms, 200 000 × 64 with 4096 queries from 485 to 205 ms, and `k=200` from 246
-  to 154 ms. (preliminary; re-measured before release)
-- Binary and small-integer data takes an exact integer path, about 1.7× faster; index
-  build is about 2× faster. (preliminary; re-measured before release)
+  to 154 ms. The tile expressions are compiled on the GPU only; MLX's CPU device runs the
+  same expressions eagerly, so a first fit on a cold kernel cache (a fresh machine, a CI
+  runner, after an MLX upgrade) does not wait on MLX's C compiler — about 3 s for a
+  200 × 5 fit and predict when they were compiled there, 0.03 s now. (preliminary;
+  re-measured before release)
+- Binary and small-integer data takes an exact integer path, about 1.7× faster. The index
+  build is faster only at very large n (about 1.1–1.5× at 2 000 000 × 64); below about
+  50 000 rows it is still slower than 0.1.0a2 (GPU 1 000 × 32: 0.28 against 0.16 ms; MLX
+  CPU 20 000 × 32: 1.0 against 0.57 ms), the cost of the span check, the certificate's
+  sorted norms and the integer path. (preliminary; re-measured before release)
 - Peak device memory per neighbor query stays near the budget instead of reaching about
   7× it: 7 409 MiB → 762 MiB at 50 000 × 768 with `k=1000`. (preliminary; re-measured
   before release)
-- Certification costs a second pass only where the old margin was wrong: 1.5–2.3× the old
-  (wrong) query time on the pathological cases in
-  [`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1, and no second pass on ordinary data.
-  (preliminary; re-measured before release)
+- Certification costs a second pass where the first pass cannot prove its answer — where
+  the old margin was wrong, and at exact ties at the k-th distance, such as a row repeated
+  more than about `k + 4` times: 1.5–2.2× the old query time on the cases in
+  [`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1 at 4–32 features. The exact search's
+  share grows with the number of features (two clusters: 5× at 64). No second pass on
+  ordinary data. (preliminary; re-measured before release)
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3 fit and predict went from
   0.12× to 0.99–1.00× of stock. (preliminary; re-measured before release)
 - `radius_neighbors` and `radius_neighbors_graph` on an MLX-fitted `NearestNeighbors`
@@ -483,7 +624,9 @@ re-measured on fixed hardware before release.
   evaluation costs one device synchronization instead of 12–33 blocking round trips per
   iteration. Forced-GPU fits are 1.7–8× faster with iteration counts unchanged, and the
   solver alone 2–11× faster. The binary gradient on the GPU uses a contiguous `Xᵀ`,
-  avoiding MLX's slow vector–matrix path. (preliminary; re-measured before release)
+  avoiding MLX's slow vector–matrix path: binary fits are 1.1× (20 000 × 1 024) to 2.9×
+  (2 000 000 × 16) faster than the same solver without it. (preliminary; re-measured
+  before release)
 - `SVC` fits no longer fall off a cliff once a one-vs-one subproblem exceeds the
   kernel-cache Gram cutoff (about 7 240 rows at the default `cache_size=200`): on a cache
   miss, kernel rows are fetched many per GPU round trip, together with the rows closest to
@@ -504,6 +647,12 @@ re-measured on fixed hardware before release.
   is 1.2–1.5× faster and CPU predict 1.0–1.16×, with decision values bit-identical; with
   the support vectors kept on the device, single-row `predict` at 4 000 × 256 went from
   0.50 to 0.25 ms and 16 rows from 0.62 to 0.35 ms. (preliminary; re-measured before
+  release)
+- The `SVC` rbf entries recomputed in float64 (see **Fixed**) cost nothing on ordinary
+  data, which never opens that path. Where every entry within a cluster needs it — two
+  clusters of 2 000 or 5 000 rows each — a fit takes 2.6–3× as long as without it,
+  1.4–1.7× scikit-learn's time; 40 clusters at 2 400 × 512 on the GPU fit in 0.14 s,
+  against 0.05 s without it and 0.39 s for scikit-learn. (preliminary; re-measured before
   release)
 - Many-class `SVC` under `patch_sklearn()`: at 2048 × 512, `K=64` went from 0.23× to 1.00×
   of stock, and `K=8` stays on MLX at about 1.6×. (preliminary; re-measured before

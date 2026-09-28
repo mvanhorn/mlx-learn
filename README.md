@@ -101,10 +101,13 @@ parameter, a value float32 cannot hold), never to hide a bug:
 | `device="gpu"` with no usable GPU | `DeviceError` | `DeviceError` |
 | Unexpected MLX runtime failure | `BackendExecutionError` | **`BackendExecutionError`** — never silently rerun on scikit-learn |
 
-Every error mlxlearn raises on purpose is an `MLXLearnError`, and the classes above are
-all importable from `mlxlearn`. A `CapabilityError` keeps the mismatch (`.summary`) apart
-from the remedy for a directly imported estimator (`.advice`); a patched estimator's
-warning reports the mismatch and what it did about it. The input errors are also
+Every capability, device and backend error mlxlearn raises is an `MLXLearnError`, and the
+classes above are all importable from `mlxlearn`. Argument errors from `set_config`,
+`config_context`, `patch_sklearn` and the `MLXLEARN_*` environment variables, and input
+errors that reproduce scikit-learn's own, are plain `ValueError`s and `TypeError`s, as in
+scikit-learn. A `CapabilityError` keeps the mismatch (`.summary`) apart from the remedy
+for a directly imported estimator (`.advice`); a patched estimator's warning reports the
+mismatch and what it did about it. The input errors are also
 `ValueError`s (`SparseInputError` a `TypeError`, as scikit-learn raises for sparse
 input), so code written against scikit-learn's error contract keeps working, and all of
 them survive pickling, so a failure in a `joblib` worker arrives intact rather than as a
@@ -137,15 +140,18 @@ can never wander into scikit-learn inference with incompatible state. A new `fit
 state and may pick a different backend.
 
 Two cases run somewhere other than the fitted device, and neither re-decides anything.
-Under `patch_sklearn()`, a sparse query to a neighbor estimator fitted on MLX is answered
-by scikit-learn's brute-force search, which reads the MLX-fitted state directly; it is
-recorded, and warned about, as a fallback. And a model fitted on the MLX GPU, then loaded
-in a process with no usable GPU, runs the same float32 code on MLX's CPU, recorded as
-`"gpu-unavailable"` — unless `device="gpu"` is set, which raises `DeviceError`. Inference
-that never touches a device is unaffected by either: `LogisticRegression` predicts with
-scikit-learn's float64 NumPy code on every backend, and `radius_neighbors` on an
-MLX-fitted `NearestNeighbors` is scikit-learn's own search on the fitted state, so both
-record `"sticky"` and run under `device="gpu"` on any host.
+Under `patch_sklearn()`, a sparse query to `kneighbors`, `kneighbors_graph`, `predict` or
+`predict_proba` of a neighbor estimator fitted on MLX is answered by scikit-learn's
+brute-force search, which reads the MLX-fitted state directly; the query is cast to
+float32 to match the training copy, so its distances carry that copy's rounding, and the
+call is recorded, and warned about, as a fallback. And a model fitted on the MLX GPU, then
+loaded in a process with no usable GPU, runs the same float32 code on MLX's CPU, recorded
+as `"gpu-unavailable"` — unless `device="gpu"` is set, which raises `DeviceError`.
+Inference that never touches a device is unaffected by either: `LogisticRegression`
+predicts with scikit-learn's float64 NumPy code on every backend, and `radius_neighbors`
+and `radius_neighbors_graph` on an MLX-fitted `NearestNeighbors` are scikit-learn's own
+search on the fitted state — sparse queries included, in both layers — so they record
+`"sticky"`, not a fallback, and run under `device="gpu"` on any host.
 
 ## Configuration
 
@@ -236,7 +242,8 @@ Unreleased section of the [changelog](https://github.com/tabulai/mlx-learn/blob/
 move several of these numbers, and they are re-measured before the next release:
 
 <!-- perf-phase: re-measure every row on a quiet machine. Since 0.1.0a2: KNN queries are
-2.0-2.4x faster on large batches and fit ~2x faster; LogisticRegression's per-iteration cost
+2.0-2.4x faster on large batches, while the index build is faster only at very large n and
+still slower than 0.1.0a2 below ~50 000 rows; LogisticRegression's per-iteration cost
 was 12-33 host syncs in the L-BFGS bookkeeping (not line-search evaluations) and is now one
 sync per evaluation, so the "slower below 1 024 features" row and its crossover need new
 numbers; SVC fits past the kernel-cache Gram cutoff gained row prefetch and shrinking. The
@@ -261,11 +268,17 @@ MLX computes in float32 on the GPU. mlxlearn's parity tests are written to float
 tolerances, and the cases where float32 makes strict scikit-learn equivalence impossible
 are enumerated — not waved away — in [`docs/fp32_policy.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/fp32_policy.md).
 A large constant offset in float64 input (timestamps, projected coordinates) costs no
-precision where the model is invariant to it — the neighbor estimators,
-`LogisticRegression` with an intercept, `SVC`'s rbf kernel — because it is removed in
-float64 before anything is rounded to float32. Values float32 cannot hold are rejected
-with `UnsupportedInputError`, never turned into infinities. Exact neighbor searches are
-certified against float32 rounding, not trusted to a fixed margin.
+precision where the model is invariant to it — the neighbor estimators' `kneighbors` and
+the predictions built on it, `LogisticRegression` with an intercept, `SVC`'s rbf kernel —
+because it is removed in float64 before anything is rounded to float32. `radius_neighbors`
+and `radius_neighbors_graph` are the exception: they run scikit-learn's search on the
+float32 training copy as given, so data with an offset rounds at the offset's magnitude
+(Unix timestamps to 128-second steps); subtract it before fitting, or use stock
+scikit-learn. Values
+float32 cannot hold — and neighbor training data whose span it cannot resolve beside the
+gaps between rows, such as an unmasked `1e30` fill value — are rejected with
+`UnsupportedInputError`, never turned into infinities or zero distances. Exact neighbor
+searches are certified against float32 rounding, not trusted to a fixed margin.
 
 ## Development
 

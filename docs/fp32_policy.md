@@ -268,7 +268,9 @@ it — and past `1e-3` refuses the fit with `UnsupportedInputError`, reason
 measured error per median curvature about threefold. On the linear kernel, where
 scikit-learn still converges on such data, the decision values moved by 1.4e-3 of their
 range at a ratio of 1.7e-4, by 1.1e-2 at 1.7e-3, and by 6e-2, with 98.8% of labels
-agreeing, at 1.5e-2.
+agreeing, at 1.5e-2. Data whose every row float32 holds as the same nonzero row — often
+rows that were not, rounded at a large offset — has no spread at all, leaves only rounding
+to learn from, and is refused the same way.
 `sigmoid` is not checked: on the same offsets it agreed with scikit-learn to 3e-4 or
 better. The test is global, so structure that lives at a much finer scale than the data's
 overall spread — tight clusters far from the origin — is not seen by it; standardize such
@@ -415,7 +417,7 @@ stop on measures *dual* violation.
 
 The question "did mlxlearn solve the problem?" is therefore answered by the primal
 objective `½‖w‖² + C·Σ hinge`, which is what both are minimizing. Measured: agreement to
-**5.2e-07 relative**, worst 5.9e-06 at C = 10. Comparing decision values alone would report
+**5.2e-07 relative**, worst 6.2e-06 at C = 10. Comparing decision values alone would report
 a problem the objective shows does not exist — the same trap as comparing `coef_` for a
 linear model.
 
@@ -471,8 +473,10 @@ rounded to float32:
 
 - The **neighbor estimators** translate by the float64 training mean and keep a float32
   residual beside each float32 value, the mean's included, so the translation and the
-  refined differences are taken to about 2⁻⁴⁸ of the coordinate (§2.1). 5 000 Unix timestamps within one hour, which collapse to 29
-  distinct values when cast first, return their exact neighbors.
+  refined differences are taken to about 2⁻⁴⁸ of the coordinate (§2.1). 5 000 Unix
+  timestamps within one hour, which collapse to 29 distinct values when cast first,
+  return their exact neighbors. That is `kneighbors` and everything built on it; the
+  radius methods are the exception below.
 - **`LogisticRegression`** centers float64 input in float64 when it fits an intercept, and
   rounds only the centered values; the intercept is un-centered with exactly the mean that
   was subtracted. Without an intercept there is nothing to absorb the shift, so the design
@@ -570,7 +574,8 @@ is to keep it that way.
   support vector is past float32's `exp` (§2.4). A non-finite result is an error, never an
   answer.
 - **Loosen a tolerance to make a test pass.** Tolerances come from this document. A failure
-  at these tolerances is a bug in mlxlearn.
+  at these tolerances, on the problems and at the `tol` §3 states them for, is a bug in
+  mlxlearn.
 - **Offer a float64 GPU path.** MLX does not have one, and mlxlearn's CPU path is the same
   float32 computation on another device. Requesting float64 accuracy means requesting
   scikit-learn: `patch_sklearn()` users get it for problems below the crossover, and
