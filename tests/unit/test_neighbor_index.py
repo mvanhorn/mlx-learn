@@ -221,10 +221,10 @@ def test_a_pickle_from_before_the_residual_still_loads(rng):
 # ----------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("width", [2048, 2049, 2048 + 511, 5003])
-@pytest.mark.parametrize("take", [1, 14, 128, 129])
+@pytest.mark.parametrize("width", [2048, 2049, 2048 + 511, 5003, 9001])
+@pytest.mark.parametrize("take", [1, 14, 128, 129, 270])
 def test_segmented_selection_is_exact(width, take, rng):
-    """Ragged tails, a take at the segment gate, and heavy ties."""
+    """Ragged tails, takes either side of a segment-width step, and heavy ties."""
     vals = rng.random((7, width)).astype(np.float32)
     vals[:, ::3] = vals[:, :1]
     device = mx.gpu if gpu_available() else mx.cpu

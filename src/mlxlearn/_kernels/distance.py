@@ -65,11 +65,13 @@ _OVERSELECT = 4
 #: ``make_blobs`` at ``cluster_std=0.01`` puts ~250 points in each.
 _WIDEN_EXTRA = 256
 
-#: Segment width for two-stage selection on the GPU. MLX's GPU ``argpartition`` is
-#: effectively a full sort of the row, which made selection cost several times the
-#: Gram matmul on a wide tile. Partitioning 512-wide segments first and then the
-#: survivors measured 2.5-4× faster on a 1024 × 100 000 tile, with identical sets.
+#: Segment widths for two-stage selection on the GPU: at least 512, at least four
+#: times the number kept, at most 8192. MLX's GPU ``argpartition`` is effectively a
+#: full sort of the row, which made selection cost several times the Gram matmul on
+#: a wide tile. Partitioning segments first and then the survivors measured 2.5-4×
+#: faster keeping 14 of 100 000 and 1.2-2.5× keeping 64-1030, with identical sets.
 _SELECT_SEGMENT = 512
+_SELECT_SEGMENT_MAX = 8192
 
 #: Peak device memory per byte of distance tile. The budget below is for the whole
 #: working set, not the tile alone: the matmul output and the fused tile expression
@@ -912,16 +914,15 @@ class _Search:
 def _select_smallest(mx, vals, take: int, *, segmented: bool):
     """Indices and values of the ``take`` smallest entries of each row.
 
-    On the GPU a wide row is partitioned in two stages — each ``_SELECT_SEGMENT``
-    wide segment first, then the survivors — because MLX's GPU ``argpartition``
-    costs a full sort of the row. Exact: every row's global ``take`` smallest are
-    among its segments' ``take`` smallest. The ragged tail is appended to the
-    survivors whole rather than padded, so no padding value can ever tie with, and
-    displace, a real one.
+    On the GPU a wide row is partitioned in two stages — each segment first, then
+    the survivors — because MLX's GPU ``argpartition`` costs a full sort of the row.
+    Exact: every row's global ``take`` smallest are among its segments' ``take``
+    smallest. The ragged tail is appended to the survivors whole rather than padded,
+    so no padding value can ever tie with, and displace, a real one.
     """
     n_rows, width = vals.shape
-    seg = _SELECT_SEGMENT
-    if not segmented or width < 4 * seg or 4 * take > seg:
+    seg = max(_SELECT_SEGMENT, 1 << (4 * take - 1).bit_length())
+    if not segmented or seg > _SELECT_SEGMENT_MAX or width < 4 * seg:
         local = mx.argpartition(vals, kth=take - 1, axis=1)[:, :take]
         return local, mx.take_along_axis(vals, local, axis=1)
 
