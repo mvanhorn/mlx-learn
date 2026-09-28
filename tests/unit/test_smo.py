@@ -1,0 +1,420 @@
+"""Direct tests of the SMO solver, without an estimator in the way.
+
+The solver is shaped — arrays and a frozen config in, a frozen state out — so its
+numerics can be checked on their own, and this is where that happens:
+
+* against **LIBSVM itself**, through ``sklearn.svm.SVC(kernel="precomputed")`` fed
+  the very float32 kernel values the solver sees, on the dual objective;
+* against an **independent float64 KKT check** that appeals to nobody;
+* against **itself**: the performance machinery — the row cache, batched
+  prefetch and shrinking — must not change the answer, and where it cannot change
+  the arithmetic either, not even the bits.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+from sklearn.datasets import make_classification
+from sklearn.metrics.pairwise import linear_kernel, polynomial_kernel, rbf_kernel
+from sklearn.svm import SVC as SkSVC
+
+from mlxlearn._common.device import gpu_available
+from mlxlearn._kernels.kernels import KernelSpec, build_kernel_rows, kernel_diagonal, kernel_matrix
+from mlxlearn._solvers import smo
+from mlxlearn._solvers.smo import SMOConfig, SMOState, _RowCache, solve_c_svc
+
+TOL = 1e-3
+
+
+def _problem(n=600, d=8, seed=0, kernel="rbf", flip_y=0.05):
+    X, labels = make_classification(
+        n_samples=n, n_features=d, n_informative=max(2, d // 2), n_redundant=1,
+        flip_y=flip_y, random_state=seed,
+    )
+    y = np.where(labels == 1, 1.0, -1.0)
+    if kernel == "rbf":
+        K = rbf_kernel(X, gamma=1.0 / (d * X.var()))
+    elif kernel == "poly":
+        K = polynomial_kernel(X, degree=3, gamma=1.0 / (d * X.var()), coef0=1.0)
+    else:
+        K = linear_kernel(X)
+    # The solver sees float32 rows, as LIBSVM's cache holds them. Every reference
+    # below is computed on these same values, so any disagreement is the solver's.
+    K32 = K.astype(np.float32)
+    return X, y, K32
+
+
+class _Source:
+    """A Gram-backed row source that counts how it is called."""
+
+    def __init__(self, K32):
+        self.K = K32
+        self.single = 0
+        self.batches: list[int] = []
+
+    def row(self, i):
+        self.single += 1
+        return self.K[i]
+
+    def rows(self, indices):
+        self.batches.append(len(indices))
+        return self.K[np.asarray(indices)]
+
+
+def _solve(y, K32, C, *, fetch_rows=True, **config):
+    source = _Source(K32)
+    state = solve_c_svc(
+        y, C, np.diag(K32).astype(np.float64), source.row,
+        SMOConfig(tol=TOL, cache_rows=config.pop("cache_rows", K32.shape[0]), **config),
+        fetch_rows=source.rows if fetch_rows else None,
+    )
+    return state, source
+
+
+def _dual(coef, K64):
+    """LIBSVM's dual objective from signed coefficients ``α ⊙ y``."""
+    return 0.5 * coef @ K64 @ coef - np.abs(coef).sum()
+
+
+def _kkt_violation(alpha, y, C, K64):
+    """``max_{I_up}(−yg) + max_{I_low}(yg)`` recomputed from scratch in float64."""
+    yg = y * (y * (K64 @ (alpha * y)) - 1.0)
+    up = np.where(y > 0, alpha < C, alpha > 0)
+    low = np.where(y > 0, alpha > 0, alpha < C)
+    return float(np.max(-yg[up]) + np.max(yg[low]))
+
+
+def _assert_same_state(a: SMOState, b: SMOState):
+    np.testing.assert_array_equal(a.alpha, b.alpha)
+    assert a.rho == b.rho
+    assert a.n_iter == b.n_iter
+    assert a.converged == b.converged
+
+
+# ----------------------------------------------------------------------- config
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"tol": 0.0},
+        {"tol": -1e-3},
+        {"max_iter": -1},
+        {"cache_rows": 1},
+        {"prefetch_rows": -1},
+    ],
+)
+def test_invalid_config_is_rejected(kwargs):
+    with pytest.raises(ValueError):
+        SMOConfig(**kwargs)
+
+
+def test_inputs_of_different_lengths_are_rejected():
+    with pytest.raises(ValueError, match="agree in length"):
+        solve_c_svc(np.ones(3), np.ones(4), np.ones(3), lambda i: np.ones(3), SMOConfig())
+
+
+def test_a_wrongly_shaped_row_is_an_error_not_a_model():
+    y = np.array([1.0, -1.0, 1.0])
+    with pytest.raises(ValueError, match="kernel row"):
+        solve_c_svc(y, np.ones(3), np.ones(3), lambda i: np.ones(2, np.float32), SMOConfig())
+    cache = _RowCache(lambda i: np.ones(3), 3, 3, fetch_rows=lambda idx: np.ones((1, 3)), prefetch=2)
+    with pytest.raises(ValueError, match="fetch_rows returned"):
+        cache.get(0, lambda: np.zeros(3))
+
+
+# ------------------------------------------------------------- against LIBSVM
+
+
+@pytest.mark.parametrize("kernel", ["rbf", "poly", "linear"])
+@pytest.mark.parametrize("C", [0.1, 1.0, 10.0])
+def test_matches_libsvm_on_the_dual_objective(kernel, C):
+    """Same float32 kernel values, same stopping rule, same optimum as LIBSVM.
+
+    Both stop within ``tol`` of the KKT conditions, so the α themselves need not
+    agree; the dual objective must, and the independent KKT check must pass.
+    """
+    _, y, K32 = _problem(n=400, kernel=kernel, seed=3)
+    K64 = K32.astype(np.float64)
+    Cs = np.full(y.shape[0], C)
+    state, _ = _solve(y, K32, Cs)
+    assert state.converged
+
+    ref = SkSVC(kernel="precomputed", C=C, tol=TOL).fit(K64, y)
+    ref_coef = np.zeros(y.shape[0])
+    ref_coef[ref.support_] = ref.dual_coef_[0]
+
+    ours = _dual(state.alpha * y, K64)
+    theirs = _dual(ref_coef, K64)
+    # One-sided where mlxlearn may legitimately stop lower (fp32_policy §3).
+    assert ours <= theirs + 1e-5 * abs(theirs), (ours, theirs)
+    assert ours == pytest.approx(theirs, rel=1e-4)
+    assert _kkt_violation(state.alpha, y, Cs, K64) < TOL * 1.01
+    # LIBSVM's decision function is K @ coef + intercept_; the solver's rho is its
+    # bias with LIBSVM's internal sign, which scikit-learn flips for two classes.
+    ours_decision = K64 @ (state.alpha * y) - state.rho
+    theirs_decision = K64 @ ref_coef + ref.intercept_[0]
+    agreement = np.mean(np.sign(ours_decision) == np.sign(theirs_decision))
+    assert agreement >= 0.99
+
+
+def test_box_constraints_and_the_equality_hold_exactly():
+    _, y, K32 = _problem(n=500, seed=4)
+    C = np.random.default_rng(0).uniform(0.2, 3.0, y.shape[0])
+    state, _ = _solve(y, K32, C)
+    assert np.all(state.alpha >= 0.0) and np.all(state.alpha <= C)
+    # The box branches clip *to* the bounds, which is what makes exact status
+    # tests downstream meaningful.
+    assert np.any(state.alpha == C) and np.any(state.alpha == 0.0)
+    assert abs(state.alpha @ y) < 1e-9
+
+
+# ------------------------------------------------------- the budget, max_iter
+
+
+@pytest.mark.parametrize("shrinking", [False, True])
+def test_max_iter_zero_returns_the_initial_iterate(shrinking):
+    _, y, K32 = _problem(n=200)
+    state, source = _solve(y, K32, np.ones(200), max_iter=0, shrinking=shrinking)
+    assert state.n_iter == 0 and not state.converged
+    np.testing.assert_array_equal(state.alpha, 0.0)
+    assert np.isfinite(state.rho)
+    assert source.single == 0 and source.batches == []
+
+
+@pytest.mark.parametrize("shrinking", [False, True])
+def test_an_exhausted_budget_is_reported_not_hidden(shrinking):
+    _, y, K32 = _problem(n=600, seed=5, flip_y=0.2)
+    state, _ = _solve(y, K32, np.full(600, 10.0), max_iter=50, shrinking=shrinking)
+    assert state.n_iter == 50
+    assert not state.converged
+    assert state.max_kkt_violation > TOL
+
+
+# ------------------------------------------- the cache cannot change the answer
+
+
+def test_cache_capacity_changes_calls_not_the_solution():
+    _, y, K32 = _problem(n=500, seed=6)
+    C = np.ones(500)
+    whole, whole_src = _solve(y, K32, C, fetch_rows=False)
+    tiny, tiny_src = _solve(y, K32, C, fetch_rows=False, cache_rows=2)
+    _assert_same_state(whole, tiny)
+    assert tiny_src.single > whole_src.single
+
+
+@pytest.mark.parametrize("cache_rows", [3, 40, 250, 500])
+def test_prefetch_changes_calls_not_the_solution(cache_rows):
+    """Batched prefetch, into free room and — once full — over the LRU tail."""
+    _, y, K32 = _problem(n=500, seed=7, flip_y=0.1)
+    C = np.full(500, 5.0)
+    plain, plain_src = _solve(y, K32, C, cache_rows=cache_rows, fetch_rows=False)
+    prefetched, pre_src = _solve(y, K32, C, cache_rows=cache_rows, prefetch_rows=16)
+    _assert_same_state(plain, prefetched)
+
+    calls = pre_src.single + len(pre_src.batches)
+    assert max(pre_src.batches) > 1
+    # A batch never exceeds the prefetch count, nor what the cache can hold.
+    assert max(pre_src.batches) - 1 <= min(16, cache_rows - 1)
+    if cache_rows >= 40:
+        assert calls < 0.75 * plain_src.single
+    else:
+        # capacity // 8 == 0: once full, a tiny cache degrades to single rows
+        # rather than thrashing.
+        assert calls <= plain_src.single
+
+
+def test_prefetched_rows_own_their_memory_and_capacity_holds():
+    """A prefetched row kept as a view would pin its whole batch after eviction."""
+    K = np.arange(100, dtype=np.float32).reshape(10, 10)
+    cache = _RowCache(lambda i: K[i], 4, 10, fetch_rows=lambda idx: K[np.asarray(idx)] + 0, prefetch=8)
+    scores = np.arange(10, dtype=np.float64)
+    cache.get(0, lambda: scores)
+    assert len(cache) == 4
+    for index in range(10):
+        row = cache.peek(index)
+        if row is not None:
+            assert row.base is None or row.base.shape == (1, 10)
+            np.testing.assert_array_equal(row, K[index])
+    # Full now: a further miss displaces at most capacity // 8 = 0 rows beyond
+    # its own, i.e. it degrades to a single fetch.
+    before = len(cache)
+    cache.get(1, lambda: scores)
+    assert len(cache) == before
+
+
+# ------------------------------------------------------------------- shrinking
+
+
+@pytest.mark.parametrize(
+    "kernel, C", [("rbf", 0.1), ("rbf", 1.0), ("rbf", 10.0), ("poly", 1.0), ("linear", 0.1)]
+)
+def test_shrinking_reaches_the_same_optimum(kernel, C, monkeypatch):
+    """LIBSVM's shrinking is a speed heuristic; the optimum must not move.
+
+    Per-sample boxes stand in for sample and class weights. n is above the
+    1000-iteration shrinking period, so samples really are set aside. The path
+    itself may change — a set-aside sample can become a violator again before
+    the next reconstruction, and then the two solvers select differently, as
+    LIBSVM's do — so the models are compared at the float32-policy tolerance and
+    the optimum on the objective and the KKT conditions.
+    """
+    _, y, K32 = _problem(n=1200, d=10, seed=8, kernel=kernel, flip_y=0.1)
+    K64 = K32.astype(np.float64)
+    Cs = C * np.random.default_rng(1).uniform(0.5, 2.0, y.shape[0])
+
+    set_aside = []
+    original = smo._be_shrunk
+
+    def counting(*args):
+        shrunk = original(*args)
+        set_aside.append(int(shrunk.sum()))
+        return shrunk
+
+    plain, _ = _solve(y, K32, Cs)
+    monkeypatch.setattr(smo, "_be_shrunk", counting)
+    shrunk, _ = _solve(y, K32, Cs, shrinking=True)
+    assert plain.converged and shrunk.converged
+    assert _kkt_violation(shrunk.alpha, y, Cs, K64) < TOL * 1.01
+    j_plain = _dual(plain.alpha * y, K64)
+    j_shrunk = _dual(shrunk.alpha * y, K64)
+    assert j_shrunk == pytest.approx(j_plain, rel=1e-6)
+    np.testing.assert_allclose(
+        K64 @ (shrunk.alpha * y) - shrunk.rho,
+        K64 @ (plain.alpha * y) - plain.rho,
+        atol=2e-2,
+        rtol=5e-3,
+    )
+    if plain.n_iter > 1000:  # past the first shrinking pass
+        assert sum(set_aside) > 0, "nothing was ever shrunk; the test exercised nothing"
+
+
+def test_shrinking_keeps_the_path_when_nothing_ties():
+    """Ascending active order keeps LIBSVM's last-index tie-breaking intact.
+
+    With every reconstruction exact enough not to flip a selection, shrinking
+    takes the very same steps; measured bit-identical across the problems here.
+    """
+    _, y, K32 = _problem(n=1500, d=10, seed=9, flip_y=0.05)
+    Cs = np.full(y.shape[0], 10.0)
+    plain, _ = _solve(y, K32, Cs)
+    shrunk, _ = _solve(y, K32, Cs, shrinking=True)
+    assert plain.n_iter > 2000
+    assert shrunk.n_iter == plain.n_iter
+    np.testing.assert_allclose(shrunk.alpha, plain.alpha, rtol=0, atol=1e-9)
+    assert shrunk.rho == pytest.approx(plain.rho, abs=1e-9)
+
+
+def test_shrinking_rebuilds_the_gradient_before_an_out_of_budget_exit():
+    """rho is read off the gradient, so a budget exit while shrunk must rebuild it."""
+    _, y, K32 = _problem(n=1200, d=10, seed=10, flip_y=0.2)
+    Cs = np.full(y.shape[0], 10.0)
+    budget = 1600  # past the first shrink at pass 1001, well short of convergence
+    plain, _ = _solve(y, K32, Cs, max_iter=budget)
+    shrunk, _ = _solve(y, K32, Cs, max_iter=budget, shrinking=True)
+    assert not plain.converged and not shrunk.converged
+    assert shrunk.n_iter == plain.n_iter == budget
+    np.testing.assert_allclose(shrunk.alpha, plain.alpha, rtol=0, atol=1e-9)
+    assert shrunk.rho == pytest.approx(plain.rho, abs=1e-7)
+
+
+@pytest.mark.parametrize("cache_rows", [2, 64])
+def test_shrinking_without_batches_or_with_a_tiny_cache(cache_rows):
+    """Reconstruction falls back to single rows, and never through the LRU."""
+    _, y, K32 = _problem(n=1100, d=10, seed=11, flip_y=0.1)
+    K64 = K32.astype(np.float64)
+    Cs = np.full(y.shape[0], 5.0)
+    plain, _ = _solve(y, K32, Cs)
+    shrunk, _ = _solve(y, K32, Cs, shrinking=True, fetch_rows=False, cache_rows=cache_rows)
+    assert shrunk.converged
+    assert _dual(shrunk.alpha * y, K64) == pytest.approx(_dual(plain.alpha * y, K64), rel=1e-6)
+
+
+# --------------------------------------- the KernelRows path, as a fit takes it
+
+
+BACKENDS = [
+    pytest.param(
+        "mlx",
+        marks=pytest.mark.skipif(not gpu_available(), reason="needs an MLX GPU device"),
+    ),
+    "cpu",
+]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("kernel", ["rbf", "poly", "linear", "sigmoid"])
+def test_kernel_rows_with_a_tiny_cache_reach_the_gram_optimum(backend, kernel):
+    """The on-demand row path — every pair above ~7 240 rows — against the Gram path.
+
+    This is how ``SVC._solve_pair`` drives the solver on either side of its Gram
+    cutoff, shrunk to a size that runs in well under a second: rows from
+    ``KernelRows`` through a two-row cache with the device's prefetch, against a
+    materialized Gram. On the GPU the rows equal the Gram's bit for bit (measured,
+    not promised), so the whole solve does; elsewhere the objective must agree.
+    """
+    X, y, _ = _problem(n=700, d=12, seed=12)
+    X32 = X.astype(np.float32)
+    spec = KernelSpec(kernel=kernel, gamma=1.0 / 12, degree=3, coef0=0.5)
+    # The linear kernel's iteration count grows fastest with C; keep it small so
+    # a two-row cache — a device round trip per miss — stays quick.
+    C = np.full(y.shape[0], 0.05 if kernel == "linear" else 1.0)
+    k_diag = kernel_diagonal(spec, X32.astype(np.float64))
+
+    gram = kernel_matrix(spec, X32, backend=backend)
+    via_gram = solve_c_svc(y, C, k_diag, gram.__getitem__, SMOConfig(cache_rows=700))
+
+    rows = build_kernel_rows(X32, spec, backend=backend)
+    via_rows = solve_c_svc(
+        y, C, k_diag, rows.row,
+        SMOConfig(cache_rows=2, prefetch_rows=rows.prefetch_rows),
+        fetch_rows=rows.rows,
+    )
+    K64 = gram.astype(np.float64)
+    assert via_rows.converged
+    if backend == "mlx" and kernel != "sigmoid":
+        _assert_same_state(via_gram, via_rows)
+    j_gram = _dual(via_gram.alpha * y, K64)
+    j_rows = _dual(via_rows.alpha * y, K64)
+    if kernel == "sigmoid":
+        # Indefinite: two correct runs may reach different local optima
+        # (fp32_policy §3.2.1). Only "no worse, within tolerance" is meaningful.
+        assert j_rows <= j_gram + 1e-3 * abs(j_gram)
+    else:
+        assert j_rows == pytest.approx(j_gram, rel=1e-5)
+        assert _kkt_violation(via_rows.alpha, y, C, K64) < TOL * 1.01
+
+
+@pytest.mark.skipif(not gpu_available(), reason="needs an MLX GPU device")
+def test_multiclass_fit_prefetches_on_the_row_path(monkeypatch):
+    """End to end: a cache too small for the Gram, several pairs, prefetch engaged.
+
+    Each one-vs-one pair decides Gram versus rows on its own size, so this runs
+    the row path three times over. The model must match the Gram-path fit.
+    """
+    from mlxlearn._common.config import tuning_context
+    from mlxlearn._kernels import kernels
+    from mlxlearn.svm import SVC
+
+    X, labels = make_classification(
+        n_samples=1500, n_features=12, n_informative=6, n_classes=3, random_state=13
+    )
+    sizes = []
+    original = kernels.KernelRows.rows
+
+    def counting(self, indices):
+        sizes.append(len(indices))
+        return original(self, indices)
+
+    with tuning_context(force_backend="mlx"):
+        large = SVC(cache_size=200).fit(X, labels)
+        monkeypatch.setattr(kernels.KernelRows, "rows", counting)
+        small = SVC(cache_size=0.5).fit(X, labels)
+
+    assert small.execution_backend_ == "mlx"
+    assert sizes and max(sizes) > 1, "the row path did not prefetch"
+    np.testing.assert_allclose(
+        small.decision_function(X[:300]), large.decision_function(X[:300]), atol=2e-2, rtol=5e-3
+    )
+    assert np.mean(small.predict(X) == large.predict(X)) >= 0.99
