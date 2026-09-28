@@ -343,7 +343,10 @@ def test_input_layout_does_not_change_results(transform, rng):
         ({"metric": "cosine"}, "metric"),
         ({"metric": "minkowski", "p": 1}, "p"),
         ({"metric": "minkowski", "p": 3}, "p"),
+        ({"metric": "minkowski", "p": 2, "metric_params": {"p": 3}}, "p"),
         ({"metric_params": {"w": [1.0]}}, "metric_params"),
+        ({"metric_params": {"p": 2, "w": [1.0]}}, "metric_params"),
+        ({"metric": "euclidean", "metric_params": {"p": 2}}, "metric_params"),
         ({"weights": lambda d: d}, "weights"),
     ],
 )
@@ -783,14 +786,60 @@ def test_radius_neighbors_matches_sklearn_and_gets_a_float32_query(monkeypatch, 
 
 
 @pytest.mark.parametrize(
-    "metric, expected", [("minkowski", "euclidean"), ("euclidean", "euclidean"), ("l2", "l2")]
+    "metric, expected",
+    [("minkowski", "euclidean"), ("euclidean", "euclidean"), ("l2", "l2"), ("sqeuclidean", "sqeuclidean")],
 )
 def test_effective_metric_matches_sklearn(metric, expected, rng):
     X = rng.normal(size=(600, 16))
     model = NearestNeighbors(metric=metric).fit(X)
     ref = sk_neighbors.NearestNeighbors(metric=metric).fit(X)
+    assert model.execution_backend_ != "sklearn"
     assert model.effective_metric_ == ref.effective_metric_ == expected
     assert model.effective_metric_params_ == ref.effective_metric_params_
+
+
+@pytest.mark.parametrize("weights", ["uniform", "distance"])
+def test_sqeuclidean_matches_sklearn(weights, rng):
+    """The kernel's own squared distances: same neighbors, distances squared, and
+    ``weights='distance'`` weighting by ``1/d**2`` exactly as scikit-learn does."""
+    X = rng.normal(size=(600, 16))
+    y = rng.integers(0, 3, 600)
+    Q = np.vstack([X[:10], rng.normal(size=(40, 16))])
+    kwargs = {"n_neighbors": 7, "metric": "sqeuclidean", "weights": weights}
+
+    ref = sk_neighbors.KNeighborsClassifier(**kwargs).fit(X, y)
+    model = KNeighborsClassifier(**kwargs).fit(X, y)
+    assert model.execution_backend_ != "sklearn"
+
+    assert_neighbor_parity(*model.kneighbors(Q), *ref.kneighbors(Q), atol=1e-5)
+    np.testing.assert_array_equal(model.predict(Q), ref.predict(Q))
+    np.testing.assert_allclose(model.predict_proba(Q), ref.predict_proba(Q), atol=1e-5)
+
+
+@pytest.mark.parametrize("p", [2, 1, None])
+def test_minkowski_p_in_metric_params_is_resolved_like_sklearn(p, rng):
+    """``metric_params={'p': 2}`` is Euclidean, whatever ``p`` says, as in scikit-learn.
+
+    It used to be refused outright, and ``p=1`` alongside it was refused as
+    Manhattan although scikit-learn ignores ``p`` then and computes Euclidean.
+    """
+    X = rng.normal(size=(600, 16))
+    Q = rng.normal(size=(20, 16))
+    kwargs = {"n_neighbors": 5, "metric": "minkowski", "p": p, "metric_params": {"p": 2}}
+
+    with warnings.catch_warnings(record=True) as expected:
+        warnings.simplefilter("always")
+        ref = sk_neighbors.NearestNeighbors(**kwargs).fit(X)
+    with warnings.catch_warnings(record=True) as got:
+        warnings.simplefilter("always")
+        model = NearestNeighbors(**kwargs).fit(X)
+
+    assert model.execution_backend_ != "sklearn"
+    assert [w.category for w in got] == [w.category for w in expected]
+    assert (SyntaxWarning in [w.category for w in got]) is (p is not None)
+    assert model.effective_metric_ == ref.effective_metric_ == "euclidean"
+    assert model.effective_metric_params_ == ref.effective_metric_params_ == {}
+    assert_neighbor_parity(*model.kneighbors(Q), *ref.kneighbors(Q))
 
 
 # ----------------------------------------------------------------------------------

@@ -30,10 +30,12 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
     leaf_size : int, default=30
         Accepted for signature compatibility; unused by brute-force search.
     p : float, default=2
-    metric : {"euclidean", "l2", "minkowski"}, default="minkowski"
+    metric : {"euclidean", "l2", "minkowski", "sqeuclidean"}, default="minkowski"
         ``"minkowski"`` at ``p=2`` only.
     metric_params : dict, default=None
-        Not implemented; raises rather than being silently ignored.
+        Only Minkowski's ``p``, which overrides the ``p`` parameter as it does in
+        scikit-learn. Anything else — a weight vector ``w``, another metric's
+        parameters — raises rather than being silently ignored.
     n_jobs : int, default=None
         Accepted and ignored.
 

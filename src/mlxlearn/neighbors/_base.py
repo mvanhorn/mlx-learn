@@ -17,6 +17,7 @@ so a capability mismatch raises. Layer 2 flips the flag; nothing else differs.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -46,10 +47,10 @@ from ..exceptions import CapabilityError, UnsupportedInputError, UnsupportedPara
 __all__ = ["MLXNeighborsMixin", "SUPPORTED_METRICS"]
 
 #: Metrics whose squared-distance form is exactly what the blocked Gram kernel
-#: computes. Anything else is a capability mismatch, not an approximation
-#: opportunity: returning Euclidean results for a Manhattan request would be a
-#: wrong answer delivered quickly.
-SUPPORTED_METRICS = ("euclidean", "l2", "minkowski")
+#: computes — ``"sqeuclidean"`` is that form itself. Anything else is a capability
+#: mismatch, not an approximation opportunity: returning Euclidean results for a
+#: Manhattan request would be a wrong answer delivered quickly.
+SUPPORTED_METRICS = ("euclidean", "l2", "minkowski", "sqeuclidean")
 
 _SUPPORTED_ALGORITHMS = ("auto", "brute")
 
@@ -125,23 +126,28 @@ class MLXNeighborsMixin(BackendMixin):
         # 'minkowski' is only Euclidean at p == 2. The ancestor short-circuited
         # this check whenever the metric was spelled 'euclidean' or 'l2' and then
         # ignored p entirely; here p is checked against the metric that will
-        # actually be used.
-        if self.metric == "minkowski" and self.p != 2:
+        # actually be used — including a p given in metric_params, which
+        # scikit-learn lets override the p parameter.
+        if self.metric == "minkowski" and self._minkowski_p() != 2:
             raise UnsupportedParameterError(
                 f"{name} implements metric='minkowski' only at p=2 "
-                f"(Euclidean) on the MLX path; got p={self.p!r}.",
+                f"(Euclidean) on the MLX path; got p={self._minkowski_p()!r}.",
                 parameter="p",
-                value=self.p,
+                value=self._minkowski_p(),
             )
 
         # metric_params was accepted and silently ignored by the ancestor, so a
         # weighted-Minkowski request returned unweighted Euclidean answers with no
-        # warning. Wrong answers are worse than a fallback.
-        if getattr(self, "metric_params", None):
+        # warning. Wrong answers are worse than a fallback. The one entry with an
+        # exact meaning here is Minkowski's p, resolved and checked just above;
+        # a weight vector 'w', or parameters of any other metric, is refused.
+        params = getattr(self, "metric_params", None) or {}
+        unserved = set(params) - ({"p"} if self.metric == "minkowski" else set())
+        if unserved:
             raise UnsupportedParameterError(
-                f"{name} does not implement metric_params on the MLX "
-                f"path; got {self.metric_params!r}. mlxlearn will not ignore it and "
-                "return unweighted Euclidean distances.",
+                f"{name} does not implement metric_params {sorted(unserved, key=str)!r} on "
+                f"the MLX path; got {self.metric_params!r}. mlxlearn will not ignore "
+                "them and return unweighted Euclidean distances.",
                 parameter="metric_params",
                 value=self.metric_params,
             )
@@ -214,12 +220,18 @@ class MLXNeighborsMixin(BackendMixin):
             f"brute-force search once n_samples >= {density} * 2**n_features"
         )
 
+    def _minkowski_p(self):
+        """The Minkowski exponent scikit-learn uses: ``metric_params['p']`` wins over ``p``."""
+        params = getattr(self, "metric_params", None) or {}
+        return params.get("p", self.p)
+
     def _effective_metric(self) -> tuple[str, dict]:
         """``(effective_metric_, effective_metric_params_)`` as scikit-learn sets them.
 
-        Only meaningful for the metrics the capability check lets through:
-        ``'minkowski'`` at ``p=2`` resolves to ``'euclidean'``, and ``'euclidean'``
-        and ``'l2'`` keep their spelling, as they do in scikit-learn.
+        Only meaningful for what the capability check lets through: ``'minkowski'``
+        at ``p=2``, however p was given, resolves to ``'euclidean'`` with no
+        parameters left over; ``'euclidean'``, ``'l2'`` and ``'sqeuclidean'`` keep
+        their spelling, as they do in scikit-learn.
         """
         if self.metric == "minkowski":
             return "euclidean", {}
@@ -272,6 +284,14 @@ class MLXNeighborsMixin(BackendMixin):
         if backend == "sklearn":
             return "sklearn"
 
+        if "p" in (getattr(self, "metric_params", None) or {}) and self.p is not None:
+            # scikit-learn's own fit says this, so the MLX path does too.
+            warnings.warn(
+                "Parameter p is found in metric_params. The corresponding parameter "
+                "from __init__ is ignored.",
+                SyntaxWarning,
+                stacklevel=3,
+            )
         _reject_string_data(X)
         if target is None:
             X_checked = validate_data(
@@ -443,7 +463,13 @@ class MLXNeighborsMixin(BackendMixin):
                 dist, idx = self._index_.query(
                     Q, k, return_distance=return_distance, exclude_self=query_is_train
                 )
-        return (dist, idx) if return_distance else idx
+        if not return_distance:
+            return idx
+        if self.effective_metric_ == "sqeuclidean":
+            # The index reports Euclidean distances in float64; squaring them back
+            # costs a few float64 ulps, far inside the float32 error they carry.
+            dist = np.square(dist)
+        return dist, idx
 
     def _resolve_n_neighbors(self, n_neighbors):
         """Validate an explicit ``n_neighbors`` with scikit-learn's exact messages.

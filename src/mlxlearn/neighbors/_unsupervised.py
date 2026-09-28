@@ -30,12 +30,14 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
         how ``"auto"`` is dispatched on low-dimensional data.
     leaf_size : int, default=30
         Accepted for signature compatibility; brute-force search does not use it.
-    metric : {"euclidean", "l2", "minkowski"}, default="minkowski"
+    metric : {"euclidean", "l2", "minkowski", "sqeuclidean"}, default="minkowski"
         ``"minkowski"`` is supported at ``p=2`` only.
     p : float, default=2
     metric_params : dict, default=None
-        Not implemented on the MLX path. mlxlearn raises rather than silently
-        computing unweighted Euclidean distances.
+        Only Minkowski's ``p``, which overrides the ``p`` parameter as it does in
+        scikit-learn. Anything else — a weight vector ``w``, another metric's
+        parameters — raises rather than being silently ignored, so mlxlearn never
+        computes unweighted Euclidean distances for a weighted request.
     n_jobs : int, default=None
         Accepted and ignored; the MLX path does not use joblib parallelism.
 

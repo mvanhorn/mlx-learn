@@ -26,8 +26,9 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
         is dispatched on low-dimensional data under ``patch_sklearn()``.
     leaf_size : int, default=30
     p : float, default=2
-    metric : {"euclidean", "l2", "minkowski"}, default="minkowski"
+    metric : {"euclidean", "l2", "minkowski", "sqeuclidean"}, default="minkowski"
     metric_params : dict, default=None
+        Minkowski's ``p`` only; anything else raises.
     n_jobs : int, default=None
 
     Attributes
