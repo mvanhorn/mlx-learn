@@ -5,29 +5,54 @@ Two correct solvers stopping at slightly different points land in measurably
 different places in coefficient space while sitting at essentially the same
 objective; a test that only compares `coef_` therefore fails for a correct
 implementation and passes for a subtly wrong one. Every coefficient comparison
-below is paired with an objective comparison computed by one float64 function
-applied to *both* solutions.
+against scikit-learn below is paired with an objective comparison computed by one
+float64 function applied to *both* solutions — and that function is itself checked
+against an independent formula (``test_reference_objective_matches_an_independent_formula``).
 
 Tolerances come from ``docs/fp32_policy.md`` §3.
 """
 
 from __future__ import annotations
 
+import math
+import warnings
+from collections import Counter
+
 import numpy as np
 import pytest
 from sklearn.datasets import make_classification
+from sklearn.exceptions import ConvergenceWarning, NotFittedError
 from sklearn.linear_model import LogisticRegression as SkLogisticRegression
 
+import mlxlearn
 from mlxlearn._common.config import tuning_context
+from mlxlearn._common.device import gpu_available
 from mlxlearn._solvers.logistic import reference_objective
-from mlxlearn.exceptions import SparseInputError, UnsupportedParameterError
+from mlxlearn.exceptions import (
+    MLXLearnError,
+    SparseInputError,
+    UnsupportedInputError,
+    UnsupportedParameterError,
+)
 from mlxlearn.linear_model import LogisticRegression
+from mlxlearn.patching._estimators import LogisticRegression as PatchedLogisticRegression
+from tests._helpers import logistic_objective
 
 # docs/fp32_policy.md §3
 OBJECTIVE_RTOL = 1e-5
 COEF_ATOL, COEF_RTOL = 2e-3, 5e-3
 PROBA_ATOL = 2e-3
 MIN_AGREEMENT = 0.995
+
+BACKENDS = ["cpu", "mlx"]
+
+#: Everything MLX-side is in play: no crossover can hand a problem to scikit-learn.
+_NO_CROSSOVER = {"logreg_min_samples": 0, "logreg_min_work": 0}
+
+#: scikit-learn 1.7 still has ``multi_class``; 1.8 removed it.
+_HAS_MULTI_CLASS = hasattr(SkLogisticRegression(), "multi_class")
+#: scikit-learn 1.9 added the callback API.
+_HAS_CALLBACKS = hasattr(SkLogisticRegression(), "set_callbacks")
 
 
 def _data(n_classes=2, n_samples=5000, n_features=20, seed=0):
@@ -41,18 +66,32 @@ def _data(n_classes=2, n_samples=5000, n_features=20, seed=0):
     )
 
 
+def _noisy_full_rank(n_classes=2, seed=0):
+    """Small, noisy, and full rank: the penalty — or its absence — moves the answer.
+
+    On ``_data()`` (5000 rows) the ``1/(C·n)`` penalty is 2e-4, too small to show:
+    a fit that silently kept ``C=1`` when asked for no penalty agreed with
+    scikit-learn's unpenalized fit to every tolerance. Here the same mistake costs
+    a relative objective gap of 9e-5 (three classes) to 1.1e-4 (binary).
+    """
+    return make_classification(
+        n_samples=200, n_features=10, n_informative=6, n_redundant=0,
+        n_classes=n_classes, flip_y=0.2, random_state=seed,
+    )
+
+
+def _objective(model, X, y, *, C, sample_weight=None):
+    classes = np.unique(y)
+    return reference_objective(
+        model.coef_, model.intercept_, X, np.searchsorted(classes, y),
+        n_classes=len(classes), C=C, sample_weight=sample_weight,
+    )
+
+
 def _assert_parity(mlx, ref, X, y, *, C, sample_weight=None):
     """Compare two fitted logistic models on every axis the policy names."""
-    n_classes = len(ref.classes_)
-    encoded = np.searchsorted(ref.classes_, y)
-
-    def objective(model):
-        return reference_objective(
-            model.coef_, model.intercept_, X, encoded,
-            n_classes=n_classes, C=C, sample_weight=sample_weight,
-        )
-
-    j_mlx, j_ref = objective(mlx), objective(ref)
+    j_mlx = _objective(mlx, X, y, C=C, sample_weight=sample_weight)
+    j_ref = _objective(ref, X, y, C=C, sample_weight=sample_weight)
     assert j_mlx == pytest.approx(j_ref, rel=OBJECTIVE_RTOL), (
         f"objective differs: mlxlearn {j_mlx:.10f} vs scikit-learn {j_ref:.10f}"
     )
@@ -65,6 +104,19 @@ def _assert_parity(mlx, ref, X, y, *, C, sample_weight=None):
     np.testing.assert_allclose(mlx.predict_proba(X), ref.predict_proba(X), atol=PROBA_ATOL)
 
 
+def _fit(backend, estimator, X, y, **fit_kwargs):
+    """Fit on a forced backend and prove it ran there."""
+    if backend == "mlx" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    with tuning_context(force_backend=backend):
+        estimator.fit(X, y, **fit_kwargs)
+    assert estimator.execution_backend_ == backend
+    return estimator
+
+
+# ------------------------------------------------------------------------ parity
+
+
 @pytest.mark.parametrize("C", [0.01, 1.0, 100.0])
 @pytest.mark.parametrize("n_classes", [2, 5])
 def test_parity_across_regularization(C, n_classes):
@@ -72,28 +124,28 @@ def test_parity_across_regularization(C, n_classes):
     # Forced onto MLX: this dataset sits far below the measured logistic
     # crossover, so the default dispatch would hand it to scikit-learn and the
     # test would compare scikit-learn against itself.
-    with tuning_context(force_backend="mlx"):
-        mlx = LogisticRegression(C=C).fit(X, y)
+    mlx = _fit("mlx", LogisticRegression(C=C), X, y)
     ref = SkLogisticRegression(C=C, solver="lbfgs").fit(X, y)
-    assert mlx.execution_backend_ == "mlx"
     _assert_parity(mlx, ref, X, y, C=C)
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("n_classes", [2, 5])
-def test_parity_without_intercept(n_classes):
+def test_parity_without_intercept(n_classes, backend):
     X, y = _data(n_classes=n_classes)
-    mlx = LogisticRegression(fit_intercept=False).fit(X, y)
+    mlx = _fit(backend, LogisticRegression(fit_intercept=False), X, y)
     ref = SkLogisticRegression(fit_intercept=False, solver="lbfgs").fit(X, y)
     _assert_parity(mlx, ref, X, y, C=1.0)
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("n_classes", [2, 5])
-def test_parity_with_balanced_class_weight(n_classes):
+def test_parity_with_balanced_class_weight(n_classes, backend):
     X, y = _data(n_classes=n_classes, seed=3)
     keep = np.concatenate([np.where(y == 0)[0], np.where(y != 0)[0][:400]])
     X, y = X[keep], y[keep]
 
-    mlx = LogisticRegression(class_weight="balanced").fit(X, y)
+    mlx = _fit(backend, LogisticRegression(class_weight="balanced"), X, y)
     ref = SkLogisticRegression(class_weight="balanced", solver="lbfgs").fit(X, y)
 
     # The objective is compared through the equivalent sample weights, since
@@ -106,10 +158,11 @@ def test_parity_with_balanced_class_weight(n_classes):
     _assert_parity(mlx, ref, X, y, C=1.0, sample_weight=weights)
 
 
-def test_parity_with_sample_weight():
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_parity_with_sample_weight(backend):
     X, y = _data()
     sample_weight = np.where(y == 1, 10.0, 1.0)
-    mlx = LogisticRegression().fit(X, y, sample_weight=sample_weight)
+    mlx = _fit(backend, LogisticRegression(), X, y, sample_weight=sample_weight)
     ref = SkLogisticRegression(solver="lbfgs").fit(X, y, sample_weight=sample_weight)
     _assert_parity(mlx, ref, X, y, C=1.0, sample_weight=sample_weight)
 
@@ -120,6 +173,7 @@ def test_class_weight_equals_the_equivalent_sample_weight():
     by_class = LogisticRegression(class_weight={0: 1.0, 1: 3.0}).fit(X, y)
     by_sample = LogisticRegression().fit(X, y, sample_weight=np.where(y == 1, 3.0, 1.0))
     np.testing.assert_allclose(by_class.coef_, by_sample.coef_, atol=1e-10)
+    np.testing.assert_allclose(by_class.intercept_, by_sample.intercept_, atol=1e-10)
 
 
 def test_unit_sample_weight_is_the_unweighted_fit():
@@ -127,13 +181,125 @@ def test_unit_sample_weight_is_the_unweighted_fit():
     weighted = LogisticRegression().fit(X, y, sample_weight=np.ones(len(y)))
     plain = LogisticRegression().fit(X, y)
     np.testing.assert_allclose(weighted.coef_, plain.coef_, atol=1e-10)
+    np.testing.assert_allclose(weighted.intercept_, plain.intercept_, atol=1e-10)
 
 
-def test_unpenalized_parity():
-    X, y = _data()
-    mlx = LogisticRegression(penalty=None).fit(X, y)
-    ref = SkLogisticRegression(penalty=None, solver="lbfgs").fit(X, y)
-    assert np.mean(mlx.predict(X) == ref.predict(X)) >= MIN_AGREEMENT
+@pytest.mark.filterwarnings("ignore:'penalty' was deprecated:FutureWarning")
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("spelling", [{"penalty": None}, {"C": np.inf}], ids=["penalty=None", "C=inf"])
+@pytest.mark.parametrize("n_classes", [2, 3])
+def test_unpenalized_parity(n_classes, spelling, backend):
+    """No penalty means no penalty — on the objective, not only on the labels.
+
+    Both spellings are valid across the supported range (``penalty=None`` is
+    deprecated from 1.8, ``C=np.inf`` is its replacement). The data is small and
+    noisy enough that a fit which quietly kept ``C=1`` fails the objective
+    assertion; the last lines prove that it would.
+    """
+    X, y = _noisy_full_rank(n_classes=n_classes)
+    mlx = _fit(backend, LogisticRegression(**spelling), X, y)
+    ref = SkLogisticRegression(**spelling, solver="lbfgs").fit(X, y)
+    _assert_parity(mlx, ref, X, y, C=math.inf)
+
+    penalized = LogisticRegression(C=1.0).fit(X, y)
+    j_mlx = _objective(mlx, X, y, C=math.inf)
+    assert _objective(penalized, X, y, C=math.inf) > j_mlx * (1 + 4 * OBJECTIVE_RTOL)
+
+
+def test_reference_objective_matches_an_independent_formula():
+    """The parity oracle is mlxlearn's own function, so it is checked against another.
+
+    ``tests/_helpers.logistic_objective`` is written differently — signed margins
+    for binary, an explicit log-softmax for multiclass — and scaled by ``C·sw_sum``.
+    """
+    rng = np.random.default_rng(7)
+    for n_classes in (2, 4):
+        X, y = _data(n_classes=n_classes, n_samples=300, n_features=8, seed=5)
+        n_targets = 1 if n_classes == 2 else n_classes
+        coef = rng.normal(size=(n_targets, 8))
+        intercept = rng.normal(size=n_targets)
+        for C, weights in ((0.1, None), (3.0, rng.uniform(0.5, 2.0, size=len(y)))):
+            sw_sum = len(y) if weights is None else weights.sum()
+            ours = reference_objective(
+                coef, intercept, X, y, n_classes=n_classes, C=C, sample_weight=weights
+            )
+            theirs = logistic_objective(
+                coef, intercept, X, y, C=C, classes=np.arange(n_classes), sample_weight=weights
+            )
+            assert ours == pytest.approx(theirs / (C * sw_sum), rel=1e-12)
+
+
+def test_the_preconditioner_leaves_ordinary_scales_alone():
+    """Exactly the identity within 4⁴ of the intercept's curvature, shrunk beyond it.
+
+    Standardized and ordinarily scaled data must see the unpreconditioned solver —
+    the pinned iteration counts in tests/unit/test_lbfgs.py depend on it — and a
+    column that could not be measured must not poison the rest.
+    """
+    from mlxlearn._solvers.logistic import _preconditioner
+
+    scale = np.array([0.1, 1.0, 20.0, 2.0**10, 2.0**-10, np.inf, 0.0])
+    D = _preconditioner(scale, 0.0, 2, True)
+    assert D.shape == (2, 8)
+    np.testing.assert_array_equal(D[:, :3], 1.0)
+    assert D[0, 3] == 4.0 ** -(10 - 4)
+    assert D[0, 4] == 4.0 ** (10 - 4)
+    np.testing.assert_array_equal(D[:, 5:], 1.0)  # unmeasurable, constant, intercept
+    # The penalty's own curvature bounds a tiny column's from below.
+    assert _preconditioner(np.array([2.0**-10]), 0.25, 1, False)[0, 0] == 1.0
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("fit_intercept", [True, False])
+def test_binary_objective_matches_float64_in_both_layouts(fit_intercept, weighted, device):
+    """The value and gradient the solver sees, against a float64 NumPy computation.
+
+    On the GPU the binary design is stored transposed, because MLX's
+    ``(n,) @ (n, d)`` product took a path up to 38x slower than the forward pass;
+    both layouts must describe the same function.
+    """
+    import mlx.core as mx
+
+    from mlxlearn._common.device import use_device
+    from mlxlearn._solvers.logistic import _binary_objective
+
+    if device == "gpu" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    rng = np.random.default_rng(1)
+    n, d = 3000, 12
+    X = rng.normal(size=(n, d)).astype(np.float32)
+    y = (rng.uniform(size=n) < 0.4).astype(np.float32)
+    sw = rng.uniform(0.5, 2.0, size=n).astype(np.float32) if weighted else None
+    theta = rng.normal(scale=0.3, size=(1, d + fit_intercept)).astype(np.float32)
+    l2 = 1e-3
+    sw_sum = float(n if sw is None else sw.astype(np.float64).sum())
+
+    Xd, th = X.astype(np.float64), theta.astype(np.float64)
+    raw = Xd @ th[0, :d] + (th[0, d] if fit_intercept else 0.0)
+    w64 = np.ones(n) if sw is None else sw.astype(np.float64)
+    residual = w64 * (1.0 / (1.0 + np.exp(-raw)) - y)
+    value = (w64 * (np.logaddexp(0.0, raw) - y * raw)).sum() / sw_sum
+    value += 0.5 * l2 * (th[0, :d] ** 2).sum()
+    grad = [Xd.T @ residual / sw_sum + l2 * th[0, :d]]
+    if fit_intercept:
+        grad.append([residual.sum() / sw_sum])
+    grad = np.concatenate(grad)
+
+    with use_device(device):
+        Xm = mx.array(X)
+        for transposed in (False, True):
+            design = mx.contiguous(Xm.T) if transposed else Xm
+            fun = _binary_objective(
+                mx, design, mx.array(y), None if sw is None else mx.array(sw),
+                sw_sum, l2, fit_intercept, d, transposed=transposed,
+            )
+            got_value, got_grad = fun(mx.array(theta))
+            assert got_value == pytest.approx(value, rel=1e-6)
+            np.testing.assert_allclose(np.asarray(got_grad)[0], grad, rtol=1e-4, atol=1e-6)
+
+
+# ------------------------------------------------------------- hard numerics
 
 
 @pytest.mark.parametrize("C", [1.0, 1e4, 1e6])
@@ -188,12 +354,34 @@ def test_constant_feature_offset_does_not_destroy_the_fit(offset):
     # scikit-learn (0.6104452 against 0.6104529 at an offset of 1e5, converging in
     # 113 iterations against 175). A two-sided tolerance would fail mlxlearn for
     # winning.
-    encoded = np.searchsorted(ref.classes_, y)
-    j_mlx = reference_objective(mlx.coef_, mlx.intercept_, X, encoded, n_classes=2, C=1.0)
-    j_ref = reference_objective(ref.coef_, ref.intercept_, X, encoded, n_classes=2, C=1.0)
+    j_mlx = _objective(mlx, X, y, C=1.0)
+    j_ref = _objective(ref, X, y, C=1.0)
     assert j_mlx <= j_ref * (1 + OBJECTIVE_RTOL), (
         f"mlxlearn's objective is worse at offset {offset}: {j_mlx:.10f} vs {j_ref:.10f}"
     )
+
+
+def test_float64_offsets_are_centered_before_rounding():
+    """Two Unix-timestamp columns, an hour wide, next to ordinary features.
+
+    Rounded to float32 first, a timestamp keeps a resolution of 128 seconds, so the
+    informative spread is quantized before centering can protect it: the fitted
+    timestamp coefficients came out about 4x attenuated. Centered in float64 first,
+    the fit agrees with scikit-learn fitted on the centered data — which is the
+    well-conditioned version of the same problem.
+    """
+    rng = np.random.default_rng(3)
+    n = 4000
+    Z = rng.normal(size=(n, 4))
+    logit = 1.5 * Z[:, 0] - 1.0 * Z[:, 1] + 0.8 * Z[:, 2] - 0.5 * Z[:, 3]
+    y = (rng.uniform(size=n) < 1.0 / (1.0 + np.exp(-logit))).astype(int)
+    X = np.column_stack([1.7e9 + 600.0 * Z[:, 0], 1.7e9 + 600.0 * Z[:, 1], Z[:, 2], Z[:, 3]])
+
+    mlx = _fit("mlx", LogisticRegression(), X, y)
+    ref = SkLogisticRegression().fit(X - X.mean(axis=0), y)
+
+    np.testing.assert_allclose(mlx.coef_, ref.coef_, rtol=1e-3, atol=1e-6)
+    np.testing.assert_allclose(mlx.predict_proba(X), ref.predict_proba(X - X.mean(axis=0)), atol=PROBA_ATOL)
 
 
 def test_centering_is_exact_not_approximate():
@@ -223,16 +411,124 @@ def test_no_centering_without_an_intercept():
         mlx = LogisticRegression(fit_intercept=False, max_iter=1000).fit(X + 5.0, y)
     ref = SkLogisticRegression(fit_intercept=False, max_iter=1000, solver="lbfgs").fit(X + 5.0, y)
     np.testing.assert_allclose(mlx.coef_, ref.coef_, atol=COEF_ATOL, rtol=COEF_RTOL)
+    assert _objective(mlx, X + 5.0, y, C=1.0) == pytest.approx(
+        _objective(ref, X + 5.0, y, C=1.0), rel=OBJECTIVE_RTOL
+    )
     np.testing.assert_array_equal(mlx.intercept_, np.zeros_like(mlx.intercept_))
+
+
+@pytest.mark.parametrize("scale", [1e8, 1e10])
+def test_features_in_large_units_reach_the_same_optimum(scale):
+    """Features around 1e8 used to return the null model at ``n_iter=0``.
+
+    The line search's zoom stopped on an absolute step floor of 1e-12 while the
+    acceptable first step at this scale is ~1e-16; with that fixed, the intercept
+    still never moved until the preconditioner told the solver its curvature is
+    1e16 times smaller. Rescaling the features is an exact reparametrization, and at
+    ``coef_ ~ 1/scale`` the C=1 penalty is negligible, so the answer must be the
+    unit-scale unpenalized one: same objective, ``coef_ · scale`` the same
+    coefficients (the design is full rank, so they are unique).
+    """
+    X, y = make_classification(3000, 6, n_informative=4, n_redundant=0, random_state=7)
+    unit = _fit("mlx", LogisticRegression(C=np.inf, max_iter=1000), X, y)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        scaled = _fit("mlx", LogisticRegression(max_iter=1000), X * scale, y)
+
+    assert scaled.n_iter_[0] > 0
+    assert _objective(scaled, X * scale, y, C=math.inf) == pytest.approx(
+        _objective(unit, X, y, C=math.inf), rel=OBJECTIVE_RTOL
+    )
+    np.testing.assert_allclose(scaled.coef_ * scale, unit.coef_, atol=COEF_ATOL, rtol=COEF_RTOL)
+    np.testing.assert_allclose(scaled.intercept_, unit.intercept_, atol=COEF_ATOL, rtol=COEF_RTOL)
+
+
+def test_one_feature_in_large_units_among_ordinary_ones():
+    """A mixed-scale design, which scikit-learn's own lbfgs also handles.
+
+    With one column 1e6 times the others the curvature along its coefficient is
+    1e12 times the rest; the diagonal preconditioner is what lets the ordinary
+    coefficients and the intercept move at all.
+    """
+    X, y = make_classification(3000, 6, n_informative=4, random_state=7)
+    X[:, 0] *= 1e6
+    mlx = _fit("mlx", LogisticRegression(max_iter=1000), X, y)
+    ref = SkLogisticRegression(max_iter=10000).fit(X, y)
+    assert _objective(mlx, X, y, C=1.0) <= _objective(ref, X, y, C=1.0) * (1 + OBJECTIVE_RTOL)
+
+
+@pytest.mark.parametrize("n_classes", [2, 5])
+@pytest.mark.parametrize("tol", [1e-6, 1e-8])
+def test_a_small_tol_converges_without_a_warning(tol, n_classes):
+    """scikit-learn reaches these tolerances silently, so mlxlearn must too.
+
+    Accepting a step only when the float32 objective visibly decreased stalled at
+    ``max|g|`` about 8e-6 (binary) and 4e-5 (five classes) — a line-search failure
+    and a ConvergenceWarning, 50x above the float32 gradient floor. The line search
+    now also accepts approximate-Wolfe steps, and a ``tol`` below what float32 can
+    resolve is honored as "run to the floor" rather than warned about.
+    """
+    X, y = _data(n_classes=n_classes)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        mlx = _fit("mlx", LogisticRegression(tol=tol, max_iter=1000), X, y)
+    ref = SkLogisticRegression(tol=tol, max_iter=1000).fit(X, y)
+    assert _objective(mlx, X, y, C=1.0) <= _objective(ref, X, y, C=1.0) * (1 + 1e-7)
+
+
+@pytest.mark.parametrize("scale", [100.0, 1000.0])
+def test_scaled_features_converge_without_a_warning(scale):
+    """Standardized features times 100 warned on 8 of 16 seeds; scikit-learn on none."""
+    for seed in range(4):
+        X, y = make_classification(2000, 4, n_informative=3, n_redundant=1, random_state=seed)
+        X = (X - X.mean(axis=0)) / X.std(axis=0) * scale
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ConvergenceWarning)
+            mlx = _fit("cpu", LogisticRegression(), X, y)
+        ref = SkLogisticRegression().fit(X, y)
+        _assert_parity(mlx, ref, X, y, C=1.0)
+
+
+def test_tol_zero_runs_to_the_float32_floor_and_records_it():
+    """``tol=0`` is "as far as float32 goes", which is a stop, not a failure.
+
+    docs/fp32_policy.md §2.3: the run ends when the objective stops resolving
+    progress, with no ConvergenceWarning once ``max|g|`` is below what float32
+    resolves, and the stop is recorded in the diagnostics.
+    """
+    X, y = _data()
+    mlxlearn.clear_backend_diagnostics()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        model = _fit("mlx", LogisticRegression(tol=0.0, max_iter=1000), X, y)
+
+    assert model.n_iter_[0] < 200
+    events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "lbfgs"]
+    assert [e.reason for e in events] == ["float32-floor"]
+    assert events[0].extra["at_resolution_floor"] is True
+
+
+def test_non_convergence_warns_and_is_recorded():
+    X, y = _data()
+    mlxlearn.clear_backend_diagnostics()
+    with pytest.warns(ConvergenceWarning, match=r"\(max_iter\).*Increase max_iter"):
+        LogisticRegression(max_iter=1).fit(X, y)
+    events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "lbfgs"]
+    assert [e.reason for e in events] == ["max_iter"]
+    assert events[0].extra["n_iter"] == 1
 
 
 def test_objective_is_no_worse_at_an_equal_truncated_budget():
     """The fair comparison when neither solver has converged.
 
-    On a hard problem at ``max_iter=100`` both solvers stop on the iteration limit
-    and both warn. Comparing their coefficients then compares two arbitrary
+    On a hard problem at a small ``max_iter`` both solvers stop on the iteration
+    limit and both warn. Comparing their coefficients then compares two arbitrary
     intermediate iterates, and the observed gaps are large. What can be asserted —
     and what actually matters — is that mlxlearn has not made *less* progress.
+
+    The budget was 100 until the diagonal preconditioner, with which mlxlearn
+    converges on this problem in 76 iterations (scikit-learn needs 251); at 50 both
+    are still truncated.
     """
     from sklearn.utils.class_weight import compute_class_weight
 
@@ -244,21 +540,80 @@ def test_objective_is_no_worse_at_an_equal_truncated_budget():
     C = 39.0
 
     with tuning_context(force_backend="mlx"):
-        mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=100).fit(X, y)
+        mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=50).fit(X, y)
     ref = SkLogisticRegression(
-        C=C, class_weight="balanced", max_iter=100, solver="lbfgs"
+        C=C, class_weight="balanced", max_iter=50, solver="lbfgs"
     ).fit(X, y)
 
-    assert mlx.n_iter_[0] == 100 and ref.n_iter_[0] == 100, "precondition: neither converged"
+    assert mlx.n_iter_[0] == 50 and ref.n_iter_[0] == 50, "precondition: neither converged"
 
-    encoded = np.searchsorted(ref.classes_, y)
-    weights = compute_class_weight("balanced", classes=ref.classes_, y=y)[encoded]
-    j_mlx = reference_objective(mlx.coef_, mlx.intercept_, X, encoded, n_classes=6, C=C, sample_weight=weights)
-    j_ref = reference_objective(ref.coef_, ref.intercept_, X, encoded, n_classes=6, C=C, sample_weight=weights)
+    weights = compute_class_weight("balanced", classes=ref.classes_, y=y)[
+        np.searchsorted(ref.classes_, y)
+    ]
+    j_mlx = _objective(mlx, X, y, C=C, sample_weight=weights)
+    j_ref = _objective(ref, X, y, C=C, sample_weight=weights)
 
     assert j_mlx <= j_ref * (1 + 1e-4), (
         f"mlxlearn made less progress in the same budget: {j_mlx:.8f} vs {j_ref:.8f}"
     )
+
+
+# ---------------------------------------------------------------- sample weights
+
+
+def test_sample_weight_scale_is_exact():
+    """Multiplying every weight by 2**k is the same problem as multiplying C by 2**k.
+
+    ``l2 = 1/(C·Σw)``, so the two agree term for term; and because the solver
+    normalizes weights by an exact power of two, bit for bit.
+    """
+    X, y = _data(n_samples=2000, n_features=8)
+    weights = np.random.default_rng(0).uniform(0.5, 2.0, size=len(y))
+    scaled = LogisticRegression().fit(X, y, sample_weight=weights * 2.0**40)
+    equivalent = LogisticRegression(C=2.0**40).fit(X, y, sample_weight=weights)
+    np.testing.assert_array_equal(scaled.coef_, equivalent.coef_)
+    np.testing.assert_array_equal(scaled.intercept_, equivalent.intercept_)
+
+
+@pytest.mark.parametrize("n_classes", [2, 3])
+@pytest.mark.parametrize("scale", [1e36, 1e39])
+def test_huge_sample_weights_do_not_overflow_float32(scale, n_classes):
+    """Weights of 1e36 are legal, and scikit-learn fits them.
+
+    Cast straight to float32, weights above 3.4e38 became infinite; below that, the
+    float32 reduction ``Σ w·x·r`` overflowed from about 1e36 at 2000 rows. Either way
+    the fit returned an all-zero model. The same problem stated with unit-scale
+    weights and ``C`` scaled to match must give the same model.
+    """
+    X, y = _data(n_classes=n_classes, n_samples=2000, n_features=8)
+    weights = np.random.default_rng(0).uniform(0.5, 2.0, size=len(y))
+    huge = LogisticRegression().fit(X, y, sample_weight=weights * scale)
+    equivalent = LogisticRegression(C=scale).fit(X, y, sample_weight=weights)
+
+    assert np.abs(huge.coef_).max() > 0.1, "collapsed to the null model"
+    np.testing.assert_allclose(huge.coef_, equivalent.coef_, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(huge.intercept_, equivalent.intercept_, rtol=1e-4, atol=1e-5)
+
+
+def test_sample_weight_equivalence_at_float32_tolerance():
+    """scikit-learn's own check runs at float64 tolerances and is xfailed (Rule A).
+
+    The property is real and is asserted here at the tolerance float32 actually
+    supports, so the xfail does not mean the behavior goes untested.
+    """
+    X, y = _data(n_samples=800, n_features=10)
+    weights = np.random.default_rng(0).integers(1, 4, size=len(y)).astype(float)
+
+    weighted = LogisticRegression().fit(X, y, sample_weight=weights)
+    repeated = LogisticRegression().fit(
+        np.repeat(X, weights.astype(int), axis=0),
+        np.repeat(y, weights.astype(int)),
+    )
+    np.testing.assert_allclose(weighted.coef_, repeated.coef_, atol=1e-3, rtol=2e-3)
+    np.testing.assert_allclose(weighted.intercept_, repeated.intercept_, atol=1e-3, rtol=2e-3)
+
+
+# ------------------------------------------------------------ capability gates
 
 
 def test_float32_overflow_is_a_capability_error():
@@ -269,8 +624,6 @@ def test_float32_overflow_is_a_capability_error():
     before ``validate_data``, which would otherwise convert first and produce a
     plain ``ValueError``.
     """
-    from mlxlearn.exceptions import UnsupportedInputError
-
     X, y = _data(n_samples=300, n_features=6)
     X = np.array(X)
     X[0, 0] = 1e300
@@ -286,8 +639,6 @@ def test_negative_sample_weight_is_a_capability_error():
     Since scikit-learn can serve the request, patched mode must be able to fall
     back — which requires this to be a CapabilityError, not a bare ValueError.
     """
-    from mlxlearn.exceptions import UnsupportedInputError
-
     X, y = _data(n_samples=300, n_features=6)
     weights = np.ones(len(y))
     weights[0] = -1.0
@@ -295,6 +646,161 @@ def test_negative_sample_weight_is_a_capability_error():
     with pytest.raises(UnsupportedInputError) as excinfo:
         LogisticRegression().fit(X, y, sample_weight=weights)
     assert excinfo.value.reason == "negative-sample-weight"
+
+
+@pytest.mark.parametrize("tuning", [{}, _NO_CROSSOVER, {"force_backend": "mlx"}], ids=["below", "above", "forced"])
+def test_negative_sample_weight_falls_back_under_patch(tuning, recwarn):
+    """The error message promised a fallback; above the crossover it used to raise.
+
+    The weight check ran after backend selection, outside the capability check, so
+    only a problem small enough to be handed to scikit-learn anyway "fell back".
+    """
+    X, y = _data(n_samples=300, n_features=6)
+    weights = np.ones(len(y))
+    weights[:5] = -1.0
+    with tuning_context(**tuning):
+        model = PatchedLogisticRegression().fit(X, y, sample_weight=weights)
+    ref = SkLogisticRegression().fit(X, y, sample_weight=weights)
+    assert model.execution_backend_ == "sklearn"
+    np.testing.assert_array_equal(model.coef_, ref.coef_)
+
+
+_GATES = [
+    ({"solver": "liblinear"}, "solver"),
+    ({"solver": "saga"}, "solver"),
+    ({"solver": "newton-cg"}, "solver"),
+    ({"penalty": "l1", "solver": "saga"}, "solver"),
+    ({"penalty": "l1"}, "penalty"),
+    ({"dual": True}, "dual"),
+    ({"dual": True, "solver": "liblinear", "penalty": "l2"}, "solver"),
+    ({"warm_start": True}, "warm_start"),
+    ({"intercept_scaling": 2.0}, "intercept_scaling"),
+]
+if _HAS_MULTI_CLASS:
+    _GATES += [({"multi_class": "ovr"}, "multi_class"), ({"multi_class": "multinomial"}, "multi_class")]
+
+
+@pytest.mark.filterwarnings("ignore::FutureWarning")
+@pytest.mark.parametrize("kwargs, parameter", _GATES)
+def test_unsupported_parameters_raise_naming_the_parameter(kwargs, parameter):
+    """Each gate on its own, so removing any one of them fails a test.
+
+    ``multi_class='ovr'`` is the ancestor's headline bug — accepted, and a
+    multinomial model fitted instead — and exists only on scikit-learn 1.7.
+    """
+    X, y = _data(n_samples=300)
+    with pytest.raises(UnsupportedParameterError) as excinfo:
+        LogisticRegression(**kwargs).fit(X, y)
+    assert excinfo.value.parameter == parameter
+
+
+@pytest.mark.filterwarnings("ignore::FutureWarning")
+@pytest.mark.parametrize("kwargs, parameter", _GATES)
+def test_unsupported_parameters_fall_back_under_patch(kwargs, parameter, recwarn):
+    """Where Layer 1 raises, Layer 2 hands the request to scikit-learn — recorded.
+
+    Some of these combinations scikit-learn rejects too (``dual=True`` with lbfgs);
+    then the patched class must fail exactly as scikit-learn does, not differently.
+    """
+    X, y = _data(n_samples=300)
+    try:
+        SkLogisticRegression(**kwargs).fit(X, y)
+    except ValueError as exc:
+        with tuning_context(**_NO_CROSSOVER), pytest.raises(type(exc), match="."):
+            PatchedLogisticRegression(**kwargs).fit(X, y)
+        return
+
+    mlxlearn.clear_backend_diagnostics()
+    with tuning_context(**_NO_CROSSOVER):
+        model = PatchedLogisticRegression(**kwargs).fit(X, y)
+    assert model.execution_backend_ == "sklearn"
+    fit_events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
+    assert [e.reason for e in fit_events] == [f"unsupported-parameter:{parameter}"]
+
+
+def test_intercept_scaling_is_irrelevant_without_an_intercept():
+    X, y = _data(n_samples=300)
+    model = LogisticRegression(intercept_scaling=2.0, fit_intercept=False).fit(X, y)
+    assert model.execution_backend_ == "cpu"
+
+
+def test_multi_label_target_is_a_capability_error():
+    X, y = _data(n_samples=300)
+    Y = np.column_stack([y, 1 - y])
+    with pytest.raises(UnsupportedInputError) as excinfo:
+        LogisticRegression().fit(X, Y)
+    assert excinfo.value.reason == "multi-label-target"
+
+
+def test_regression_target_gets_scikit_learns_message():
+    X, _ = _data(n_samples=300)
+    y = np.random.default_rng(0).normal(size=300)
+    with pytest.raises(ValueError, match=r"Unknown label type: continuous\. Maybe you are"):
+        LogisticRegression().fit(X, y)
+
+
+def test_sparse_input_raises_type_error():
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y = _data(n_samples=300)
+    with pytest.raises(SparseInputError) as excinfo:
+        LogisticRegression().fit(sparse.csr_matrix(X), y)
+    assert isinstance(excinfo.value, TypeError)
+
+
+# -------------------------------------------------------------------- dispatch
+
+
+def test_patched_fit_below_the_crossover_skips_the_mlx_preparation(monkeypatch):
+    """Work handed to scikit-learn must not first be validated for MLX.
+
+    Scanning ``X`` for float32 overflow and converting it to float32 — all of which
+    ``super().fit`` then repeats in float64 — made a handed-off fit up to 2x slower
+    than stock. The decision now comes from the raw shape after the parameter
+    checks alone, and is recorded once.
+    """
+    import mlxlearn.linear_model._logistic as module
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("MLX-path preparation ran for a problem sent to scikit-learn")
+
+    monkeypatch.setattr(module, "check_float32_range", forbidden)
+    monkeypatch.setattr(module, "validate_data", forbidden)
+
+    X, y = _data(n_samples=500)
+    mlxlearn.clear_backend_diagnostics()
+    model = PatchedLogisticRegression().fit(X, y)
+    ref = SkLogisticRegression().fit(X, y)
+
+    assert model.execution_backend_ == "sklearn"
+    np.testing.assert_array_equal(model.coef_, ref.coef_)
+    fit_events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
+    assert [(e.backend, e.reason) for e in fit_events] == [("sklearn", "below-crossover")]
+
+
+def test_the_crossover_counts_one_weight_vector_per_class():
+    """The work per objective evaluation is ``n × d × n_targets``.
+
+    With thresholds between the binary and the five-class work of the same shape,
+    the binary problem goes to scikit-learn and the five-class one to MLX.
+    """
+    n, d = 1000, 20
+    with tuning_context(logreg_min_samples=n, logreg_min_work=3 * n * d):
+        X2, y2 = _data(n_classes=2, n_samples=n, n_features=d)
+        X5, y5 = _data(n_classes=5, n_samples=n, n_features=d)
+        binary = PatchedLogisticRegression().fit(X2, y2)
+        multi = PatchedLogisticRegression().fit(X5, y5)
+    assert binary.execution_backend_ == "sklearn"
+    assert multi.execution_backend_ in ("mlx", "cpu") and multi.execution_backend_ != "sklearn"
+
+
+def test_backends_agree():
+    """The CPU and GPU devices run the same code on different streams."""
+    X, y = _data(n_samples=3000)
+    cpu = _fit("cpu", LogisticRegression(), X, y)
+    gpu = _fit("mlx", LogisticRegression(), X, y)
+    np.testing.assert_allclose(cpu.coef_, gpu.coef_, atol=1e-5)
+    np.testing.assert_allclose(cpu.intercept_, gpu.intercept_, atol=1e-5)
+    assert _objective(cpu, X, y, C=1.0) == pytest.approx(_objective(gpu, X, y, C=1.0), rel=1e-8)
 
 
 def test_fit_is_a_pure_function_of_its_arguments():
@@ -322,18 +828,6 @@ def test_mutating_the_input_after_fit_does_not_change_predictions():
     np.testing.assert_array_equal(before, model.predict_proba(query))
 
 
-@pytest.mark.parametrize("backend", ["mlx", "cpu"])
-def test_backends_agree(backend):
-    X, y = _data(n_samples=3000)
-    with tuning_context(force_backend=backend):
-        model = LogisticRegression().fit(X, y)
-    assert model.execution_backend_ == backend
-
-    with tuning_context(force_backend="mlx"):
-        reference = LogisticRegression().fit(X, y)
-    np.testing.assert_allclose(model.coef_, reference.coef_, atol=1e-5)
-
-
 def test_fitted_attribute_shapes_and_dtypes():
     X, y = _data(n_classes=5)
     model = LogisticRegression().fit(X, y)
@@ -348,50 +842,190 @@ def test_fitted_attribute_shapes_and_dtypes():
     assert binary.intercept_.shape == (1,)
 
 
-@pytest.mark.parametrize(
-    "kwargs, parameter",
-    [
-        ({"solver": "liblinear"}, "solver"),
-        ({"solver": "saga"}, "solver"),
-        ({"penalty": "l1", "solver": "saga"}, "solver"),
-        ({"dual": True, "solver": "liblinear", "penalty": "l2"}, "solver"),
-        ({"warm_start": True}, "warm_start"),
-    ],
-)
-def test_unsupported_parameters_raise(kwargs, parameter):
-    X, y = _data(n_samples=300)
-    with pytest.raises(UnsupportedParameterError):
-        LogisticRegression(**kwargs).fit(X, y)
+# ------------------------------------------------------------------- inference
 
 
-def test_sparse_input_raises_type_error():
-    sparse = pytest.importorskip("scipy.sparse")
-    X, y = _data(n_samples=300)
-    with pytest.raises(SparseInputError) as excinfo:
-        LogisticRegression().fit(sparse.csr_matrix(X), y)
-    assert isinstance(excinfo.value, TypeError)
+@pytest.mark.parametrize("cls", [LogisticRegression, PatchedLogisticRegression])
+@pytest.mark.parametrize("n_classes", [2, 3])
+def test_assigned_coefficients_predict_like_scikit_learn(n_classes, cls):
+    """Federated averaging and model import build a model by assigning its state.
 
-
-def test_non_convergence_warns():
-    from sklearn.exceptions import ConvergenceWarning
-
-    X, y = _data()
-    with pytest.warns(ConvergenceWarning):
-        LogisticRegression(max_iter=1).fit(X, y)
-
-
-def test_sample_weight_equivalence_at_float32_tolerance():
-    """scikit-learn's own check runs at float64 tolerances and is xfailed (Rule A).
-
-    The property is real and is asserted here at the tolerance float32 actually
-    supports, so the xfail does not mean the behavior goes untested.
+    Inference is scikit-learn's float64 code on ``coef_``, ``intercept_`` and
+    ``classes_``, so there is nothing an MLX fit would have added; refusing to
+    predict broke code that works on stock scikit-learn, patched or not.
     """
-    X, y = _data(n_samples=800, n_features=10)
-    weights = np.random.default_rng(0).integers(1, 4, size=len(y)).astype(float)
+    X, y = _data(n_classes=n_classes, n_samples=400)
+    donor = SkLogisticRegression().fit(X, y)
+    labels = np.array(["a", "b", "c"][:n_classes])
 
-    weighted = LogisticRegression().fit(X, y, sample_weight=weights)
-    repeated = LogisticRegression().fit(
-        np.repeat(X, weights.astype(int), axis=0),
-        np.repeat(y, weights.astype(int)),
+    ours, stock = cls(), SkLogisticRegression()
+    for model in (ours, stock):
+        model.coef_ = donor.coef_.copy()
+        model.intercept_ = donor.intercept_.copy()
+        model.classes_ = labels
+
+    mlxlearn.clear_backend_diagnostics()
+    for method in ("predict", "predict_proba", "predict_log_proba", "decision_function"):
+        np.testing.assert_array_equal(getattr(ours, method)(X), getattr(stock, method)(X))
+    assert ours.score(X, labels[y]) == stock.score(X, labels[y])
+
+    events = mlxlearn.get_backend_diagnostics()
+    assert {(e.backend, e.reason) for e in events} == {("sklearn", "external-state")}
+    assert not any(e.fallback for e in events)
+
+
+def test_an_unfitted_model_still_raises_not_fitted():
+    with pytest.raises(NotFittedError):
+        LogisticRegression().predict(np.zeros((2, 3)))
+
+
+def test_a_refit_that_failed_partway_does_not_predict_from_mixed_state():
+    """New ``classes_`` beside the previous ``coef_`` must not produce labels."""
+    X, y = _data(n_samples=400)
+    model = LogisticRegression().fit(X, y)
+    with pytest.raises(ValueError, match="at least 2 classes"):
+        model.fit(X, np.full(len(y), 7))
+    with pytest.raises(MLXLearnError, match="no recorded execution backend"):
+        model.predict(X)
+
+
+@pytest.mark.parametrize(
+    "method", ["predict", "predict_proba", "predict_log_proba", "decision_function", "score"]
+)
+def test_one_diagnostics_event_per_public_call(method):
+    """scikit-learn's inference calls back into the overridden methods.
+
+    ``predict`` called ``decision_function``, ``predict_log_proba`` called
+    ``predict_proba``, ``score`` called ``predict``, and each recorded its own
+    event — two or three per call, labelled with whichever ran last. The event says
+    which backend owns the model and that the arithmetic was NumPy float64.
+    """
+    X, y = _data(n_samples=400)
+    model = _fit("cpu", LogisticRegression(), X, y)
+    mlxlearn.clear_backend_diagnostics()
+    args = (X, y) if method == "score" else (X,)
+    getattr(model, method)(*args)
+
+    events = mlxlearn.get_backend_diagnostics()
+    assert [(e.operation, e.backend, e.reason) for e in events] == [(method, "cpu", "sticky")]
+    assert events[0].extra == {"compute": "numpy-float64"}
+
+
+# ------------------------------------------------ scikit-learn's fit-time warnings
+
+
+def _warning_grid():
+    grid = [
+        {},
+        {"penalty": "l2"},
+        {"penalty": None},
+        {"penalty": None, "C": 2.0},
+        {"C": np.inf},
+        {"n_jobs": 2},
+        {"l1_ratio": None},
+        {"l1_ratio": 0.0},
+        {"penalty": "l2", "l1_ratio": 0.5},
+    ]
+    if _HAS_MULTI_CLASS:
+        grid.append({"multi_class": "auto"})
+    return grid
+
+
+def _fit_warnings(estimator, X, y):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        estimator.fit(X, y)
+    return Counter(
+        (w.category.__name__, str(w.message)[:40])
+        for w in caught
+        if w.category in (FutureWarning, UserWarning)
     )
-    np.testing.assert_allclose(weighted.coef_, repeated.coef_, atol=1e-3, rtol=2e-3)
+
+
+@pytest.mark.parametrize("kwargs", _warning_grid(), ids=repr)
+def test_fit_warns_exactly_as_scikit_learn_does(kwargs):
+    """The only advance notice of a removal must not depend on which backend ran.
+
+    scikit-learn raises its deprecation warnings from inside its own ``fit``, which
+    the MLX path never calls — and a Layer 1 estimator never reaches it at all.
+    Compared against the installed scikit-learn, so the test follows it across the
+    supported range.
+    """
+    X, y = _data(n_samples=300)
+    expected = _fit_warnings(SkLogisticRegression(**kwargs), X, y)
+    assert _fit_warnings(LogisticRegression(**kwargs), X, y) == expected
+    # The fallback path is scikit-learn's own fit: no second copy of any of them.
+    assert _fit_warnings(PatchedLogisticRegression(**kwargs), X, y) == expected
+
+
+# ------------------------------------------------------------------- callbacks
+
+
+class _Recorder:
+    """A FitCallback that counts hooks and uses every iterate it is given."""
+
+    def __init__(self):
+        self.hooks = Counter()
+        self.predictions = 0
+
+    def setup(self, estimator, context):
+        self.hooks["setup"] += 1
+
+    def on_fit_task_begin(self, estimator, context, *, X=None, y=None, metadata=None, fitted_estimator=None):
+        self.hooks["begin"] += 1
+
+    def on_fit_task_end(self, estimator, context, *, X=None, y=None, metadata=None, fitted_estimator=None):
+        self.hooks["end"] += 1
+        if fitted_estimator is not None:
+            assert fitted_estimator.predict(X[:5]).shape == (5,)
+            self.predictions += 1
+
+    def teardown(self, estimator, context):
+        self.hooks["teardown"] += 1
+
+
+@pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
+@pytest.mark.parametrize("n_classes", [2, 3])
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_callbacks_see_every_iteration(backend, n_classes):
+    """scikit-learn 1.9's callbacks were accepted and never called on the MLX path.
+
+    The task tree matches scikit-learn's lbfgs path: the fit, one subtask per
+    accepted iteration, and the trailing empty subtask its bridge always leaves —
+    so ``n_iter_ + 2`` begin/end pairs, every iterate usable as a fitted model.
+    """
+    X, y = _data(n_classes=n_classes, n_samples=500, n_features=8)
+    recorder = _Recorder()
+    model = _fit(backend, LogisticRegression().set_callbacks(recorder), X, y)
+
+    n_iter = int(model.n_iter_[0])
+    assert recorder.hooks == Counter(setup=1, begin=n_iter + 2, end=n_iter + 2, teardown=1)
+    assert recorder.predictions == n_iter + 1
+    assert not hasattr(model, "_callback_fit_ctx")
+
+    reference = _Recorder()
+    stock = SkLogisticRegression().set_callbacks(reference).fit(X, y)
+    assert reference.hooks["begin"] == int(stock.n_iter_[0]) + 2
+
+
+@pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
+@pytest.mark.parametrize("tuning", [{}, _NO_CROSSOVER], ids=["below", "above"])
+def test_patched_callbacks_fire_on_both_sides_of_the_crossover(tuning):
+    X, y = _data(n_samples=500, n_features=6)
+    recorder = _Recorder()
+    with tuning_context(**tuning):
+        model = PatchedLogisticRegression().set_callbacks(recorder).fit(X, y)
+    assert recorder.hooks["setup"] == recorder.hooks["teardown"] == 1
+    assert recorder.hooks["begin"] == int(model.n_iter_[0]) + 2
+    assert recorder.predictions == int(model.n_iter_[0]) + 1
+
+
+@pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
+def test_scoring_monitor_gets_a_score_per_iteration():
+    from sklearn.callback import ScoringMonitor
+
+    X, y = _data(n_samples=500, n_features=6)
+    monitor = ScoringMonitor(scoring="accuracy")
+    model = LogisticRegression().set_callbacks(monitor).fit(X, y)
+    assert model.execution_backend_ == "cpu"
+    assert monitor.get_logs() is not None
