@@ -40,14 +40,19 @@ a naive cross product would schedule combinations that cannot resolve.
 | 3.12 | 1.9.x | ✅ | |
 | 3.13 | 1.8.x | ✅ | |
 | 3.13 | 1.9.x | ✅ | development pair |
-| 3.14 | 1.9.x | ✅ | |
+| 3.14 | 1.9.x | ✅ | unpinned: the newest scikit-learn the declared range admits (1.9.1 today) |
+
+The other cells pin their scikit-learn release. The 3.14 cell does not, so a pull request
+that raises the declared cap — a Dependabot one included — runs the suite on the release it
+admits.
 
 Two more jobs test the edges of the declared ranges rather than points inside them:
 
 - **Minimum versions** (every PR). Python 3.10 with every floor `pyproject.toml` declares —
-  NumPy 1.23.5, scikit-learn 1.7.0, MLX 0.31.2, and the test extra's — installed exactly
-  from `.github/constraints/minimum-versions.txt`, then checked to be what was installed.
-  A floor nobody installs is a guess; this leg is what makes each one a tested claim.
+  NumPy 1.23.5, scikit-learn 1.7.0, MLX 0.31.2, and the test extra's, pandas 2.2.3 among
+  them — installed exactly from `.github/constraints/minimum-versions.txt`, then checked
+  to be what was installed. A floor nobody installs is a guess; this leg is what makes
+  each one a tested claim.
 - **Upstream pre-releases** (weekly, `.github/workflows/upstream-prereleases.yml`). The
   next scikit-learn and NumPy from the scientific-python nightly wheels, and any MLX
   pre-release, installed past the declared caps on purpose. It gates nothing; it is the
@@ -111,12 +116,14 @@ sparse) and for float64 values beyond float32's range
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output; callable `weights` | as above |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output; callable `weights` | as above |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized, binary and multinomial; scikit-learn 1.9 callbacks (`set_callbacks`) are driven on this path | `l1`/`elasticnet` however spelled; non-`lbfgs` solvers; `dual=True`; `warm_start=True`; `multi_class` other than `"deprecated"`/`"auto"` (1.7 only); `intercept_scaling != 1` with `fit_intercept=True`; multi-label or multi-output `y`; negative `sample_weight`; under `patch_sklearn()` on scikit-learn 1.9, `array_api_dispatch=True` |
-| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32; a linear or poly kernel on data so far from the origin, for its spread, that float32 cannot resolve its inner products; a class whose every sample has zero effective weight |
+| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32; a linear or poly kernel on data whose variation float32's inner product cannot resolve — so far from the origin, for its spread, that its rounding swamps the differences between rows, or rows that all round, in float32, to the same nonzero row (reason `"float32-cancellation"`); a class whose every sample has zero effective weight (reason `"empty-class"`) |
 
 A few inputs that look like capability questions are served directly. `SVC` treats a
 negative `sample_weight` as a zero weight, which is exactly what LIBSVM does, and a
-sample with no effective weight is dropped as LIBSVM drops it. `SVC(kernel="linear",
-gamma=0.0)` fits, since the linear kernel never reads `gamma`.
+sample with no effective weight is dropped as LIBSVM drops it — unless that drops a whole
+class, which is the `"empty-class"` fallback above: scikit-learn fits the classes that
+remain. `SVC(kernel="linear", gamma=0.0)` fits, since the linear kernel never reads
+`gamma`.
 
 **Queries are not re-dispatched.** Inference runs on the backend `fit` chose (the sticky
 backend in the README). A query float32 cannot represent is therefore an error at
@@ -143,8 +150,9 @@ profiler to reveal.
 
 Separately from capability, `patch_sklearn()` hands small problems to scikit-learn on
 purpose, because scikit-learn is faster there. These are decided from the input's shape
-before any scan or copy, recorded with reason `"below-crossover"` (or `"tree-wins"`), and
-never warned about. The thresholds are private `Tuning` values, measured in
+before any scan or copy of `X` — `SVC`'s many-class rule from the number of distinct raw
+labels in `y` too — recorded with reason `"below-crossover"` (or `"tree-wins"`), and never
+warned about. The thresholds are private `Tuning` values, measured in
 [`benchmarks.md`](benchmarks.md) and overridable with `MLXLEARN_*` environment variables.
 
 | Estimator | Goes to scikit-learn when |
