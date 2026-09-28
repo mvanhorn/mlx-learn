@@ -160,7 +160,18 @@ def test_only_a_tag_push_can_publish():
     release = (REPO / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     publish = release.split("\n  publish:\n", 1)[1]
     assert "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" in publish
-    assert "needs: [ci, build]" in publish
+    assert "needs: [ci, version]" in publish
+
+
+def test_the_release_publishes_the_distributions_ci_checked():
+    # release.yml used to build again and publish that, so what reached PyPI had never
+    # been through CI's sdist checks.
+    release = (REPO / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "python -m build" in ci and "python -m build" not in release
+    uploaded = re.findall(r"upload-artifact@.*\n\s+with:\n\s+name: (\S+)", ci)
+    downloaded = re.findall(r"download-artifact@.*\n\s+with:\n\s+name: (\S+)", release)
+    assert "dist" in uploaded and set(downloaded) == {"dist"}, (uploaded, downloaded)
 
 
 def test_ruff_is_pinned_once_in_the_dev_extra():

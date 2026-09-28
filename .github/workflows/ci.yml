@@ -238,6 +238,7 @@ jobs:
           mkdir /tmp/sdisttest
           tar -xzf dist/*.tar.gz -C /tmp/sdisttest --strip-components 1
           cd /tmp/sdisttest && /tmp/wheeltest/bin/python -m pytest --collect-only -q -p no:cacheprovider
+      # On a tag, release.yml publishes exactly these files: the ones checked above.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
