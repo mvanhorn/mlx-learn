@@ -18,13 +18,21 @@ Two kinds of exemption, kept strictly apart:
     Checks mlxlearn fails that scikit-learn passes. Each entry names a rule from
     ``docs/fp32_policy.md`` §4 and is asserted to do so, so an xfail cannot be
     added quietly to turn a red test green. **It is currently empty.**
+
+Every suite runs twice: at the default configuration, and with the MLX GPU path
+forced. The check data is tiny — below every crossover — so by default Layer 1
+runs its CPU path and Layer 2 mostly hands the work to scikit-learn; without the
+forced run, MLX-fitted state behind the wide Layer 2 tags would never meet the
+checks at all.
 """
 
 from __future__ import annotations
 
 import pytest
-from sklearn.utils.estimator_checks import check_estimator
+from sklearn.utils.estimator_checks import check_estimator, check_param_validation
 
+from mlxlearn._common.config import tuning_context
+from mlxlearn._common.device import gpu_available
 from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.patching import _estimators as patched
@@ -68,13 +76,30 @@ LAYER2 = [
 ]
 
 
-def _run(estimator_class, layer: str):
+#: ``None`` is the default configuration; ``"mlx"`` forces the GPU path at every size.
+FORCED_BACKENDS = [
+    pytest.param(None, id="default"),
+    pytest.param("mlx", id="mlx", marks=pytest.mark.gpu),
+]
+
+
+def _forced(force_backend: str | None):
+    """A context that forces ``force_backend``, skipping when it cannot run here."""
+    if force_backend is None:
+        return tuning_context()
+    if force_backend == "mlx" and not gpu_available():
+        pytest.skip("no working MLX GPU device")
+    return tuning_context(force_backend=force_backend)
+
+
+def _run(estimator_class, layer: str, force_backend: str | None = None):
     estimator = estimator_class()
-    # __name__ is set to the scikit-learn name on the Layer 2 classes, so this
-    # key works for both layers.
+    # The Layer 2 classes carry the scikit-learn class names, so this key works
+    # for both layers.
     inherited = INHERITED_FAILURES.get(estimator_class.__name__, set())
 
-    results = check_estimator(estimator, on_fail=None)
+    with _forced(force_backend):
+        results = check_estimator(estimator, on_fail=None)
     assert results, f"no checks ran for {estimator_class}"
 
     failures = []
@@ -89,25 +114,50 @@ def _run(estimator_class, layer: str):
         failures.append(f"{name}: {result['exception']}")
 
     assert not failures, (
-        f"{layer} {estimator_class.__name__} failed {len(failures)} scikit-learn checks:\n"
-        + "\n".join(f"  - {f}" for f in failures)
+        f"{layer} {estimator_class.__name__} (force_backend={force_backend!r}) failed "
+        f"{len(failures)} scikit-learn checks:\n" + "\n".join(f"  - {f}" for f in failures)
     )
     return results
 
 
+@pytest.mark.parametrize("force_backend", FORCED_BACKENDS)
 @pytest.mark.parametrize("estimator_class", LAYER1, ids=lambda c: c.__name__)
-def test_layer1_passes_sklearn_checks(estimator_class):
-    _run(estimator_class, "Layer 1")
+def test_layer1_passes_sklearn_checks(estimator_class, force_backend):
+    _run(estimator_class, "Layer 1", force_backend)
 
 
+@pytest.mark.parametrize("force_backend", FORCED_BACKENDS)
 @pytest.mark.parametrize("estimator_class", LAYER2, ids=lambda c: c.__module__ + "." + c.__name__)
-def test_layer2_passes_sklearn_checks(estimator_class):
+def test_layer2_passes_sklearn_checks(estimator_class, force_backend):
     """The patched classes must be at least as compatible as the strict ones.
 
     They accept strictly more — sparse input and multi-output targets reach
     scikit-learn — so a failure here means the fallback is not transparent.
     """
-    _run(estimator_class, "Layer 2")
+    _run(estimator_class, "Layer 2", force_backend)
+
+
+#: ``check_param_validation`` is not among the checks ``check_estimator`` yields;
+#: scikit-learn runs it from its own test suite only. The neighbors classes join
+#: once they validate their parameters on the MLX path too.
+PARAM_VALIDATION = [LogisticRegression, SVC, patched.LogisticRegression, patched.SVC]
+
+
+@pytest.mark.parametrize("force_backend", [None, "cpu"], ids=["default", "cpu"])
+@pytest.mark.parametrize(
+    "estimator_class", PARAM_VALIDATION, ids=lambda c: c.__module__ + "." + c.__name__
+)
+def test_invalid_parameters_raise_like_sklearn(estimator_class, force_backend):
+    """Every invalid value and type for every constructor parameter raises
+    scikit-learn's ``InvalidParameterError``, on the mlxlearn path as well.
+
+    The check's data is 20 x 5, so at the default configuration a Layer 2 class
+    hands the fit to scikit-learn and the check would only re-test scikit-learn;
+    forcing ``"cpu"`` — mlxlearn's own path, no GPU needed — is what reaches
+    mlxlearn's ``fit`` for both layers.
+    """
+    with _forced(force_backend):
+        check_param_validation(estimator_class.__name__, estimator_class())
 
 
 def test_inherited_failures_match_what_sklearn_declares():
