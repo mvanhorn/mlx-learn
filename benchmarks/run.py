@@ -31,6 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import gate
 from ._harness import MIN_SIGNIFICANCE_SAMPLES, Comparison, compare, environment
 
 __all__ = ["main", "PROFILES", "PROFILE_SETTINGS", "Case"]
@@ -38,6 +39,12 @@ __all__ = ["main", "PROFILES", "PROFILE_SETTINGS", "Case"]
 #: The scikit-learn estimators' own defaults, which a case only overrides — and only
 #: names in its label — when it means to.
 _DEFAULT_OPTIONS = {"sklearn_algorithm": "auto", "kernel": "rbf", "C": 1.0}
+
+#: A case the gate would fail is timed again over this many times its iterations,
+#: and the gate fails it only if the loss reproduces there: a false alarm near 1% per
+#: case, over the hundred-odd cases a night gates, would otherwise fail most nights
+#: (SIGNIFICANCE_Z in _harness.py). A real regression reproduces.
+CONFIRMATION_FACTOR = 3
 
 
 @dataclass(frozen=True)
@@ -48,8 +55,8 @@ class Case:
     ``sklearn_algorithm`` (the stock ``NearestNeighbors`` baseline), ``kernel`` and
     ``C`` (SVC), ``n_classes`` (classification targets) — and each one appears in
     the label, so two differently configured cases can never share a name.
-    ``iterations`` overrides the run's iteration count for a case whose single call
-    takes minutes.
+    ``iterations`` caps the run's iteration count for a case whose single call
+    takes minutes; it never raises it, so ``--iterations 1`` still means one.
     """
 
     algorithm: str
@@ -301,14 +308,19 @@ def _runner(
 def _dispatch_backend(case: Case, data) -> str:
     """What patched dispatch picks for this case under the configured ``Tuning``.
 
-    Only needed when a run forces the backend, which hides the decision. Probed with
-    the patched class because its below-threshold route is stock scikit-learn, which
-    is always cheap to run; the Layer 1 class would take its CPU path instead. The
-    thresholds are shared, so the answer — "mlx" or not — is the same for both.
+    Only needed when a run forces the backend, which hides the decision, so the probe
+    lifts the force wherever it came from: the flag, or ``MLXLEARN_FORCE_BACKEND``
+    in the process's ``Tuning``. Probed with the patched class because its
+    below-threshold route is stock scikit-learn, which is always cheap to run; the
+    Layer 1 class would take its CPU path instead. The thresholds are shared, so the
+    answer — "mlx" or not — is the same for both.
     """
+    from mlxlearn._common.config import tuning_context
+
     make_mlx, _ = _estimators(case, "patched")
     X, y, _Q = data
-    model = make_mlx().fit(X) if y is None else make_mlx().fit(X, y)
+    with tuning_context(force_backend=""):
+        model = make_mlx().fit(X) if y is None else make_mlx().fit(X, y)
     return model.execution_backend_
 
 
@@ -335,6 +347,8 @@ def run_profile(
     for index, case in enumerate(cases, 1):
         print(f"[{index}/{len(cases)}] {case.label}", flush=True)
         data = _make_data(case, rng)
+        # A case's own count is a ceiling for slow cases, never a floor.
+        n = min(case.iterations, iterations) if case.iterations else iterations
         try:
             with _forcing(force_backend):
                 mlx_fn, sk_fn, shape, backend_of = _runner(case, data, layer)
@@ -343,7 +357,7 @@ def run_profile(
                     sk_fn,
                     label=case.label,
                     shape=shape,
-                    iterations=case.iterations or iterations,
+                    iterations=n,
                     algorithm=case.algorithm,
                     operation=case.operation,
                     n_queries=case.n_queries,
@@ -368,6 +382,19 @@ def run_profile(
         else:
             marker = "  (within noise)"
         print(f"    {comparison.speedup:.2f}x on {comparison.extra['backend']}{marker}", flush=True)
+
+        if gate.evaluate({"results": [comparison.as_dict()]})[0]:
+            with _forcing(force_backend):
+                confirmation = compare(
+                    mlx_fn, sk_fn, label=case.label, shape=shape, iterations=CONFIRMATION_FACTOR * n
+                )
+            comparison.extra["confirmation"] = confirmation.as_dict()
+            print(
+                f"    re-measured over {confirmation.mlxlearn.iterations} iterations: "
+                f"{confirmation.speedup:.2f}x"
+                f"{'' if confirmation.significant else '  (within noise)'}",
+                flush=True,
+            )
 
     return results
 
@@ -436,7 +463,9 @@ def write_report(
         "range (IQR). A difference counts as **significant** only when the two medians are more "
         "than three standard errors apart, each median's standard error estimated from its IQR "
         "(`1.2533 · IQR/1.349 / √n`) and the two combined in quadrature; anything less is "
-        "**within noise** and does not count as a win or a loss.",
+        "**within noise** and does not count as a win or a loss. A case the gate would fail is "
+        f"re-measured over {CONFIRMATION_FACTOR}x the iterations, and fails only if the loss "
+        "reproduces; the last column shows that re-measurement.",
         "",
         "## Environment",
         "",
@@ -471,17 +500,23 @@ def write_report(
         "minimum — reporting only the median ratio there would flatter mlxlearn.",
         "",
         "| case | backend | dispatch | mlxlearn median (IQR), ms | sklearn median (IQR), ms "
-        "| speedup (median) | speedup (best) | significant |",
-        "|---|---|---|---|---|---|---|---|",
+        "| speedup (median) | speedup (best) | significant | re-measured |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for result in results:
+        again = result.extra.get("confirmation")
+        rechecked = (
+            f"{again['speedup']:.2f}x, {'significant' if again['significant'] else 'within noise'}"
+            if again
+            else ""
+        )
         lines.append(
             f"| `{result.label}` | {result.extra.get('backend', '?')} | "
             f"{result.extra.get('dispatch', '?')} | "
             f"{result.mlxlearn.median_s * 1e3:.2f} ({result.mlxlearn.iqr_s * 1e3:.2f}) | "
             f"{result.sklearn.median_s * 1e3:.2f} ({result.sklearn.iqr_s * 1e3:.2f}) | "
             f"{result.speedup:.2f}x | {result.speedup_best:.2f}x | "
-            f"{'yes' if result.significant else 'no'} |"
+            f"{'yes' if result.significant else 'no'} | {rechecked} |"
         )
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -535,9 +570,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(env, indent=2))
         return 0
 
+    from mlxlearn._common.config import get_tuning
+
     settings = PROFILE_SETTINGS.get(args.profile, {})
     layer = args.layer or settings.get("layer", "patched")
-    force_backend = args.force_backend or settings.get("force_backend")
+    # MLXLEARN_FORCE_BACKEND forces exactly as the flag does, so it is recorded as
+    # one: otherwise the gate would judge a forced kernel run as Tuning's decision.
+    force_backend = (
+        args.force_backend or settings.get("force_backend") or get_tuning().force_backend or None
+    )
     iterations = args.iterations or settings.get("iterations", 7)
 
     results = run_profile(
