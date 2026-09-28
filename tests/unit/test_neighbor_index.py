@@ -20,7 +20,7 @@ from mlxlearn._common.config import config_context, tuning_context
 from mlxlearn._common.device import gpu_available
 from mlxlearn._kernels import distance
 from mlxlearn._kernels.distance import NeighborIndex, build_index, resolve_blocks
-from mlxlearn.exceptions import DeviceError
+from mlxlearn.exceptions import DeviceError, UnsupportedInputError
 
 MiB = 1024 * 1024
 
@@ -220,6 +220,35 @@ def test_a_pickle_from_before_the_residual_still_loads(rng):
     old.__setstate__({"X": np.array(index.X), "center": index.center, "backend": "cpu"})
     for got, want in zip(old.query(Q, 3), index.query(Q, 3), strict=True):
         np.testing.assert_array_equal(got, want)
+
+
+# ----------------------------------------------------------------------------------
+# row limits
+# ----------------------------------------------------------------------------------
+
+
+def test_exact_search_keys_address_rows_past_int32():
+    """The exact search packs each training index into the low 32 bits of its key.
+
+    The indices were an ``arange`` starting at the tile's first row, which MLX 0.31
+    — the supported floor — rejects with a TypeError from row ``2**31`` on.
+    """
+    vals = mx.array([[1.0, 0.5, 2.0]], dtype=mx.float32)
+    for t_start in (0, 2**31 + 5, 2**32 - 3):
+        keys = np.asarray(distance._composite_keys(mx, vals, t_start))
+        np.testing.assert_array_equal(keys & 0xFFFFFFFF, [t_start + np.arange(3)])
+        values = (keys >> np.uint64(32)).astype(np.uint32).view(np.float32)
+        np.testing.assert_array_equal(values, [[1.0, 0.5, 2.0]])
+
+
+def test_more_rows_than_a_key_can_address_are_refused():
+    """Past ``2**32`` rows the index would come back truncated, and the distance
+    corrupted by its high bits: refused at fit instead, before anything is copied."""
+    X = np.lib.stride_tricks.as_strided(
+        np.zeros(1, np.float32), shape=(2**32 + 1, 1), strides=(0, 4)
+    )
+    with pytest.raises(UnsupportedInputError, match="rows"):
+        build_index(X, backend="cpu")
 
 
 # ----------------------------------------------------------------------------------

@@ -122,6 +122,9 @@ _RESOLVED_MARGIN = 2.0**20
 #: Training rows searched at fit for that check, spread evenly over the rows.
 _PROBE_ROWS = 64
 
+#: The exact search packs a training index into 32 bits of its sort key.
+_MAX_TRAIN_ROWS = 2**32
+
 
 @dataclass(frozen=True, slots=True)
 class BlockPlan:
@@ -968,9 +971,7 @@ class _Search:
                         sq = fns.pair_sq_lo(t, t_lo, q, q_lo, state.scale)
                     vals = mx.sum(sq, axis=2)
 
-                key = mx.left_shift(mx.view(vals, mx.uint32).astype(mx.uint64), 32) | mx.arange(
-                    t_start, t_end, dtype=mx.uint64
-                )[None, :]
+                key = _composite_keys(mx, vals, t_start)
                 take = min(k_search, t_end - t_start)
                 _, part = _select_smallest(mx, key, take, segmented=self.segmented)
                 if best is None:
@@ -988,6 +989,17 @@ class _Search:
         idx = (packed & np.uint64(0xFFFFFFFF)).astype(INDEX_DTYPE)
         sq = (packed >> np.uint64(32)).astype(np.uint32).view(NUMPY_FLOAT)
         return idx, sq
+
+
+def _composite_keys(mx, vals, t_start: int):
+    """``bits(vals) << 32 | index`` for a tile whose first column is row ``t_start``.
+
+    32 bits of index, which is why :func:`build_index` refuses ``2**32`` rows. The
+    indices are built from 0 and offset, because MLX 0.31's ``arange`` rejects a
+    start or stop of ``2**31`` or more.
+    """
+    index = mx.arange(int(vals.shape[1]), dtype=mx.uint64) + t_start
+    return mx.left_shift(mx.view(vals, mx.uint32).astype(mx.uint64), 32) | index[None, :]
 
 
 def _select_smallest(mx, vals, take: int, *, segmented: bool):
@@ -1297,6 +1309,12 @@ def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
     X = np.asarray(X)
     if X.ndim != 2:
         raise ValueError(f"X must be 2-dimensional; got shape {X.shape}.")
+    if X.shape[0] > _MAX_TRAIN_ROWS:
+        raise UnsupportedInputError(
+            f"The training data has {X.shape[0]} rows; the neighbor index addresses at "
+            f"most {_MAX_TRAIN_ROWS}.",
+            advice="Compute these neighbors with scikit-learn.",
+        )
     if X.dtype == NUMPY_FLOAT:
         hi = np.ascontiguousarray(X)
         lo = None
