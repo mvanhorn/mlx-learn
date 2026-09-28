@@ -411,19 +411,29 @@ def test_the_shrinking_path_is_pinned(case, cache_rows):
 
 
 @pytest.mark.parametrize(
-    "kernel, C", [("rbf", 0.1), ("rbf", 1.0), ("rbf", 10.0), ("poly", 1.0), ("linear", 0.1)]
+    "kernel, C, n",
+    [
+        # Small C converges fastest: at n = 1200 this case stopped at 791
+        # iterations, before the first shrinking pass, and never shrank.
+        ("rbf", 0.1, 2000),
+        ("rbf", 1.0, 1200),
+        ("rbf", 10.0, 1200),
+        ("poly", 1.0, 1200),
+        ("linear", 0.1, 1200),
+    ],
 )
-def test_shrinking_reaches_the_same_optimum(kernel, C, monkeypatch):
+def test_shrinking_reaches_the_same_optimum(kernel, C, n, monkeypatch):
     """LIBSVM's shrinking is a speed heuristic; the optimum must not move.
 
-    Per-sample boxes stand in for sample and class weights. n is above the
-    1000-iteration shrinking period, so samples really are set aside. The path
-    itself may change — a set-aside sample can become a violator again before
-    the next reconstruction, and then the two solvers select differently, as
-    LIBSVM's do — so the models are compared at the float32-policy tolerance and
-    the optimum on the objective and the KKT conditions.
+    Per-sample boxes stand in for sample and class weights. Every case runs past
+    the first shrinking pass, which comes after ``min(n, 1000)`` iterations, and
+    fails if nothing was set aside. The path itself may change — a set-aside
+    sample can become a violator again before the next reconstruction, and then
+    the two solvers select differently, as LIBSVM's do — so the models are
+    compared at the float32-policy tolerance and the optimum on the objective and
+    the KKT conditions.
     """
-    _, y, K32 = _problem(n=1200, d=10, seed=8, kernel=kernel, flip_y=0.1)
+    _, y, K32 = _problem(n=n, d=10, seed=8, kernel=kernel, flip_y=0.1)
     K64 = K32.astype(np.float64)
     Cs = C * np.random.default_rng(1).uniform(0.5, 2.0, y.shape[0])
 
@@ -449,8 +459,9 @@ def test_shrinking_reaches_the_same_optimum(kernel, C, monkeypatch):
         atol=2e-2,
         rtol=5e-3,
     )
-    if plain.n_iter > 1000:  # past the first shrinking pass
-        assert sum(set_aside) > 0, "nothing was ever shrunk; the test exercised nothing"
+    assert sum(set_aside) > 0, (
+        f"nothing was set aside in {shrunk.n_iter} iterations; the case tests nothing"
+    )
 
 
 def test_shrinking_keeps_the_path_when_nothing_ties():
