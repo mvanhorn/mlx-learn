@@ -140,9 +140,11 @@ def _binary_cases():
         for kernel in NONLINEAR:
             for backend in BACKENDS:
                 yield pytest.param(kernel, C, backend, id=f"{kernel}-{C}-{backend}")
-        # ~50 s: 2.1M SMO iterations of a rank-deficient dual. It is the case the
-        # decision tolerance above was calibrated on, so it stays, but only in the
-        # slow run; the fast primal case below covers C=10 linear on small data.
+        # ~50 s: 3.7M SMO iterations of a rank-deficient dual. Shrinking, the
+        # default, needs 1.6M more than the plain loop here, but runs them over
+        # the active set only, in about the same time. It is the case the decision
+        # tolerance above was calibrated on, so it stays, but only in the slow
+        # run; the fast primal case below covers C=10 linear on small data.
         marks = [pytest.mark.slow] if C == 10.0 else []
         yield pytest.param("linear", C, "cpu", id=f"linear-{C}-cpu", marks=marks)
 
@@ -281,7 +283,7 @@ def test_primal_objective_parity(binary_fits, C):
     stopping rule measures dual violation.
 
     The primal objective is what both solvers are actually minimizing, and it
-    agrees to 5.2e-07 relative (worst 5.9e-06 at C=10). Comparing decision values
+    agrees to 5.2e-07 relative (worst 6.2e-06 at C=10). Comparing decision values
     alone would report a problem that the objective shows does not exist.
     """
     X, y, mlx, ref = binary_fits("linear", C)
@@ -289,11 +291,12 @@ def test_primal_objective_parity(binary_fits, C):
 
 
 def test_primal_objective_parity_at_large_C_on_small_data():
-    """C=10 linear in under a second, so the fast suite still covers it.
+    """C=10 linear in about a second, so the fast suite still covers it.
 
-    600 × 8 at seed 11 needs 52k SMO iterations — a real workout of the flat dual
-    — against 2.1M for the 2000 × 20 calibration set. Measured: primal relative
-    difference 1.4e-07, decision values within 7.7e-04, identical support counts.
+    600 × 8 at seed 11 needs 81k SMO iterations with the default shrinking — a
+    real workout of the flat dual — against 3.7M for the 2000 × 20 calibration
+    set. Measured: primal relative difference 1.1e-06, decision values within
+    1.4e-03, identical support counts.
     """
     X, y = _data(n_samples=600, n_features=8, seed=11)
     mlx = SVC(kernel="linear", C=10.0).fit(X, y)
