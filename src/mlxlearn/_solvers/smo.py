@@ -185,7 +185,7 @@ class _RowCache:
 
     That second half is not obviously a good idea, and was measured rather than
     assumed: at 12 000–20 000 samples, where the default cache fills early, it cut
-    single-row misses about fourfold and fits 1.2–1.9×, and *re*-fetches of
+    single-row misses about fourfold and sped fits up 1.2–1.9×, and *re*-fetches of
     evicted rows fell (900 → 141 at 16 000 × 64) rather than rose — the rows
     about to be needed are the near-violators, and the rows evicted for them had
     gone longest unused.

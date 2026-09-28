@@ -8,12 +8,12 @@ plain-data objects.
 
 Three things this module is responsible for.
 
-**Never requiring a full Gram.** :class:`KernelRows` answers "give me row ``i``"
-from device-resident training data, and :func:`kernel_combine` folds
-``K(A, B) @ W`` block by block. The dense ``n × n`` matrix is materialized only
-when a caller explicitly asks for it via :func:`kernel_matrix`, which is what an
-SMO fit does when — and only when — its row-cache budget already permits holding
-every row.
+**Never requiring a full Gram.** :class:`KernelRows` answers "give me rows
+``i, j, …``" from device-resident training data, in one round trip, and
+:func:`kernel_combine` folds ``K(A, B) @ W`` block by block. The dense ``n × n``
+matrix is materialized only when a caller explicitly asks for it via
+:func:`kernel_matrix`, which is what an SMO fit does when — and only when — its
+row-cache budget already permits holding every row.
 
 **Exactness under float32.** The squared distance inside the RBF kernel comes from
 the expanded identity ``‖a‖² + ‖b‖² − 2⟨a, b⟩``, which is hostile in float32 for
@@ -596,8 +596,9 @@ class KernelRows:
         """Further rows worth fetching alongside a cache miss, on this device.
 
         ``32`` on the GPU, where a call costs a round trip however many rows it
-        carries: prefetching the near-violators this way measured 1.5–2.4× on SVC
-        fits of 8 000–20 000 rows. ``0`` on the CPU device, where a batched row
+        carries: prefetching the near-violators this way measured 1.5–2.4× on rbf
+        SVC fits of 8 000–16 000 rows (1.0× at 32 000, where the solver's own
+        per-iteration arithmetic dominates instead). ``0`` on the CPU device, where a batched row
         costs a third of a lone one rather than a twentieth: prefetching 32 rows
         measured 0.82–0.87× there, and 8 rows 1.02–1.03×, which does not buy
         the batch-dependent last bits that mixing :meth:`row` and :meth:`rows`
