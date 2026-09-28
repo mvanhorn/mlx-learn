@@ -76,7 +76,15 @@ SVC()                           # still the stock class
 ```
 
 That is Python name binding, not a bug in mlxlearn. **The supported pattern is patch-first.**
-`patch_sklearn()` is idempotent, and `unpatch_sklearn()` fully restores scikit-learn.
+`patch_sklearn()` is idempotent, and `unpatch_sklearn()` restores every scikit-learn module
+attribute mlxlearn changed.
+
+Only the public names are patched. scikit-learn's own users of them — `DBSCAN`, `OPTICS`,
+`TSNE`, `Isomap`, `mutual_info_classif`, `StackingClassifier` and the like — keep the stock
+classes whatever the import order: those algorithms have not been through mlxlearn's gates,
+and some depend on float64-exact distances. Names bound *outside* scikit-learn while patched
+(your own `from sklearn.svm import SVC`, or another library doing the same) are ordinary
+bindings and keep the mlxlearn class after `unpatch_sklearn()`.
 
 ## When mlxlearn falls back
 
