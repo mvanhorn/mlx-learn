@@ -229,6 +229,26 @@ def test_reference_objective_matches_an_independent_formula():
             assert ours == pytest.approx(theirs / (C * sw_sum), rel=1e-12)
 
 
+def test_the_preconditioner_leaves_ordinary_scales_alone():
+    """Exactly the identity within 4⁴ of the intercept's curvature, shrunk beyond it.
+
+    Standardized and ordinarily scaled data must see the unpreconditioned solver —
+    the pinned iteration counts in tests/unit/test_lbfgs.py depend on it — and a
+    column that could not be measured must not poison the rest.
+    """
+    from mlxlearn._solvers.logistic import _preconditioner
+
+    scale = np.array([0.1, 1.0, 20.0, 2.0**10, 2.0**-10, np.inf, 0.0])
+    D = _preconditioner(scale, 0.0, 2, True)
+    assert D.shape == (2, 8)
+    np.testing.assert_array_equal(D[:, :3], 1.0)
+    assert D[0, 3] == 4.0 ** -(10 - 4)
+    assert D[0, 4] == 4.0 ** (10 - 4)
+    np.testing.assert_array_equal(D[:, 5:], 1.0)  # unmeasurable, constant, intercept
+    # The penalty's own curvature bounds a tiny column's from below.
+    assert _preconditioner(np.array([2.0**-10]), 0.25, 1, False)[0, 0] == 1.0
+
+
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
 @pytest.mark.parametrize("weighted", [False, True])
 @pytest.mark.parametrize("fit_intercept", [True, False])

@@ -416,8 +416,10 @@ def _preconditioner(scale: np.ndarray, l2: float, n_targets: int, fit_intercept:
     """
     curvature = scale * scale + 4.0 * l2
     exponents = np.zeros_like(curvature)
-    positive = curvature > 0.0
-    exponents[positive] = np.round(0.5 * np.log2(curvature[positive]))
+    # A column that overflowed float32 when centered has no usable scale; its
+    # objective is not finite either, and the solver reports that.
+    usable = np.isfinite(curvature) & (curvature > 0.0)
+    exponents[usable] = np.round(0.5 * np.log2(curvature[usable]))
     exponents = np.sign(exponents) * np.maximum(np.abs(exponents) - _PRECONDITION_DEADBAND, 0.0)
     weights = np.ldexp(1.0, (-2 * exponents).astype(np.int64))
     if fit_intercept:

@@ -35,8 +35,9 @@ Where the work happens
 The objective and its gradient — the ``O(n·d)`` part — are MLX, in float32, on
 whatever device the caller chose. **Everything else is NumPy float64 on the host**:
 the two-loop recursion, every inner product, the curvature test, ``max|g|``. The
-parameter vector is ``n_targets × (n_features + 1)`` floats, so moving it costs
-nothing, while keeping that bookkeeping in MLX cost a blocking device round trip
+parameter vector is small next to the data — ``n_targets × (n_features + 1)``
+floats for a logistic regression — so moving it costs nothing, while keeping that
+bookkeeping in MLX cost a blocking device round trip
 (~120 µs on the GPU) for *every* inner product: ``2m + 1`` of them in the two-loop
 recursion alone, and 12 to 33 per iteration in total. The line search averages
 about 1.1 evaluations per iteration, so those scalar reads, not the line search,
