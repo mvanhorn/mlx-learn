@@ -18,7 +18,15 @@ handoff overhead of all three. They are re-measured on fixed hardware before the
 release, and the thresholds with them.
 
 <!-- perf-phase: re-measure every table and crossover; knn_tree_density, knn_min_work and
-the logreg thresholds were flagged for re-measurement by the groups that changed them. -->
+the logreg thresholds were flagged for re-measurement by the groups that changed them.
+Integration smoke run (shared M4 Max, 7 iterations): the gate flagged knn/kneighbors
+1000x32 and 8000x32 at q=256 (0.77x, 0.67x) and logreg/fit 20000x1024 (0.46x) on the MLX
+path. The KNN flags are the harness's interleaving: the GPU idles while the stock call
+runs, and 0.1.0a2 measures the same way (0.64-0.76x at 8000x32 interleaved; both trees
+are ~2.5x stock back to back). logreg 20000x1024 is 1.8x faster than 0.1.0a2 but still
+~0.5x stock on this easy data (10 iterations), so logreg_min_samples/logreg_min_work send
+it to MLX too early. Handoff flags there (logreg 5000x32, knn 50000x3, 0.82x) did not
+reproduce at 41-101 interleaved reps (1.02-1.05x). -->
 
 ## Method
 
