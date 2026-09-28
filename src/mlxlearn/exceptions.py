@@ -210,3 +210,18 @@ class MLXLearnPatchWarning(UserWarning):
     implementation, or the attribute being replaced is not the object mlxlearn
     recorded when it patched.
     """
+
+
+class InvalidInputError(MLXLearnError, ValueError):
+    """The input is invalid — scikit-learn would reject it too.
+
+    Not a capability mismatch: falling back cannot help, so patched mode raises
+    it like any other bad input. It exists so that a deliberate input error
+    raised from inside an MLX-guarded block is told apart from an MLX-internal
+    ``ValueError``, which :func:`~mlxlearn._common.base.mlx_guard` reports as a
+    :class:`BackendExecutionError`. A ``ValueError`` subclass, so code written
+    against scikit-learn's error contract keeps working.
+    """
+
+
+__all__ += ["InvalidInputError"]

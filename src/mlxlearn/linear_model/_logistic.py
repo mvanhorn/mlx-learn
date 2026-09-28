@@ -319,7 +319,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         _check_classification_target(y_checked)
 
         below, detail = self._below_crossover(*X_checked.shape)
-        if below and backend != "cpu":
+        if below:
             backend = self._select_backend(
                 "fit",
                 below_crossover=True,

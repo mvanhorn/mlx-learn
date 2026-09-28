@@ -183,7 +183,7 @@ class MLXNeighborsMixin(BackendMixin):
         check_finite_float32(X_checked)
 
         below, detail = self._below_crossover(*X_checked.shape)
-        if below and backend != "cpu":
+        if below:
             backend = self._select_backend(
                 "fit", below_crossover=True, crossover_detail=detail,
                 shape=X_checked.shape,
