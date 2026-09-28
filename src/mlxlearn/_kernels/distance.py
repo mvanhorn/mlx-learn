@@ -77,7 +77,9 @@ _SELECT_SEGMENT_MAX = 8192
 #: each cost a tile, and a full-row GPU ``argpartition`` — still used when ``k`` is
 #: too large for segmented selection — allocates five more. Measured with
 #: ``mx.get_peak_memory``: the unfactored budget peaked at 7.0× (7.2 GB against
-#: 1 GiB); with this factor, 0.2-0.6 GB. Query time was flat across factors 1-7.
+#: 1 GiB); with this factor, 0.2-0.6 GB. Query time was flat across factors 1-7. The
+#: CPU evaluates the tile expression unfused, a tile or two more, which the GPU's
+#: argpartition share covers there.
 _TILE_WORKSET_FACTOR = 7
 
 #: Peak device memory per byte of the ``(rows, k_carry, n_features)`` refinement
@@ -226,15 +228,19 @@ def _compute_device(backend: str) -> str:
     return inference_device(backend)
 
 
-@functools.lru_cache(maxsize=1)
-def _kernels() -> SimpleNamespace:
-    """The fused elementwise pieces, compiled once per process.
+@functools.lru_cache(maxsize=2)
+def _kernels(device: str) -> SimpleNamespace:
+    """The elementwise pieces for ``device``: fused on the GPU, eager on the CPU.
 
-    ``mx.compile`` fuses each expression into one kernel, so the tile costs one
-    temporary where the unfused expression cost four, and the refinement difference
-    one where it cost three. Compiled functions are cached by MLX on input shape and
-    stream only — never on data — and are built lazily so that importing mlxlearn
-    does not import MLX.
+    On the GPU ``mx.compile`` fuses each expression into one kernel, so the tile
+    costs one temporary where the unfused expression cost four, and the refinement
+    difference one where it cost three. On MLX's CPU device the compiled graphs ran
+    no faster, and each one shells out to a C compiler once per MLX version and
+    ``$TMPDIR``: a 200-row fit and predict took 3-4 s on a fresh machine, against
+    0.1 s eager. So the CPU evaluates the same expressions eagerly, as
+    ``kernels._tile_transform`` does for the rbf tile; the answers are identical.
+    Compiled functions are cached by MLX on input shape and stream only — never on
+    data — and are built lazily so that importing mlxlearn does not import MLX.
     """
     import mlx.core as mx
 
@@ -256,13 +262,16 @@ def _kernels() -> SimpleNamespace:
         diff = ((t - q) + (t_lo - q_lo)) * scale
         return diff * diff
 
-    return SimpleNamespace(
-        center_scale=mx.compile(center_scale),
-        center_scale_lo=mx.compile(center_scale_lo),
-        tile=mx.compile(tile),
-        pair_sq=mx.compile(pair_sq),
-        pair_sq_lo=mx.compile(pair_sq_lo),
-    )
+    fns = {
+        "center_scale": center_scale,
+        "center_scale_lo": center_scale_lo,
+        "tile": tile,
+        "pair_sq": pair_sq,
+        "pair_sq_lo": pair_sq_lo,
+    }
+    if device == "gpu":
+        fns = {name: mx.compile(fn) for name, fn in fns.items()}
+    return SimpleNamespace(**fns)
 
 
 def _gamma(n: int) -> float:
@@ -585,6 +594,7 @@ class NeighborIndex:
             k_search=k_search,
             k_carry=k_carry,
             segmented=device == "gpu",
+            fns=_kernels(device),
             plan_backend=plan_backend,
             train_block_size=train_block_size,
             counts={"rows": n_query, "widened_rows": 0, "exact_rows": 0},
@@ -617,6 +627,7 @@ class _Search:
     k_search: int
     k_carry: int
     segmented: bool
+    fns: SimpleNamespace  # _kernels() for the device the search runs on
     plan_backend: str  # "mlx" or "cpu": whose memory budget the blocks follow
     train_block_size: int | None
     counts: dict
@@ -626,7 +637,7 @@ class _Search:
     def query_block(self, Q, start: int, end: int, *, self_query: bool) -> _QueryBlock:
         """Prepare rows ``start:end`` of the query in every representation needed."""
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
 
         if self_query:
             # The training rows themselves: already on the device, already
@@ -756,7 +767,7 @@ class _Search:
         builds on.
         """
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
         n_train = self.index.n_samples
         best_idx = None
         best_val = None
@@ -794,7 +805,7 @@ class _Search:
         taken to nearly double precision before it is squared.
         """
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
         n_rows, k_carry = (int(s) for s in cand_idx.shape)
 
         # The gather is (rows, k_carry, n_features): with a large k on wide data it
@@ -920,7 +931,7 @@ class _Search:
         :meth:`refine`'s, or by ``4**int_shift`` when ``integer``.
         """
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
         n_train = self.index.n_samples
         d = self.index.n_features
         k_search = self.k_search
@@ -1179,9 +1190,10 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
     """
     import mlx.core as mx
 
-    fns = _kernels()
+    device = _compute_device(backend)
+    fns = _kernels(device)
     n, d = (int(s) for s in X.shape)
-    with use_device(_compute_device(backend)):
+    with use_device(device):
         # mx.array copies. This is the index's one private copy of the training
         # rows; nothing below allocates another.
         raw = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT))

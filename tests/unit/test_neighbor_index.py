@@ -193,6 +193,34 @@ def test_a_gpu_built_index_runs_on_the_cpu_where_there_is_no_gpu(rng, monkeypatc
         pickle.loads(payload).query(Q, 5)
 
 
+def test_the_cpu_device_does_not_compile(rng, monkeypatch):
+    """Only the GPU fuses the elementwise pieces.
+
+    On MLX's CPU each compiled graph shells out to a C compiler, once per MLX
+    version and ``$TMPDIR``, and runs no faster: a 200-row fit and predict — the
+    Layer 1 path for every problem below the crossover — took 3-4 s on a fresh
+    machine, against 0.1 s for 0.1.0a2.
+    """
+    compiled = []
+    real_compile = mx.compile
+
+    def recording_compile(fn, *args, **kwargs):
+        compiled.append(fn.__name__)
+        return real_compile(fn, *args, **kwargs)
+
+    monkeypatch.setattr(mx, "compile", recording_compile)
+    distance._kernels.cache_clear()
+    try:
+        X = rng.normal(size=(200, 5))
+        for data in (X.astype(np.float32), X):  # the float64 residual path too
+            index = build_index(data, backend="cpu")
+            index.query(data[:7] + 0.1, 3)
+            index.query(index.X, 3, exclude_self=True)
+    finally:
+        distance._kernels.cache_clear()
+    assert compiled == []
+
+
 # ----------------------------------------------------------------------------------
 # pickling
 # ----------------------------------------------------------------------------------
