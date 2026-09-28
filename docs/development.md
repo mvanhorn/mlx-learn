@@ -107,10 +107,13 @@ def predict(self, X):
     ...                                                # _note_inference where the work is routed
 ```
 
-`BackendMixin` wraps every public inference method a subclass defines (`predict`,
-`predict_proba`, `decision_function`, `kneighbors`, `score`, …), so one public call
-records one event, named after the method the caller invoked, however many of the others
-it reaches internally.
+`BackendMixin` wraps every public inference method a subclass defines or inherits as a
+plain function (`predict`, `predict_proba`, `decision_function`, `kneighbors`, and
+scikit-learn's own `score`, `kneighbors_graph`, `radius_neighbors_graph`, …), so one
+public call records one event, named after the method the caller invoked, however many of
+the others it reaches internally. `available_if` descriptors are left alone. An inference
+path that records something other than a sticky event — a fallback at inference — claims
+the call's one event with `_claim_call_event`.
 
 Inference never re-decides the backend. That is the sticky invariant, and it is what stops
 an MLX-fitted model from wandering into scikit-learn's inference path holding state that
@@ -119,7 +122,10 @@ neighbor estimator fitted on MLX is answered by scikit-learn's brute-force searc
 reads the fitted state the MLX path populates for it (`_fit_X`, `_fit_method="brute"`,
 `effective_metric_`), and is recorded as a fallback. A GPU-fitted model running on MLX's
 CPU in a process without a GPU (`inference_device`) is not a carve-out: it is the same
-code on another MLX device.
+code on another MLX device, recorded as `"gpu-unavailable"`. Inference that is host code
+on the fitted state (`LogisticRegression`'s, `NearestNeighbors.radius_neighbors`) uses no
+device: `_note_inference(..., host=True)` records it as `"sticky"` and resolves no device,
+so `device="gpu"` has nothing to refuse.
 
 Wrap every MLX block in `mlx_guard(...)` so an unexpected failure becomes
 `BackendExecutionError` rather than a silent fallback.
@@ -142,10 +148,13 @@ Wrap every MLX block in `mlx_guard(...)` so an unexpected failure becomes
    different places on an ill-conditioned problem, so a coefficient-only test fails for a
    correct implementation and passes for a subtly wrong one. `tests/parity/`.
 4. Precise errors on the Layer 1 path; recorded fallbacks on the Layer 2 path — exactly one
-   fit event per fit, matching `execution_backend_`, and one event per public inference
-   call (`tests/unit/test_runtime.py`).
+   fit event per fit, matching `execution_backend_` and `fit_event_`, and one event per
+   public inference call, named after it (`tests/unit/test_runtime.py`, and
+   `tests/unit/test_event_invariants.py` over every fit path of every estimator in both
+   layers).
 5. Sticky-backend tests: inference reuses whatever `fit` chose
-   (`tests/unit/test_gates.py`).
+   (`tests/unit/test_gates.py`; `tests/unit/test_event_invariants.py` for the event each
+   inference call records, GPU-less hosts included).
 6. A benchmark entry in `benchmarks/run.py` with a measured crossover wired into
    `_common/config.py`'s `Tuning`.
 
@@ -176,7 +185,15 @@ inside a guarded block is therefore an `InvalidInputError`, which is a `ValueErr
 scikit-learn-facing behavior is unchanged. A capability limit discovered there is a
 `CapabilityError` as usual, but `_select_backend` has already returned, so nothing turns
 it into a fallback: find it before, or route it through `_handle_capability_error` by
-hand, as `SVC` does for its data-dependent limits.
+hand, as `SVC` does for its data-dependent limits and the neighbor estimators for a
+training span their index cannot hold.
+
+**No `patch_sklearn()` advice in a capability message.** A `CapabilityError`'s message says
+what cannot be served; the remedy for a directly imported estimator ("run under
+`patch_sklearn()`", "compute these with scikit-learn") goes in `advice=`. Layer 1 raises
+both; a patched estimator, already under `patch_sklearn()`, warns and records `.summary`
+followed by what it did. An error at inference, where neither layer can fall back, advises
+no fallback.
 
 **No unevaluated `mx.array` on shared state.** MLX is lazy: an `mx.array` is a graph until
 something evaluates it. One published on an estimator or an index that other threads read

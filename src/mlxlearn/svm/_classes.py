@@ -420,8 +420,9 @@ class MLXSVCMixin(BackendMixin):
         being float32 exactly as LIBSVM caches them.
 
         Only the *ceiling* comes from tuning. A user who asks for a small cache
-        gets a small cache — the cache is a pure performance knob, so honoring the
-        request costs nothing but time, whereas quietly overriding it downward
+        gets a small cache — the cache is a performance knob (bit-identical on the
+        GPU, KKT-optimal either way on MLX's CPU; see ``cache_size``), so honoring the
+        request costs little but time, whereas quietly overriding it downward
         would mean ``cache_size`` had no observable effect at all and upward would
         mean a request for 32 GiB on an 8 GB laptop got granted.
         """

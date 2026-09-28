@@ -206,10 +206,13 @@ class Tuning:
     knn_tree_density: int = 512
     #
     # Logistic regression is the opposite story, and the thresholds are high on
-    # purpose. Its L-BFGS matches scikit-learn's iteration count but pays a host
-    # synchronization per line-search evaluation, so an iteration costs ~5.9 ms
-    # where its matmul costs 163 us. Measured 0.02x-0.11x below 60 000 x 128, and
-    # 1.26x-1.34x only at 1024 features. Both conditions must be met (see
+    # purpose. Measured for 0.1.0a2: 0.02x-0.11x below 60 000 x 128, and
+    # 1.26x-1.34x only at 1024 features, with scikit-learn's iteration count but
+    # ~5.9 ms an iteration where its matmul costs 163 us. The cause was 12-33
+    # blocking host synchronizations per iteration in the L-BFGS bookkeeping, not
+    # the line search. That bookkeeping now runs in float64 on the host, one
+    # synchronization per objective evaluation, so these values are conservative
+    # until they are re-measured. Both conditions must be met (see
     # LogisticRegression._below_crossover) rather than either.
     logreg_min_samples: int = 20_000
     logreg_min_work: int = 20_000_000  # n_samples * n_features

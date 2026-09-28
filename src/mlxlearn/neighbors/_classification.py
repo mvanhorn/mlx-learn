@@ -50,9 +50,14 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
 
     Notes
     -----
-    Ties are resolved exactly as scikit-learn resolves them: neighbors are ordered
-    by ``(distance, training index)``, and a tied vote goes to the smallest class
-    code, i.e. the class that sorts first in ``classes_``.
+    Neighbors are the first ``k`` training rows under ``(distance, training
+    index)``, a total order over the whole training set, so rows tied at the
+    k-th distance are decided by index. scikit-learn defines no order among
+    exactly equal distances and keeps an arbitrary subset of such rows, so on
+    tie-heavy data a vote can legitimately differ from its vote; this one is
+    reproducible (``docs/fp32_policy.md`` section 3.1). A vote tied between
+    classes goes to the class that sorts first in ``classes_``, as in
+    scikit-learn.
 
     ``weights="distance"`` gives a query that coincides exactly with training
     points all of its weight on those points, matching scikit-learn, rather than

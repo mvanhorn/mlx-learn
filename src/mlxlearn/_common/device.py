@@ -20,9 +20,11 @@ The rules this module enforces:
   concurrently, a block that needs the other device waits until they finish,
   and the application's default device is restored when the last block exits.
   Other MLX code running concurrently in the same process, outside mlxlearn, can
-  still observe the temporary default. Passing ``stream=`` to every operation is
-  the complete fix and the direction of travel; :func:`use_device` yields the
-  stream for that purpose.
+  still observe the temporary default. Passing ``stream=`` to every operation
+  would be the complete fix, and :func:`use_device` yields the stream for that
+  purpose, but it is not reachable yet: as of MLX 0.32, array indexing and
+  slicing, ``.T`` and ``mx.compile``'d functions take no ``stream=``, and
+  ``with mx.stream(...)`` in one thread changes another thread's default device.
 * A process forked after MLX or scikit-learn was loaded cannot use MLX: Metal and
   the Objective-C runtime are not fork-safe, and the child dies with a signal on
   its first MLX operation, even on the CPU. mlxlearn raises

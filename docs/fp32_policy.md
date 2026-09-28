@@ -72,7 +72,9 @@ estimators that is visible only where a near-tie is decided (§3.1). A
 model is served on the device it was fitted on, with one exception that re-decides
 nothing: a GPU-fitted model loaded in a process with no usable GPU runs the same code on
 MLX's CPU under `device="auto"` or `"cpu"`, recorded in diagnostics as
-`"gpu-unavailable"`; under `device="gpu"` it raises `DeviceError`.
+`"gpu-unavailable"`; under `device="gpu"` it raises `DeviceError`. Inference that is host
+code on the fitted state — `LogisticRegression`'s float64 predictions, `radius_neighbors`
+on an MLX-fitted `NearestNeighbors` — uses no device, and is unaffected.
 
 ## 2. Where float32 actually costs accuracy
 
@@ -132,6 +134,12 @@ for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for 
 and 1000, which needs the exact search for every query. Binary and small-integer data got
 *faster*, because it no longer goes through the identity at all. When a call needed the
 wider pass or the exact search, its diagnostics event says for how many rows.
+
+What scaling cannot bring into range is refused (§1): refinement subtracts two translated
+coordinates in float32, so training data spanning more than `FLOAT32_MAX / 8` (about
+4.3e37) from its mean is a capability mismatch at `fit` — an `UnsupportedInputError`
+directly imported, a fallback to scikit-learn under `patch_sklearn()` — and a query too far
+from the training data for the scale chosen at `fit` is an error at inference.
 
 **What remains.** Exact means exact with respect to the refined float32 distances. Two
 training rows whose true distances from a query differ by less than float32 can resolve
@@ -200,16 +208,21 @@ heuristic: samples pinned at a bound are set aside between gradient reconstructi
 optimum and the stopping test are unchanged — the test is evaluated over every sample
 before the solver may stop — but, as in LIBSVM, the path to the optimum can change, and
 with it where inside `tol` the solver stops. Measured: decisions and iteration counts
-bit-identical with and without it on eleven benchmarked rbf fits, and on the linear kernel
-a largest `|Δα|` of 7e-4 with the objective identical to 1e-6. The tolerances in §3 hold
-either way.
+bit-identical with and without it on eleven benchmarked rbf fits, and rbf and poly fits
+through `SVC` bit-identical too. The linear kernel is where the path moves, as it does in
+LIBSVM: at 2 000 × 20 the decision values moved by up to 5.9e-3 at `C=10` and 1.4e-3 at
+`C=1`, with the same labels and the same number of support vectors, and a solver-level
+comparison found a largest `|Δα|` of 7e-4 with the objective identical to 1e-6. The
+tolerances in §3 hold either way.
 
 **`cache_size`.** When the row cache can hold a whole one-vs-one subproblem, its Gram is
 built in one blocked matmul; otherwise rows are evaluated on demand. On the GPU the two
 produce bit-identical rows, so crossing that boundary does not change the fit there
-(measured, a property of MLX's matmul rather than a promise). On MLX's CPU device they
-accumulate in different orders and the decision values differ by about 1e-3, inside the
-§3 tolerance; scikit-learn is bit-identical across `cache_size`.
+(measured on all four kernels at 2 000 × 10, a property of MLX's matmul rather than a
+promise). On MLX's CPU device they accumulate in different orders: the same comparison
+moved the decision values by up to 2.2e-3 and changed the iteration count, both fits
+KKT-optimal and inside the §3 tolerance. scikit-learn is bit-identical across
+`cache_size`; pin it for bit-reproducible fits on MLX's CPU.
 
 ## 3. Tolerances the test suite uses
 
@@ -373,7 +386,9 @@ it — and any input that arrives as float32. `radius_neighbors` and
 `radius_neighbors_graph` on an MLX-fitted `NearestNeighbors` are scikit-learn's own code
 run on the fitted state: they compute against the index's float32 training copy, without
 its residual, with the query cast to float32 to match. That is what keeps them at stock
-speed, and it gives them the float32 rounding of the training data described here.
+speed, and it gives them the float32 rounding of the training data described here. A
+float64 query float32 cannot hold is therefore an `UnsupportedInputError`, as it is for
+`kneighbors`.
 
 The rule this yields: mlxlearn's accuracy claims are relative to the float32 representation
 of the input after its exact float64 translation and scaling — for float32 input, the input
@@ -393,8 +408,9 @@ different tags and a tag that lies is worse than a missing feature.
 of the two layers, each run twice — at the default configuration, and again with the MLX
 GPU path forced, because the check data is smaller than every crossover and would
 otherwise never meet MLX-fitted state behind the wide Layer 2 tags.
-`check_param_validation`, which `check_estimator` does not run, is run separately in both
-layers with mlxlearn's own `fit` path forced.
+`check_param_validation`, which `check_estimator` does not run, is run separately for every
+estimator in both layers, at the default configuration and with mlxlearn's own `fit` path
+forced.
 
 Two kinds of exemption exist and are kept strictly apart in
 `tests/test_sklearn_compliance.py`:

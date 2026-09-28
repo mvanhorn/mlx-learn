@@ -102,10 +102,12 @@ parameter, a value float32 cannot hold), never to hide a bug:
 | Unexpected MLX runtime failure | `BackendExecutionError` | **`BackendExecutionError`** — never silently rerun on scikit-learn |
 
 Every error mlxlearn raises on purpose is an `MLXLearnError`, and the classes above are
-all importable from `mlxlearn`. The input errors are also `ValueError`s
-(`SparseInputError` a `TypeError`, as scikit-learn raises for sparse input), so code
-written against scikit-learn's error contract keeps working, and all of them survive
-pickling, so a failure in a `joblib` worker arrives intact rather than as a
+all importable from `mlxlearn`. A `CapabilityError` keeps the mismatch (`.summary`) apart
+from the remedy for a directly imported estimator (`.advice`); a patched estimator's
+warning reports the mismatch and what it did about it. The input errors are also
+`ValueError`s (`SparseInputError` a `TypeError`, as scikit-learn raises for sparse
+input), so code written against scikit-learn's error contract keeps working, and all of
+them survive pickling, so a failure in a `joblib` worker arrives intact rather than as a
 `BrokenProcessPool`. Inference on an estimator whose last `fit` did not complete raises
 scikit-learn's `NotFittedError`.
 
@@ -120,6 +122,7 @@ with mlxlearn.config_context(fallback_policy="raise"):
 
 mlxlearn.get_last_backend_event()           # what the last fit/predict actually did
 mlxlearn.get_backend_diagnostics()          # the recent record, this process (a ring buffer)
+mlxlearn.reset_fallback_warnings()          # warn again for reasons already warned about
 ```
 
 **Sticky backend.** The backend is chosen during `fit` and exposed as
@@ -138,7 +141,11 @@ Under `patch_sklearn()`, a sparse query to a neighbor estimator fitted on MLX is
 by scikit-learn's brute-force search, which reads the MLX-fitted state directly; it is
 recorded, and warned about, as a fallback. And a model fitted on the MLX GPU, then loaded
 in a process with no usable GPU, runs the same float32 code on MLX's CPU, recorded as
-`"gpu-unavailable"` — unless `device="gpu"` is set, which raises `DeviceError`.
+`"gpu-unavailable"` — unless `device="gpu"` is set, which raises `DeviceError`. Inference
+that never touches a device is unaffected by either: `LogisticRegression` predicts with
+scikit-learn's float64 NumPy code on every backend, and `radius_neighbors` on an
+MLX-fitted `NearestNeighbors` is scikit-learn's own search on the fitted state, so both
+record `"sticky"` and run under `device="gpu"` on any host.
 
 ## Configuration
 

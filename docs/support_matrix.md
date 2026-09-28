@@ -107,7 +107,7 @@ sparse) and for float64 values beyond float32's range
 
 | Estimator | Since | Accelerated path | Falls back for |
 |---|---|---|---|
-| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force search, `metric` in `euclidean`, `l2`, `sqeuclidean`, or `minkowski` at `p=2`; `metric_params={"p": ...}` resolved as scikit-learn resolves it | any other metric, including `minkowski` at `p != 2`; `algorithm="kd_tree"`/`"ball_tree"`; `metric_params` other than Minkowski's `p` (a weight vector `w`, another metric's parameters); a prebuilt `KDTree`, `BallTree` or fitted estimator passed as `X` |
+| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force search, `metric` in `euclidean`, `l2`, `sqeuclidean`, or `minkowski` at `p=2`; `metric_params={"p": ...}` resolved as scikit-learn resolves it | any other metric, including `minkowski` at `p != 2`; `algorithm="kd_tree"`/`"ball_tree"`; `metric_params` other than Minkowski's `p` (a weight vector `w`, another metric's parameters); a prebuilt `KDTree`, `BallTree` or fitted estimator passed as `X`; training data spanning more than `FLOAT32_MAX / 8` from its mean |
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output | as above, plus callable `weights` |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output | as above, plus callable `weights` |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized, binary and multinomial; scikit-learn 1.9 callbacks (`set_callbacks`) are driven on this path | `l1`/`elasticnet` however spelled; non-`lbfgs` solvers; `dual=True`; `warm_start=True`; `multi_class` other than `"deprecated"`/`"auto"` (1.7 only); `intercept_scaling != 1` with `fit_intercept=True`; multi-label or multi-output `y`; negative `sample_weight`; under `patch_sklearn()` on scikit-learn 1.9, `array_api_dispatch=True` |
@@ -130,8 +130,10 @@ imported, it raises `SparseInputError`.
 `radius_neighbors` and `radius_neighbors_graph` are not accelerated. On an MLX-fitted
 `NearestNeighbors` they run scikit-learn's own code at stock speed — a float32 query
 against the float32 training copy — so their distances carry the float32 rounding of the
-training data ([`fp32_policy.md`](fp32_policy.md) §3.4). Stated here rather than left for
-a profiler to reveal.
+training data ([`fp32_policy.md`](fp32_policy.md) §3.4), and a float64 query float32
+cannot hold raises `UnsupportedInputError`, as `kneighbors` does. They are host code, so
+they need no GPU on a GPU-fitted model. Stated here rather than left for a profiler to
+reveal.
 
 ### Handed to scikit-learn by size (patched only)
 
@@ -165,10 +167,13 @@ that is dense for its dimension stock scikit-learn's KD-tree is the faster choic
 - **`SVC.support_` with zero or negative weights** indexes the training data the caller
   passed, so `support_vectors_ == X[support_]` always holds. scikit-learn indexes the
   filtered problem instead.
-- **`SVC(cache_size=...)`** can change the last bits of a fit on MLX's CPU device, where a
-  materialized Gram and on-demand rows accumulate in different orders (about 1e-3 in the
-  decision values). On the GPU they are bit-identical (measured). See
-  [`fp32_policy.md`](fp32_policy.md) §2.4.
+- **`SVC(cache_size=...)`** can change a fit on MLX's CPU device, where a materialized
+  Gram and on-demand rows accumulate in different orders (up to 2.2e-3 in the decision
+  values at 2 000 × 10, and a different iteration count). On the GPU they are
+  bit-identical (measured). See [`fp32_policy.md`](fp32_policy.md) §2.4.
+- **`SVC(shrinking=True)`**, the default, can move where inside `tol` the solver stops
+  on the linear kernel, as LIBSVM's shrinking does (up to 5.9e-3 in the decision values
+  measured, same labels and support-vector count).
 - **Neighbor ties** are decided by `(distance, training index)` over the whole training
   set, where scikit-learn's order among exactly equal distances is undefined
   ([`fp32_policy.md`](fp32_policy.md) §3.1).

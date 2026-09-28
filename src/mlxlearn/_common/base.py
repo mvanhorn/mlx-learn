@@ -356,7 +356,11 @@ class BackendMixin:
         May be called more than once per fit; the last decision is the one
         recorded, once, when the fit completes. The order of precedence is:
         capability, then ``MLXLEARN_FORCE_BACKEND``, then size, then the
-        data-dependent capability checks, then the device.
+        data-dependent capability checks, then the device. A by-design handoff
+        by size therefore skips ``data_check``: a patched fit below the
+        crossover whose only mismatch is data-dependent (values past float32's
+        range, say) is recorded as ``"below-crossover"``, and does not raise
+        under ``fallback_policy="raise"``.
 
         Parameters
         ----------

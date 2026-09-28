@@ -183,7 +183,10 @@ Consequences, applied rather than merely noted:
 
 <!-- perf-phase: partly stale. Past the kernel-cache Gram cutoff (~7 240 rows per pair at
 cache_size=200) SVC now prefetches kernel rows in batches and implements LIBSVM's
-shrinking; re-measure at 8 000-32 000 rows and revisit the plan below. -->
+shrinking, on by default (shrinking=True). Preliminary A/B through SVC, off vs on: rbf
+1.02-1.37x, poly 0.97x, linear C=1 1.58x, linear C=10 0.72x (MLX CPU) / 0.91x (GPU), where
+LIBSVM's own shrinking doubles the iteration count too. Re-measure at 8 000-32 000 rows and
+revisit the plan below. -->
 
 The useful region is narrower than the plan assumed: wide data on a non-linear kernel. The
 fix that would widen it is not a threshold — it is making an iteration cheap enough to be

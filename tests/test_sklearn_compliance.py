@@ -1,9 +1,10 @@
 """scikit-learn's own estimator check suite, run against every mlxlearn estimator.
 
-Both layers are checked. The Layer 1 classes advertise narrowed tags (no sparse,
-no multi-output) and must honor them; the Layer 2 classes advertise scikit-learn's
+Both layers are checked. The Layer 1 classes advertise narrowed tags (no sparse
+input; multi-output targets only for the neighbor estimators, whose search does not
+depend on ``y``) and must honor them; the Layer 2 classes advertise scikit-learn's
 tags, because they really do accept sparse input and multi-output targets — by
-handing them to scikit-learn. Running only one layer would leave the other's tag
+handing to scikit-learn what the MLX path does not serve. Running only one layer would leave the other's tag
 declarations unverified, and a tag that lies is worse than a missing feature: every
 meta-estimator in the ecosystem reads them.
 

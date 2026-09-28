@@ -65,11 +65,12 @@ TOLERANCE = 0.05
 #: that never wins would have no way to pass the gate except by hiding.
 ACCEPTED_REGRESSIONS: dict[str, str] = {
     "knn/fit": (
-        "mlxlearn's KNN fit uploads the training matrix, its transpose, and its row "
-        "norms to the device; scikit-learn's brute-force fit stores a reference and "
-        "does no work. The gap is a memory copy, it is linear in the data, and the "
-        "first kneighbors call repays it several times over. The measured ranges are "
-        "in docs/benchmarks.md."
+        "mlxlearn's KNN fit uploads the training rows once and builds, on the device, "
+        "the translated and scaled copy the search runs on, with its row norms (plus a "
+        "float32 residual for float64 input); scikit-learn's brute-force fit stores a "
+        "reference and does no work. The gap is linear in the data, and the first "
+        "kneighbors call repays it several times over. The measured ranges are in "
+        "docs/benchmarks.md."
     ),
 }
 
