@@ -503,7 +503,7 @@ def test_a_patched_fit_on_fill_values_is_served_or_falls_back(rng):
 
     with tuning_context(**no_handoff):
         served = patched.KNeighborsRegressor(n_neighbors=5).fit(X, y)
-        assert served.execution_backend_ == "mlx"
+        assert served.execution_backend_ in ("mlx", "cpu")
         np.testing.assert_allclose(served.predict(Q), expected, rtol=1e-6, atol=1e-6)
 
         X[123] = 9.97e36

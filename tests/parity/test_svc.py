@@ -142,8 +142,8 @@ def _binary_cases():
         for kernel in NONLINEAR:
             for backend in BACKENDS:
                 yield pytest.param(kernel, C, backend, id=f"{kernel}-{C}-{backend}")
-        # ~50 s: 3.7M SMO iterations of a rank-deficient dual. Shrinking, the
-        # default, needs 1.6M more than the plain loop here, but runs them over
+        # ~50 s: 3.9M SMO iterations of a rank-deficient dual. Shrinking, the
+        # default, needs 1.7M more than the plain loop here, but runs them over
         # the active set only, in about the same time. It is the case the decision
         # tolerance above was calibrated on, so it stays, but only in the slow
         # run; the fast primal case below covers C=10 linear on small data.
@@ -295,10 +295,10 @@ def test_primal_objective_parity(binary_fits, C):
 def test_primal_objective_parity_at_large_C_on_small_data():
     """C=10 linear in about a second, so the fast suite still covers it.
 
-    600 × 8 at seed 11 needs 81k SMO iterations with the default shrinking — a
-    real workout of the flat dual — against 3.7M for the 2000 × 20 calibration
-    set. Measured: primal relative difference 1.1e-06, decision values within
-    1.4e-03, identical support counts.
+    600 × 8 at seed 11 needs 45k SMO iterations with the default shrinking — a
+    real workout of the flat dual — against 3.9M for the 2000 × 20 calibration
+    set. Measured: primal relative difference 4.1e-06, decision values within
+    5.0e-03, identical support counts.
     """
     X, y = _data(n_samples=600, n_features=8, seed=11)
     mlx = SVC(kernel="linear", C=10.0).fit(X, y)

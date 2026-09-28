@@ -2,7 +2,7 @@
 
 Only a marker or a :class:`~mlxlearn.exceptions.DeviceError` makes a test skip there.
 A test that asserts the MLX path ran gets neither: auto-selection quietly picks the
-CPU, and a forced MLX fit of most estimators runs on MLX's CPU device. Such a test
+CPU, and a forced MLX fit of every estimator runs on MLX's CPU device. Such a test
 has to carry the ``gpu`` marker, or it fails on exactly the hosts the skip exists for.
 """
 

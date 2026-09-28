@@ -12,7 +12,7 @@ cause buried in every traceback. Two kinds of test count as needing it:
   failed". Any *other* failure on such a host still fails.
 
 A test that asserts the MLX path ran needs the marker: without a GPU nothing raises,
-because auto-selection picks the CPU and a forced MLX fit of most estimators runs on
+because auto-selection picks the CPU and a forced MLX fit of every estimator runs on
 MLX's CPU device. ``tests/tooling/test_gpu_policy.py`` runs the suite on a simulated
 GPU-less host to hold every test to this.
 

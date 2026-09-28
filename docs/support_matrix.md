@@ -107,11 +107,11 @@ sparse) and for float64 values beyond float32's range
 
 | Estimator | Since | Accelerated path | Falls back for |
 |---|---|---|---|
-| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force search, `metric` in `euclidean`, `l2`, `sqeuclidean`, or `minkowski` at `p=2`; `metric_params={"p": ...}` resolved as scikit-learn resolves it | any other metric, including `minkowski` at `p != 2`; `algorithm="kd_tree"`/`"ball_tree"`; `metric_params` other than Minkowski's `p` (a weight vector `w`, another metric's parameters); a prebuilt `KDTree`, `BallTree` or fitted estimator passed as `X`; training data spanning more than `FLOAT32_MAX / 8` from its mean |
+| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force search, `metric` in `euclidean`, `l2`, `sqeuclidean`, or `minkowski` at `p=2`; `metric_params={"p": ...}` resolved as scikit-learn resolves it | any other metric, including `minkowski` at `p != 2`; `algorithm="kd_tree"`/`"ball_tree"`; `metric_params` other than Minkowski's `p` (a weight vector `w`, another metric's parameters); a prebuilt `KDTree`, `BallTree` or fitted estimator passed as `X`; training data spanning more than `FLOAT32_MAX / 8` from its mean, or so far beyond the gaps between its rows that float32 cannot resolve both (a fill value of `1e30` among unit-scale rows); more than 2³² training rows |
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output; callable `weights` | as above |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output; callable `weights` | as above |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized, binary and multinomial; scikit-learn 1.9 callbacks (`set_callbacks`) are driven on this path | `l1`/`elasticnet` however spelled; non-`lbfgs` solvers; `dual=True`; `warm_start=True`; `multi_class` other than `"deprecated"`/`"auto"` (1.7 only); `intercept_scaling != 1` with `fit_intercept=True`; multi-label or multi-output `y`; negative `sample_weight`; under `patch_sklearn()` on scikit-learn 1.9, `array_api_dispatch=True` |
-| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32 |
+| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32; a linear or poly kernel on data so far from the origin, for its spread, that float32 cannot resolve its inner products; a class whose every sample has zero effective weight |
 
 A few inputs that look like capability questions are served directly. `SVC` treats a
 negative `sample_weight` as a zero weight, which is exactly what LIBSVM does, and a
@@ -171,10 +171,11 @@ that is dense for its dimension stock scikit-learn's KD-tree is the faster choic
 - **`SVC.support_` with zero or negative weights** indexes the training data the caller
   passed, so `support_vectors_ == X[support_]` always holds. scikit-learn indexes the
   filtered problem instead.
-- **`SVC(cache_size=...)`** can change a fit on MLX's CPU device, where a materialized
-  Gram and on-demand rows accumulate in different orders (up to 2.2e-3 in the decision
-  values at 2 000 × 10, and a different iteration count). On the GPU they are
-  bit-identical (measured). See [`fp32_policy.md`](fp32_policy.md) §2.4.
+- **`SVC(cache_size=...)`** can change a fit, because a materialized Gram and on-demand
+  rows can round differently: on MLX's CPU device at any width (up to 2.2e-3 in the
+  decision values at 2 000 × 10, and a different iteration count), on the GPU at a
+  thousand features and more (up to 9.2e-4; bit-identical at 2 000 × 10). See
+  [`fp32_policy.md`](fp32_policy.md) §2.4.
 - **`SVC(shrinking=True)`**, the default, can move where inside `tol` the solver stops,
   on every kernel, as LIBSVM's shrinking does and by the same order — most at large `C` on
   the polynomial and linear kernels (up to 2.3e-2 in the decision values measured, poly at

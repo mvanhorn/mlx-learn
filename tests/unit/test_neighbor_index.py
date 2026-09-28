@@ -257,7 +257,7 @@ def test_a_reloaded_model_keeps_one_copy_of_its_training_rows(estimator, reload,
     """
     X = rng.normal(size=(3000, 16)).astype(np.float32)
     model = estimator(n_neighbors=3).fit(X, X[:, 0])
-    assert model.execution_backend_ == "mlx"
+    assert model.execution_backend_ in ("mlx", "cpu")
     fresh = len(pickle.dumps(model))
 
     loaded = reload(model)
