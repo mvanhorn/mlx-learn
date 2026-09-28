@@ -222,6 +222,14 @@ class Tuning:
     # kernel is excluded at every size.
     svc_min_samples: int = 2_048
     svc_min_work: int = 1_000_000  # n_samples * n_features
+    #
+    # One-vs-one fits K(K-1)/2 subproblems of 2n/K rows on average, each paying a
+    # fixed Gram dispatch and its own Python SMO loop, so many small classes lose
+    # even when the total clears both floors above: at 2048 x 512, K=8 (pairs of
+    # 512 rows) measured 1.95x, K=16 (256) 0.89x and K=128 (32) 0.10x. This floor
+    # is on the *mean* pair's work, (2n/K) * n_features, which ignores class
+    # imbalance by construction and equals n * n_features for two classes.
+    svc_min_pair_work: int = 250_000
 
     # ---- blocking ---------------------------------------------------------------------
     distance_block_bytes: int = 256 * 1024 * 1024

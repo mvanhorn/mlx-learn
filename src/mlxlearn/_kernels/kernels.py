@@ -23,7 +23,9 @@ before the identity is applied — exact mathematics, and it is what keeps the
 cancellation at the variance scale instead of the coordinate scale. Centering is
 applied *only* to the RBF kernel: ``linear``, ``poly`` and ``sigmoid`` read the raw
 inner product, which is not translation-invariant, and shifting it would compute a
-different kernel.
+different kernel. :func:`kernel_frame` does the translation in float64 *before*
+the cast, and adds an exact power-of-two scale that :func:`frame_spec` folds back
+into ``gamma``, so neither a large offset nor an extreme magnitude reaches float32.
 
 **Integer powers by repeated squaring.** ``poly`` is ``(γ⟨a,b⟩ + coef0)ᵈ`` with an
 integer degree. Evaluating that as a floating-point power returns NaN whenever the
@@ -34,14 +36,15 @@ base raised to an odd degree yields the negative value it should.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, replace
 
 import numpy as np
 
 from .._common.arrays import NUMPY_FLOAT
 from .._common.config import get_tuning
 from .._common.device import use_device
-from ..exceptions import UnsupportedParameterError
+from ..exceptions import UnsupportedInputError, UnsupportedParameterError
 
 __all__ = [
     "SUPPORTED_KERNELS",
@@ -101,7 +104,7 @@ class KernelSpec:
         return self.kernel == "rbf"
 
 
-def resolve_gamma(gamma, X: np.ndarray) -> float:
+def resolve_gamma(gamma, X: np.ndarray, *, kernel: str | None = None) -> float:
     """Resolve ``gamma`` the way scikit-learn resolves it.
 
     Parameters
@@ -111,6 +114,10 @@ def resolve_gamma(gamma, X: np.ndarray) -> float:
         The validated training matrix, float64. The variance is taken over *all*
         entries — ``X.var()``, not a per-feature variance — because that is what
         scikit-learn does and ``gamma`` has to mean the same number here.
+    kernel : str, optional
+        When ``"linear"``, a numeric ``gamma`` is returned as given, including
+        ``0.0``: the linear kernel never reads it, and scikit-learn stores it
+        unvalidated for exactly that reason.
 
     Returns
     -------
@@ -118,14 +125,22 @@ def resolve_gamma(gamma, X: np.ndarray) -> float:
 
     Notes
     -----
-    ``"scale"`` is ``1 / (n_features * X.var())``, falling back to ``1.0`` when the
-    variance is at or below ``1e-12``; a constant ``X`` would otherwise divide by
-    zero. ``"auto"`` is ``1 / n_features``.
+    ``"scale"`` is ``1 / (n_features * X.var())``, falling back to ``1.0`` only when
+    the variance is exactly zero — scikit-learn's ``X_var != 0``, not a threshold.
+    This was ``variance > 1e-12``, which quietly resolved ``gamma=1`` for any data
+    whose features sit around 1e-6 or below, where the correct value is 1e11 and
+    up: a kernel that is 1 everywhere and a model at chance, with no warning.
+    ``"auto"`` is ``1 / n_features``.
 
     The variance is computed on the float64 validated matrix, not on the float32
     copy mlxlearn computes with. A float32 variance differs in the ninth
     significant digit, and that difference would propagate into every kernel entry
     of every fit — a systematic offset from scikit-learn bought for nothing.
+
+    The result may lie outside float32's range — ``"scale"`` on data around 1e-20
+    gives about 1e38. That is not an error here: :func:`frame_spec` folds the
+    power-of-two scale of the compute frame into it, and only the folded value is
+    ever evaluated in float32.
 
     Examples
     --------
@@ -140,7 +155,7 @@ def resolve_gamma(gamma, X: np.ndarray) -> float:
     if isinstance(gamma, str):
         if gamma == "scale":
             variance = float(X.var())
-            return 1.0 / (X.shape[1] * variance) if variance > 1e-12 else 1.0
+            return 1.0 / (X.shape[1] * variance) if variance != 0.0 else 1.0
         if gamma == "auto":
             return 1.0 / X.shape[1]
         raise UnsupportedParameterError(
@@ -150,6 +165,8 @@ def resolve_gamma(gamma, X: np.ndarray) -> float:
             value=gamma,
         )
     value = float(gamma)
+    if kernel == "linear":
+        return value
     if value <= 0.0:
         # scikit-learn's constraint is Interval(Real, 0.0, None, closed="left"),
         # so gamma=0.0 is legal there and produces a degenerate but well-defined
@@ -205,6 +222,311 @@ def _host_integer_power(base: np.ndarray, degree: int) -> np.ndarray:
             factor = factor * factor
     assert result is not None
     return result
+
+
+# --------------------------------------------------------------------------------------
+# the float32 compute frame
+# --------------------------------------------------------------------------------------
+
+#: float32's largest finite value. Restated rather than imported from
+#: ``_common.validation``, which imports scikit-learn; this package must not.
+_FLOAT32_MAX = float(np.finfo(np.float32).max)
+
+#: Elements per host block when translating rows in float64: small enough that the
+#: float64 buffer stays cache-resident, however large the input is.
+_FRAME_BLOCK_ELEMENTS = 1 << 16
+
+
+def kernel_frame(spec: KernelSpec, X: np.ndarray) -> tuple[np.ndarray | None, float]:
+    """The exact map ``x ↦ (x − center) · scale`` under which ``spec`` runs in float32.
+
+    Two things float32 cannot absorb are removed by exact arithmetic in float64,
+    *before* the cast, rather than hoped away after it.
+
+    **Offset** (``rbf`` only, the one translation-invariant kernel). The float64
+    training mean is subtracted first. Casting first — what this module used to do —
+    rounds away exactly the digits that distinguish samples: Unix timestamps within
+    one hour collapse to 29 distinct float32 values out of 5 000, and no later
+    translation can bring them back.
+
+    **Magnitude.** An exact power of two puts the largest mapped entry in
+    ``[0.5, 1)``, so squares and inner products can neither overflow (centred
+    ``|x| ≳ 1.8e19 / √d``) nor sink into float32's subnormal range, which the GPU
+    flushes to zero. :func:`frame_spec` folds the scale back into ``gamma``, so the
+    kernel is unchanged. Scaling by a power of two commutes with float32 rounding,
+    so for data already in range every intermediate rounds exactly as it did
+    unscaled — the result is bit-identical, not merely close.
+
+    ``"linear"`` gets the identity: its value *is* the raw inner product, with no
+    ``gamma`` to absorb a scale, so :func:`check_frame_range` guards it instead.
+
+    Parameters
+    ----------
+    spec : KernelSpec
+    X : ndarray of shape (n_samples, n_features)
+        The validated training matrix, float64.
+
+    Returns
+    -------
+    center : ndarray of shape (n_features,), float64, or None
+    scale : float
+        An exact power of two; ``1.0`` when there is nothing to scale.
+    """
+    X = np.asarray(X, dtype=np.float64)
+    if spec.kernel == "linear" or X.size == 0:
+        return None, 1.0
+    if spec.uses_center:
+        center = X.mean(axis=0)
+        # Rounded subtraction is monotone, so the largest |x − c| is attained at a
+        # column's max or min: two reductions and no n × d temporary.
+        extent = max(
+            float(np.max(X.max(axis=0) - center)), float(np.max(center - X.min(axis=0)))
+        )
+    else:
+        center = None
+        extent = max(abs(float(X.max())), abs(float(X.min())))
+    return center, _power_of_two_scale(extent)
+
+
+def _power_of_two_scale(extent: float) -> float:
+    """``2**-e`` with ``extent = m · 2**e``, ``m ∈ [0.5, 1)``; ``1.0`` if degenerate."""
+    if not (0.0 < extent < np.inf):
+        return 1.0
+    _, exponent = np.frexp(extent)
+    scale = float(np.ldexp(1.0, -int(exponent)))
+    # Below 2**-1022 the reciprocal is not a finite double. Data that small is zero
+    # in float32 either way, and so is every kernel distance LIBSVM would compute.
+    return scale if 0.0 < scale < np.inf else 1.0
+
+
+def frame_spec(spec: KernelSpec, scale: float) -> KernelSpec:
+    """``spec`` with the frame's scale folded into ``gamma``: ``γ' = γ / scale²``.
+
+    ``γ'‖s·a − s·b‖² = γ‖a − b‖²`` and ``γ'⟨s·a, s·b⟩ = γ⟨a, b⟩`` exactly, so the kernel
+    evaluated on mapped inputs is the kernel of the original ones. This is also what
+    lets a ``gamma`` outside float32's range be served: ``"scale"`` on data around
+    1e-20 resolves to about 4e38, and folds back to order one.
+
+    Raises
+    ------
+    UnsupportedParameterError
+        When the folded ``gamma``, or ``coef0``, is not finite in float32 — an
+        exponent the device cannot represent. scikit-learn evaluates the kernel in
+        float64 and can serve it, so this is a capability limit, not bad input.
+    """
+    if spec.kernel == "linear":
+        return spec
+    # Two divisions rather than one by scale**2, which can overflow for tiny data.
+    gamma = spec.gamma / scale / scale
+    if not abs(gamma) <= _FLOAT32_MAX:
+        raise UnsupportedParameterError(
+            f"gamma={spec.gamma!r} is {gamma:.3g} once folded into mlxlearn's float32 "
+            "compute frame, which float32 cannot represent. scikit-learn evaluates the "
+            "kernel in float64 and can serve it, so under patch_sklearn() this falls "
+            "back rather than failing.",
+            parameter="gamma",
+            value=spec.gamma,
+        )
+    if not abs(spec.coef0) <= _FLOAT32_MAX:
+        raise UnsupportedParameterError(
+            f"coef0={spec.coef0!r} is not finite in float32, where mlxlearn evaluates "
+            "the kernel. scikit-learn evaluates it in float64, so under patch_sklearn() "
+            "this falls back rather than failing.",
+            parameter="coef0",
+            value=spec.coef0,
+        )
+    return replace(spec, gamma=gamma)
+
+
+def apply_frame(X, center: np.ndarray | None, scale: float) -> np.ndarray:
+    """``(X − center) · scale``, rounded to float32 once, as a new array.
+
+    The translation is computed in float64 — that is its whole point — through a
+    small reused buffer rather than a float64 copy of ``X``. The power-of-two scale
+    is exact in either precision, so it is folded into the final store. Every entry
+    is mapped independently, so the blocking cannot change a single bit. The output
+    never aliases ``X``. Entries that land beyond float32 become ``inf`` rather than
+    raising here; :func:`check_frame_range` is what turns that into an error.
+    """
+    X = np.asarray(X)
+    out = np.empty(X.shape, dtype=NUMPY_FLOAT)
+    if X.size == 0:
+        return out
+    with np.errstate(over="ignore"):
+        if center is None:
+            if scale == 1.0:
+                np.copyto(out, X, casting="same_kind")
+            else:
+                np.multiply(X, scale, out=out)
+            return out
+        step = max(1, _FRAME_BLOCK_ELEMENTS // max(int(X.shape[1]), 1))
+        buffer = np.empty((min(step, X.shape[0]), X.shape[1]), dtype=np.float64)
+        for start in range(0, X.shape[0], step):
+            stop = min(start + step, X.shape[0])
+            block = buffer[: stop - start]
+            np.subtract(X[start:stop], center, out=block)
+            np.multiply(block, scale, out=out[start:stop])
+    return out
+
+
+def check_frame_range(spec: KernelSpec, X32: np.ndarray, *, name: str = "X") -> None:
+    """Raise when float32 kernel arithmetic on mapped rows ``X32`` could overflow.
+
+    ``rbf`` evaluates ``‖a‖² + ‖b‖² − 2⟨a, b⟩``, at most four times the largest
+    squared row norm; the other kernels evaluate ``⟨a, b⟩``, bounded by it. Within
+    the bound no partial sum can overflow either (Cauchy–Schwarz on each prefix).
+
+    After :func:`kernel_frame` the training rows are always in range. What this
+    catches is a linear-kernel fit with ``‖x‖² > 3.4e38``, and an inference query
+    so far outside the training extent that the training-derived scale cannot hold
+    it. Values past ``3.4e38`` themselves are rejected earlier, on the raw input.
+
+    Raises
+    ------
+    UnsupportedInputError
+        With ``reason="float32-overflow"``, so patched mode can fall back at fit.
+    """
+    if X32.size == 0:
+        return
+    factor = 4.0 if spec.kernel == "rbf" else 1.0
+    # ‖x‖² ≤ d · max|x|² costs two reductions and no temporary; the exact norms are
+    # computed only when that cheap bound cannot rule an overflow out.
+    peak = max(float(X32.max()), -float(X32.min()))
+    if factor * X32.shape[1] * peak * peak <= _FLOAT32_MAX:
+        return
+    largest = float(np.einsum("ij,ij->i", X32, X32, dtype=np.float64).max())
+    if not factor * largest <= _FLOAT32_MAX:
+        raise UnsupportedInputError(
+            f"{name} has a row whose squared norm is {largest:.3g} in mlxlearn's float32 "
+            f"compute frame, so the {spec.kernel!r} kernel would overflow float32 (the "
+            f"limit is {_FLOAT32_MAX:.3g}) and return infinity or NaN. Rescale the data, "
+            "or run under patch_sklearn() to have a fit handled by scikit-learn's "
+            "float64 path.",
+            reason="float32-overflow",
+        )
+
+
+class KernelBasis:
+    """A fixed right-hand kernel operand — an SVC's support vectors — kept on device.
+
+    Every ``predict`` used to re-map, re-upload and re-reduce the support vectors:
+    0.2–0.4 ms of fixed cost at 4 000 × 256, against about 0.25 ms for scikit-learn's
+    *entire* single-row predict. This does that work once.
+
+    Owned by the fitted estimator and released with it — never a cache keyed on the
+    identity of an array. It holds no host copy of its own: the device tensors are
+    built on first use from the rows the owner passes in, and dropped on pickle, so a
+    pickled model carries its support vectors exactly once and can be loaded where
+    the device tensors could not have been. The build is locked, so concurrent first
+    predictions build it once.
+
+    Attributes
+    ----------
+    spec : KernelSpec
+        The *compute* spec, with the frame's scale already folded in by
+        :func:`frame_spec`.
+    center, scale
+        The frame, from :func:`kernel_frame`.
+    """
+
+    __slots__ = ("spec", "center", "scale", "_lock", "_operand")
+
+    def __init__(
+        self, spec: KernelSpec, *, center: np.ndarray | None = None, scale: float = 1.0
+    ) -> None:
+        self.spec = spec
+        self.center = None if center is None else np.array(center, dtype=np.float64)
+        self.scale = float(scale)
+        self._lock = threading.Lock()
+        self._operand: tuple | None = None  # (mx.array (n, d), mx.array (n,) or None)
+
+    def __getstate__(self) -> dict:
+        """Pickle the frame only; the device tensors are derived from the owner's rows."""
+        return {"spec": self.spec, "center": self.center, "scale": self.scale}
+
+    def __setstate__(self, state: dict) -> None:
+        self.spec = state["spec"]
+        self.center = state["center"]
+        self.scale = state["scale"]
+        self._lock = threading.Lock()
+        self._operand = None
+
+    def prepare(self, X, *, name: str = "X") -> np.ndarray:
+        """``X`` mapped into this basis's float32 frame, range-checked."""
+        mapped = apply_frame(X, self.center, self.scale)
+        check_frame_range(self.spec, mapped, name=name)
+        return mapped
+
+    def _device_operand(self, rows: np.ndarray, backend: str) -> tuple:
+        operand = self._operand
+        if operand is not None:
+            return operand
+        with self._lock:
+            if self._operand is None:
+                import mlx.core as mx
+
+                prepared = self.prepare(rows, name="support_vectors_")
+                with use_device(_device(backend)):
+                    right = mx.array(prepared, dtype=mx.float32)
+                    if self.spec.kernel == "rbf":
+                        right_sq = mx.sum(right * right, axis=1)
+                        mx.eval(right, right_sq)
+                    else:
+                        right_sq = None
+                        mx.eval(right)
+                # Published whole, in one assignment, so an unlocked reader sees
+                # either nothing or a complete operand.
+                self._operand = (right, right_sq)
+            return self._operand
+
+    def combine(
+        self,
+        Q,
+        rows: np.ndarray,
+        weights: np.ndarray,
+        *,
+        backend: str,
+        block_rows: int | None = None,
+    ) -> np.ndarray:
+        """``K(Q, rows) @ weights`` for raw queries ``Q``, float64.
+
+        Parameters
+        ----------
+        Q : ndarray of shape (n_queries, n_features)
+            Unmapped queries, float64 or float32; mapped here.
+        rows : ndarray of shape (n_rows, n_features)
+            The owner's unmapped basis rows. Read only when the device operand has
+            not been built yet.
+        weights : ndarray of shape (n_rows, n_outputs)
+        backend : {"mlx", "cpu"}
+
+        Notes
+        -----
+        The same float32-tile / float64-contraction split as :func:`kernel_combine`,
+        and for the same reason; the result is likewise independent of
+        ``block_rows``.
+        """
+        import mlx.core as mx
+
+        Q32 = self.prepare(Q)
+        W = np.asarray(weights, dtype=np.float64)
+        out = np.zeros((Q32.shape[0], W.shape[1]), dtype=np.float64)
+        if Q32.shape[0] == 0 or rows.shape[0] == 0:
+            return out
+
+        right, right_sq = self._device_operand(rows, backend)
+        step = _block_rows(Q32.shape[0], int(right.shape[0]), backend, block_rows)
+        needs_norms = self.spec.kernel == "rbf"
+        with use_device(_device(backend)):
+            right_t = right.T
+            for start in range(0, Q32.shape[0], step):
+                end = min(start + step, Q32.shape[0])
+                block = mx.array(Q32[start:end], dtype=mx.float32)
+                a_sq = mx.sum(block * block, axis=1) if needs_norms else None
+                tile = _transform(mx, self.spec, block @ right_t, a_sq, right_sq)
+                mx.eval(tile)
+                out[start:end] = np.asarray(tile).astype(np.float64) @ W
+        return out
 
 
 # --------------------------------------------------------------------------------------
