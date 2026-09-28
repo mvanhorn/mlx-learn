@@ -54,6 +54,7 @@ reads global configuration, and never imports scikit-learn.
 
 from __future__ import annotations
 
+import math
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -144,13 +145,21 @@ class SMOState:
         Working-set updates actually performed. Equal to ``max_iter`` exactly when
         the budget was exhausted.
     converged : bool
-        Whether the loop ended on the KKT test rather than on the budget.
+        Whether the loop ended on the KKT test, with every gradient finite.
     max_kkt_violation : float
         The violation measured at the final selection, i.e. what the stopping test
         saw. Reported rather than discarded because it is the only honest evidence
         of how well an unconverged fit did. With shrinking, a converged fit
         measured it over every sample; one that ran out of budget while samples
-        were set aside measured it over the active ones.
+        were set aside measured it over the active ones. NaN when the gradient
+        was not finite.
+    stop_reason : {"converged", "max_iter", "non-finite"}
+        Why the loop ended. ``"non-finite"`` means a kernel row, a diagonal entry
+        or the gradient built from them held an infinity or a NaN — kernel values
+        that overflowed float32, typically — so there was no optimum to converge
+        to. Before this was checked, NaN gradients left no eligible working pair
+        and the solver reported *convergence* after one iteration, with a NaN
+        bias; ``converged`` is now ``False`` there.
     """
 
     alpha: np.ndarray
@@ -158,6 +167,7 @@ class SMOState:
     n_iter: int
     converged: bool
     max_kkt_violation: float
+    stop_reason: str
 
 
 #: Once the row cache is full, a prefetching miss may evict at most this fraction
@@ -412,6 +422,13 @@ def solve_c_svc(
             f"{k_diag.shape[0]}."
         )
 
+    if not np.isfinite(k_diag).all():
+        # An infinite K_ii makes every step through i zero-length, so the loop
+        # would spin on the same pair until the budget ran out, reporting a
+        # violation it can never reduce. Nothing is fetched.
+        positive = y > 0.0
+        return _finish(np.zeros(n), C, -y, positive, 0, False, math.nan)
+
     cache = _RowCache(
         fetch_row,
         min(config.cache_rows, max(n, 2)),
@@ -454,6 +471,11 @@ def solve_c_svc(
         candidates_j = np.where(low_set, yg, -np.inf)
         gmax2 = float(candidates_j.max())
         violation = gmax + gmax2
+        if not math.isfinite(violation):
+            # Every sample is in I_up or I_low, so a NaN or infinite gradient
+            # anywhere surfaces here. Without this test the NaN comparisons below
+            # found no eligible j and reported convergence.
+            break
 
         # Only evaluated on a miss that prefetches, and bound to this
         # iteration's extremes so the two fetches below rank the same way.
@@ -498,13 +520,38 @@ def solve_c_svc(
         for t in (i, j):
             _update_sets(t, alpha[t] >= C[t], alpha[t], positive, up_set, low_set)
 
-    rho = _calculate_rho(alpha, C, yg, positive)
+    return _finish(alpha, C, yg, positive, n_iter, converged, violation)
+
+
+def _finish(
+    alpha: np.ndarray,
+    C: np.ndarray,
+    yg: np.ndarray,
+    positive: np.ndarray,
+    n_iter: int,
+    converged: bool,
+    violation: float,
+) -> SMOState:
+    """Package the solution, with an honest ``stop_reason``.
+
+    The finiteness test runs once, at the end, over everything the state reports:
+    a NaN introduced by the very last update, or an infinite gradient on a sample
+    the selection could not see, would otherwise ship as a converged solution.
+    """
+    finite = bool(np.isfinite(yg).all() and np.isfinite(alpha).all())
+    if not finite or not math.isfinite(violation):
+        converged = False
+        stop_reason = "non-finite"
+        violation = math.nan
+    else:
+        stop_reason = "converged" if converged else "max_iter"
     return SMOState(
         alpha=alpha,
-        rho=rho,
+        rho=_calculate_rho(alpha, C, yg, positive),
         n_iter=n_iter,
         converged=converged,
         max_kkt_violation=float(violation),
+        stop_reason=stop_reason,
     )
 
 
@@ -717,6 +764,9 @@ def _solve_shrinking(
             candidates_j = np.where(a_low, a_yg, -np.inf)
             gmax2 = float(candidates_j.max())
             violation = gmax + gmax2
+            if not math.isfinite(violation):
+                event = "non-finite"
+                break
 
             priority = partial(
                 _violation_rank, candidates_i, gmax, candidates_j, gmax2,
@@ -776,7 +826,7 @@ def _solve_shrinking(
             up_set[active] = a_up
             low_set[active] = a_low
 
-        if event == "budget":
+        if event in ("budget", "non-finite"):
             break
 
         if event == "optimal":
@@ -813,14 +863,7 @@ def _solve_shrinking(
         # no sample is free, so it must be exact for all of them.
         _reconstruct_gradient(y, C, alpha, yg, ygbar, active, cache)
 
-    rho = _calculate_rho(alpha, C, yg, positive)
-    return SMOState(
-        alpha=alpha,
-        rho=rho,
-        n_iter=n_iter,
-        converged=converged,
-        max_kkt_violation=float(violation),
-    )
+    return _finish(alpha, C, yg, positive, n_iter, converged, violation)
 
 
 def _be_shrunk(

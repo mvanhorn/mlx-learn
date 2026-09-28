@@ -741,6 +741,78 @@ def test_an_error_filter_raises_on_every_fallback(data):
                 model.execution_backend_
 
 
+def _overflowing(X):
+    X = X.copy()
+    X[0, 0] = 1e39  # finite in float64, infinite in float32
+    return X
+
+
+#: (Layer 1 estimator, patched estimator, input it cannot serve) per mismatch kind.
+_MISMATCHES = {
+    "sparse": lambda X: (
+        KNeighborsClassifier(n_neighbors=3),
+        patched.KNeighborsClassifier(n_neighbors=3),
+        sp.csr_matrix(X),
+    ),
+    "float32-overflow": lambda X: (LogisticRegression(), patched.LogisticRegression(), _overflowing(X)),
+    "gamma": lambda X: (SVC(gamma=0.0), patched.SVC(gamma=0.0), X),
+    "prebuilt-index": lambda X: (
+        NearestNeighbors(n_neighbors=3),
+        patched.NearestNeighbors(n_neighbors=3),
+        __import__("sklearn.neighbors", fromlist=["KDTree"]).KDTree(X),
+    ),
+}
+
+
+@pytest.mark.filterwarnings("ignore::sklearn.exceptions.ConvergenceWarning")
+@pytest.mark.parametrize("kind", sorted(_MISMATCHES))
+def test_only_layer1_is_told_to_run_under_patch_sklearn(data, kind):
+    """A patched estimator's warning advised running under patch_sklearn().
+
+    The advice is Layer 1's alone. A patched estimator reports the same mismatch
+    without it and says what it did instead: handed the fit over, or — under
+    fallback_policy="raise" — refused to.
+    """
+    X, y = data
+    layer1, layer2, X_bad = _MISMATCHES[kind](X)
+    with tuning_context(**NO_CROSSOVER):
+        with pytest.raises(CapabilityError) as raised:
+            layer1.fit(X_bad, y)
+        with pytest.warns(MLXLearnFallbackWarning) as caught:
+            layer2.fit(X_bad, y)
+        with mlxlearn.config_context(fallback_policy="raise"):
+            with pytest.raises(CapabilityError) as refused:
+                clone_of_layer2 = type(layer2)(**layer2.get_params())
+                clone_of_layer2.fit(X_bad, y)
+
+    assert "patch_sklearn()" in str(raised.value)
+    assert raised.value.advice and raised.value.advice in str(raised.value)
+
+    warned = [str(w.message) for w in caught if w.category is MLXLearnFallbackWarning]
+    assert len(warned) == 1
+    assert "patch_sklearn()" not in warned[0]
+    assert warned[0].startswith(raised.value.summary)  # the same mismatch, same words
+    assert "handed this fit to scikit-learn" in warned[0]
+    assert layer2.execution_backend_ == "sklearn"
+    assert "patch_sklearn()" not in layer2.fit_event_.detail
+
+    assert "patch_sklearn()" not in str(refused.value)
+    assert "fallback_policy='raise'" in str(refused.value)
+
+
+@pytest.mark.parametrize("layer", ["L1", "L2"])
+@pytest.mark.parametrize("pair", [ESTIMATORS[0], ESTIMATORS[4]], ids=["KNN", "SVC"])
+def test_an_inference_error_does_not_advise_a_fallback_inference_cannot_take(data, pair, layer):
+    """The fitted backend is sticky in both layers, so patch_sklearn() cannot help here."""
+    X, y = data
+    with tuning_context(force_backend="cpu"):
+        model = _estimator(pair, layer).fit(X, y)
+    with pytest.raises(UnsupportedInputError) as raised:
+        _infer(model, _overflowing(X))
+    assert raised.value.reason == "float32-overflow"
+    assert "patch_sklearn()" not in str(raised.value)
+
+
 def test_reset_fallback_warnings_rearms_without_dropping_events(data):
     with pytest.warns(MLXLearnFallbackWarning):
         _sparse_fit(data)

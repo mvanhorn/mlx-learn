@@ -5,7 +5,7 @@ from __future__ import annotations
 from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
 from .._common.arrays import NUMPY_FLOAT
-from .._common.validation import check_is_fitted, is_sparse, validate_data
+from .._common.validation import check_is_fitted, is_sparse, validate_float32_input
 from ._base import MLXNeighborsMixin, _reject_string_data, _safe_shape
 
 __all__ = ["NearestNeighbors"]
@@ -113,9 +113,18 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
             # The training copy is float32. scikit-learn validates the query
             # without a dtype, so a float64 query stayed float64, its Cython
             # radius search requires both sides to share a dtype, and it fell to
-            # a chunked pairwise-distance path about 4.5x slower than stock.
+            # a chunked pairwise-distance path about 4.5x slower than stock. The
+            # range check runs before that cast, so a float64 value float32 cannot
+            # hold is an UnsupportedInputError rather than scikit-learn's generic
+            # "contains infinity" about a value the caller never wrote.
             _reject_string_data(X)
-            X = validate_data(self, X, dtype=NUMPY_FLOAT, order="C", reset=False)
+            X = validate_float32_input(
+                self, X, operation="radius_neighbors", dtype=NUMPY_FLOAT, order="C"
+            )
         shape = self._fit_X.shape if X is None else _safe_shape(X)
-        with self._inference("radius_neighbors", shape=shape):
+        # scikit-learn's host code on the fitted state: no MLX device is involved,
+        # so a GPU-fitted model needs none to answer this.
+        with self._inference(
+            "radius_neighbors", shape=shape, host=True, compute="scikit-learn"
+        ):
             return super().radius_neighbors(X, radius, return_distance, sort_results)

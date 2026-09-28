@@ -260,6 +260,13 @@ def finite_range(array: Any) -> ValueRange | None:
     return ValueRange(float(low), float(high))
 
 
+#: The Layer 1 advice for data float32 cannot hold (kept out of a patched
+#: estimator's messages; see CapabilityError.advice).
+_FLOAT64_FIT_ADVICE = (
+    "Or run under patch_sklearn(), which hands a fit on such data to scikit-learn's "
+    "float64 path."
+)
+
 #: Factor of headroom the squared-range guard keeps below float32's largest value:
 #: the Gram form ``‖a‖² + ‖b‖² − 2⟨a, b⟩`` adds, and doubles, squared norms before
 #: its subtraction brings the result back down.
@@ -316,9 +323,9 @@ def check_squared_float32_range(
             f"feature(s), their squares exceed float32's largest finite value "
             f"({FLOAT32_MAX:.3g}), so float32 distances and kernels on this data "
             "would overflow to infinity. mlxlearn computes in float32 and will not "
-            "return those silently. Rescale the data, or run under patch_sklearn() "
-            "to have this handled by scikit-learn's float64 path.",
+            "return those silently. Rescale the data.",
             reason="float32-overflow",
+            advice=_FLOAT64_FIT_ADVICE,
         )
     if 0.0 < magnitude and squared < _SQUARED_FLOOR:
         raise UnsupportedInputError(
@@ -326,7 +333,7 @@ def check_squared_float32_range(
             "into float32's subnormal range, which the GPU flushes to zero, so "
             "float32 distances and kernels on this data would collapse to zero. "
             "mlxlearn computes in float32 and will not return those silently. "
-            "Rescale the data, or run under patch_sklearn() to have this handled by "
-            "scikit-learn's float64 path.",
+            "Rescale the data.",
             reason="float32-underflow",
+            advice=_FLOAT64_FIT_ADVICE,
         )

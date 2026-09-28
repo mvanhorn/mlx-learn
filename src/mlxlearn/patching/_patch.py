@@ -64,7 +64,7 @@ import threading
 import warnings
 from importlib import import_module
 
-from .._common.diagnostics import record_event
+from .._common.diagnostics import external_stacklevel, record_event
 from ..exceptions import MLXLearnPatchWarning
 from ._registry import ESTIMATOR_REGISTRY, EstimatorSpec, load_spec, patch_names, resolve_names
 
@@ -151,8 +151,10 @@ def patch_sklearn(estimators=None, verbose: bool = False) -> None:
         names = ", ".join(s.short_name for s in specs if s.name not in refused)
         print(f"mlxlearn: patched scikit-learn estimators [{names}]", file=sys.stderr)
 
+    # Attributed to the first frame outside mlxlearn — the caller's line, however
+    # many mlxlearn frames sit between it and here.
     for _name, message in refusals:
-        warnings.warn(message, MLXLearnPatchWarning, stacklevel=2)
+        warnings.warn(message, MLXLearnPatchWarning, stacklevel=external_stacklevel())
 
 
 def _patch_one(spec: EstimatorSpec) -> str | None:
@@ -309,7 +311,7 @@ def unpatch_sklearn(estimators=None) -> None:
             "mlxlearn did not restore it. Something else patched it after "
             "mlxlearn did; restoring now would discard that.",
             MLXLearnPatchWarning,
-            stacklevel=2,
+            stacklevel=external_stacklevel(),
         )
 
 

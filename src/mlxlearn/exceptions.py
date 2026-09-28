@@ -100,11 +100,26 @@ class CapabilityError(MLXLearnError):
         Short machine-readable slug recorded in diagnostics, e.g.
         ``"sparse-input"`` or ``"unsupported-solver"``. Used to deduplicate
         warnings and to group fallback statistics.
+    advice : str, optional
+        What a caller using mlxlearn *directly* can do instead — typically
+        "run under ``patch_sklearn()``". Appended to the message. Kept apart
+        because a patched estimator is already under ``patch_sklearn()``: it
+        reports the mismatch as :attr:`summary`, without the advice, and says
+        what it did about it.
+
+    Attributes
+    ----------
+    reason : str
+    summary : str
+        The message without :attr:`advice`.
+    advice : str
     """
 
-    def __init__(self, message: str, *, reason: str = "capability") -> None:
-        super().__init__(message)
+    def __init__(self, message: str, *, reason: str = "capability", advice: str = "") -> None:
+        super().__init__(f"{message} {advice}" if advice else message)
         self.reason = reason
+        self.summary = message
+        self.advice = advice
 
 
 class UnsupportedParameterError(CapabilityError, ValueError):
@@ -114,8 +129,10 @@ class UnsupportedParameterError(CapabilityError, ValueError):
     ``kernel="precomputed"`` — just not something the MLX path implements.
     """
 
-    def __init__(self, message: str, *, parameter: str, value: object = None) -> None:
-        super().__init__(message, reason=f"unsupported-parameter:{parameter}")
+    def __init__(
+        self, message: str, *, parameter: str, value: object = None, advice: str = ""
+    ) -> None:
+        super().__init__(message, reason=f"unsupported-parameter:{parameter}", advice=advice)
         self.parameter = parameter
         self.value = value
 
@@ -126,8 +143,10 @@ class UnsupportedInputError(CapabilityError, ValueError):
     Object dtypes and float64 values that overflow float32 are the common cases.
     """
 
-    def __init__(self, message: str, *, reason: str = "unsupported-input") -> None:
-        super().__init__(message, reason=reason)
+    def __init__(
+        self, message: str, *, reason: str = "unsupported-input", advice: str = ""
+    ) -> None:
+        super().__init__(message, reason=reason, advice=advice)
 
 
 class SparseInputError(CapabilityError, TypeError):
@@ -139,8 +158,8 @@ class SparseInputError(CapabilityError, TypeError):
     the same reason.
     """
 
-    def __init__(self, message: str) -> None:
-        super().__init__(message, reason="sparse-input")
+    def __init__(self, message: str, *, advice: str = "") -> None:
+        super().__init__(message, reason="sparse-input", advice=advice)
 
 
 class UnsupportedEstimatorStateError(CapabilityError, ValueError):

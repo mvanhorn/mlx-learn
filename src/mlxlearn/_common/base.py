@@ -47,8 +47,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, ClassVar, Literal
 
-import numpy as np
-
 from ..exceptions import (
     BackendExecutionError,
     CapabilityError,
@@ -65,7 +63,7 @@ from .device import (
 )
 from .diagnostics import BackendEvent, record_event
 
-__all__ = ["BackendMixin", "Backend", "mlx_guard", "release_mlx_cache", "problem_work"]
+__all__ = ["BackendMixin", "Backend", "mlx_guard", "release_mlx_cache"]
 
 Backend = Literal["mlx", "cpu", "sklearn"]
 
@@ -257,9 +255,10 @@ class BackendMixin:
     """Backend selection, stickiness, and diagnostics for mlxlearn estimators.
 
     Subclasses get two things without asking. Every public inference method a
-    subclass defines (``predict``, ``kneighbors``, ... — see ``_PUBLIC_INFERENCE``)
-    is wrapped so that nested calls on the same estimator record one event, under
-    the name of the method the caller invoked. And the fitted attributes named in
+    subclass defines or inherits as a plain function (``predict``, ``kneighbors``,
+    scikit-learn's ``score`` ... — see ``_PUBLIC_INFERENCE``) is wrapped so that
+    nested calls on the same estimator record one event, under the name of the
+    method the caller invoked. And the fitted attributes named in
     any ``_mlxlearn_mlx_attrs`` tuple along the MRO are deleted at the start of
     every fit.
     """
@@ -286,7 +285,15 @@ class BackendMixin:
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         for name in _PUBLIC_INFERENCE:
-            method = cls.__dict__.get(name)
+            # Inherited methods too: scikit-learn's own kneighbors_graph, score or
+            # radius_neighbors_graph reach the work through a method mlxlearn
+            # overrides, and without a wrapper of their own the event was named
+            # after that inner method rather than the call the user made. Only
+            # plain functions, read from the class dicts rather than through
+            # getattr: an ``available_if`` descriptor (SVC.predict_proba) resolves
+            # to a function on the class, and replacing it with a wrapper would make
+            # the method exist on estimators that do not have it.
+            method = next((k.__dict__[name] for k in cls.__mro__ if name in k.__dict__), None)
             if inspect.isfunction(method) and not getattr(method, "_mlxlearn_public_call", False):
                 setattr(cls, name, _public_call(name, method))
 
@@ -407,7 +414,9 @@ class BackendMixin:
                 if refused is not None:
                     return refused
                 check_fork_safety()
-            self._stage_event(operation, backend, reason="forced", shape=shape)
+            self._stage_event(
+                operation, backend, reason="forced", shape=shape, fallback=backend == "sklearn"
+            )
             return backend
 
         detail = crossover_detail
@@ -494,7 +503,13 @@ class BackendMixin:
         *,
         shape: tuple[int, ...] | None = None,
     ) -> Backend:
-        """Apply ``fallback_policy`` to a capability mismatch."""
+        """Apply ``fallback_policy`` to a capability mismatch.
+
+        Layer 1 re-raises ``exc`` as it is, advice included. A patched estimator
+        is already under ``patch_sklearn()``, so what it records, warns and raises
+        is the mismatch without that advice (``exc.summary``), followed by what it
+        did about it.
+        """
         name = type(self).__name__
         policy = get_config().fallback_policy
 
@@ -505,23 +520,25 @@ class BackendMixin:
             )
             raise exc
 
+        # getattr: an exception unpickled from an older mlxlearn has no summary.
+        summary = getattr(exc, "summary", None) or str(exc)
         if policy == "raise":
+            detail = (
+                f"{summary} fallback_policy='raise' is set, so mlxlearn did not hand "
+                f"this {operation} to scikit-learn. Set fallback_policy='warn' or "
+                "'silent' to allow the fallback."
+            )
             record_event(
-                name, operation, "sklearn", reason=exc.reason, detail=str(exc),
+                name, operation, "sklearn", reason=exc.reason, detail=detail,
                 shape=shape, fallback=True, raised=True,
             )
-            raise CapabilityError(
-                f"{exc} — and fallback_policy='raise' is set, so mlxlearn did not "
-                "hand this to scikit-learn. Set fallback_policy='warn' or 'silent' "
-                "to allow the fallback.",
-                reason=exc.reason,
-            ) from exc
+            raise CapabilityError(detail, reason=exc.reason) from exc
 
         self._stage_event(
             operation,
             "sklearn",
             reason=exc.reason,
-            detail=str(exc),
+            detail=f"{summary} mlxlearn handed this {operation} to scikit-learn.",
             shape=shape,
             fallback=True,
             warn=True,
@@ -609,11 +626,31 @@ class BackendMixin:
             )
         return backend  # type: ignore[return-value]
 
+    def _claim_call_event(self, operation: str) -> str | None:
+        """Claim the one event of the public call in progress on this estimator.
+
+        Returns the name to record it under — the method the caller invoked, or
+        ``operation`` outside any public call — or ``None`` when the call has
+        already recorded its event. For an inference path that records something
+        other than a sticky event (a capability fallback at inference) and must
+        still count as the call's one event.
+        """
+        scope = _CALL_SCOPE.get()
+        if scope is None or scope.owner is not self:
+            return operation
+        if scope.recorded:
+            return None
+        scope.recorded = True
+        return scope.operation
+
     def _note_inference(
         self,
         operation: str,
         *,
         shape: tuple[int, ...] | None = None,
+        detail: str = "",
+        host: bool = False,
+        **extra: Any,
     ) -> Backend:
         """Record that an inference call reused the fitted backend, and return it.
 
@@ -621,24 +658,30 @@ class BackendMixin:
         recorded reason is ``"sticky"``, which is exactly the evidence needed to
         show that inference did not wander — or ``"gpu-unavailable"`` when a
         GPU-fitted model runs on MLX's CPU backend because this process has no
-        GPU (:func:`~mlxlearn._common.device.inference_device`).
+        GPU (:func:`~mlxlearn._common.device.inference_device`). That is also
+        where an explicit ``device="gpu"`` that cannot be honored raises
+        :class:`~mlxlearn.exceptions.DeviceError`.
 
         One public call records one event, named after the method the caller
         invoked: a nested call on the same estimator (``predict`` reaching
-        ``kneighbors``) returns the backend without recording again.
+        ``kneighbors``) returns the backend without recording again. ``detail``
+        and ``extra`` describe how the call was served — a neighbor search that
+        needed its exact fallback, say — and go on that one event.
+
+        ``host=True`` says the call computes on the host from the fitted state
+        (scikit-learn's own ``radius_neighbors`` on an MLX-fitted index): no MLX
+        device is used, so none is resolved, none can be missing, and an
+        explicit ``device="gpu"`` has nothing to refuse.
         """
         backend = self._fitted_backend(operation)
-        scope = _CALL_SCOPE.get()
-        if scope is not None and scope.owner is self:
-            if scope.recorded:
-                return backend
-            scope.recorded = True
-            operation = scope.operation
+        claimed = self._claim_call_event(operation)
+        if claimed is None:
+            return backend
+        operation = claimed
 
         reason = "sticky"
-        if backend == "mlx" and inference_device(backend) == "cpu":
+        if backend == "mlx" and not host and inference_device(backend) == "cpu":
             reason = "gpu-unavailable"
-        extra: dict[str, Any] = {}
         fit_event = self.__dict__.get("_fit_event_")
         if fit_event is not None:
             extra["fit_reason"] = fit_event.reason
@@ -647,6 +690,7 @@ class BackendMixin:
             operation,
             backend,
             reason=reason,
+            detail=detail,
             shape=shape,
             fallback=backend == "sklearn",
             **extra,
@@ -698,14 +742,3 @@ class BackendMixin:
     def _backend_event(self, operation: str, backend: Backend, **kwargs: Any) -> BackendEvent:
         return record_event(type(self).__name__, operation, backend, **kwargs)
 
-
-def problem_work(X: np.ndarray, *, extra: int = 1) -> int:
-    """A crude scalar proxy for how much arithmetic a problem needs.
-
-    ``n_samples * n_features * extra``. Crude on purpose: the crossover thresholds
-    it feeds are measured, and a measured threshold on a simple proxy beats a
-    sophisticated model nobody calibrated.
-    """
-    if X.ndim != 2:
-        return 0
-    return int(X.shape[0]) * int(X.shape[1]) * int(extra)

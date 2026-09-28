@@ -1027,7 +1027,7 @@ def test_patched_fit_below_the_crossover_skips_the_mlx_preamble(monkeypatch):
 
     monkeypatch.setattr(svc_module, "validate_data", forbidden)
     monkeypatch.setattr(svc_module, "check_float32_range", forbidden)
-    monkeypatch.setattr(svc_module, "_check_validated_range", forbidden)
+    monkeypatch.setattr(svc_module, "validate_float32_input", forbidden)
 
     X, y = _data(n_samples=200, n_features=5, seed=0)
     patched = PatchedSVC().fit(X, y)

@@ -32,9 +32,11 @@ INSTANCES = {
         "no liblinear", parameter="solver", value="liblinear"
     ),
     "UnsupportedInputError": lambda: exceptions.UnsupportedInputError(
-        "too large", reason="float32-overflow"
+        "too large", reason="float32-overflow", advice="Or run under patch_sklearn()."
     ),
-    "SparseInputError": lambda: exceptions.SparseInputError("sparse input"),
+    "SparseInputError": lambda: exceptions.SparseInputError(
+        "sparse input", advice="Under patch_sklearn() it is handed over."
+    ),
     "InvalidInputError": lambda: exceptions.InvalidInputError("class 3 has zero weight"),
     "UnsupportedEstimatorStateError": lambda: exceptions.UnsupportedEstimatorStateError(
         "state", reason="custom-state"
@@ -82,6 +84,21 @@ def test_copies(name):
     for duplicate in (copy.copy(original), copy.deepcopy(original)):
         assert type(duplicate) is type(original)
         assert _state(duplicate) == _state(original)
+
+
+def test_advice_is_part_of_the_message_and_kept_apart_from_it():
+    """Layer 1 shows the advice; a patched estimator reports ``summary`` without it."""
+    exc = UnsupportedParameterError(
+        "gamma=0 unsupported.", parameter="gamma", value=0.0, advice="Use patch_sklearn()."
+    )
+    assert str(exc) == "gamma=0 unsupported. Use patch_sklearn()."
+    assert exc.summary == "gamma=0 unsupported."
+    assert exc.advice == "Use patch_sklearn()."
+    restored = pickle.loads(pickle.dumps(exc))
+    assert (restored.summary, restored.advice) == (exc.summary, exc.advice)
+
+    plain = CapabilityError("no advice")
+    assert str(plain) == plain.summary == "no advice" and plain.advice == ""
 
 
 def test_restored_error_keeps_its_family_and_attributes():

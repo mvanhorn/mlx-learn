@@ -595,10 +595,14 @@ def test_huge_sample_weights_do_not_overflow_float32(scale, n_classes):
 
 
 def test_sample_weight_equivalence_at_float32_tolerance():
-    """scikit-learn's own check runs at float64 tolerances and is xfailed (Rule A).
+    """The property scikit-learn's own check asserts, at float32's tolerance.
 
-    The property is real and is asserted here at the tolerance float32 actually
-    supports, so the xfail does not mean the behavior goes untested.
+    ``check_sample_weight_equivalence_on_dense_data`` is one of scikit-learn's
+    declared expected failures for its own LogisticRegression, so the compliance
+    suite skips it for mlxlearn's too (``INHERITED_FAILURES`` in
+    ``tests/test_sklearn_compliance.py``; nothing is xfailed under a Rule). The
+    property is real, so it is asserted here at the tolerance float32 actually
+    supports rather than left untested.
     """
     X, y = _data(n_samples=800, n_features=10)
     weights = np.random.default_rng(0).integers(1, 4, size=len(y)).astype(float)

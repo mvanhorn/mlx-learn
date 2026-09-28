@@ -189,7 +189,51 @@ def test_an_exhausted_budget_is_reported_not_hidden(shrinking):
     state, _ = _solve(y, K32, np.full(600, 10.0), max_iter=50, shrinking=shrinking)
     assert state.n_iter == 50
     assert not state.converged
+    assert state.stop_reason == "max_iter"
     assert state.max_kkt_violation > TOL
+
+
+@pytest.mark.parametrize("shrinking", [False, True])
+def test_a_converged_solve_says_so(shrinking):
+    _, y, K32 = _problem(n=300, seed=2)
+    state, _ = _solve(y, K32, np.ones(300), shrinking=shrinking)
+    assert state.converged and state.stop_reason == "converged"
+
+
+# ------------------------------------------------- a non-finite kernel is not a solution
+
+
+@pytest.mark.parametrize("shrinking", [False, True])
+@pytest.mark.parametrize("bad", [np.inf, -np.inf, np.nan])
+@pytest.mark.parametrize("where", ["column", "row-and-column", "diagonal"])
+def test_a_non_finite_kernel_is_never_reported_as_converged(shrinking, bad, where):
+    """NaN gradients left no eligible working pair, which the loop read as convergence.
+
+    The state claimed ``converged=True`` after one iteration with a NaN ``rho``, and
+    only SVC's post-fit check stood between that and a model predicting one class.
+    An infinite diagonal entry instead made every step through its sample zero-length,
+    and the solver spun on one pair until the budget ran out.
+    """
+    _, y, K32 = _problem(n=300, seed=3)
+    K32 = K32.copy()
+    k_diag = np.diag(K32).astype(np.float64)
+    if where == "column":
+        K32[:, 7] = bad  # every row the solver reads carries it
+    elif where == "row-and-column":
+        K32[250, :] = bad
+        K32[:, 250] = bad
+    else:
+        k_diag[11] = bad
+    source = _Source(K32)
+    with np.errstate(invalid="ignore", over="ignore"):
+        state = solve_c_svc(
+            y, np.ones(300), k_diag, source.row,
+            SMOConfig(tol=TOL, cache_rows=300, shrinking=shrinking, max_iter=100_000),
+            fetch_rows=source.rows,
+        )
+    assert not state.converged
+    assert state.stop_reason == "non-finite"
+    assert np.isnan(state.max_kkt_violation)
 
 
 # ------------------------------------------- the cache cannot change the answer

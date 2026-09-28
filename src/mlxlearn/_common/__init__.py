@@ -8,7 +8,7 @@ because the 0.2.x experimental MLX boundary will expose it.
 from __future__ import annotations
 
 from .arrays import INDEX_DTYPE, NUMPY_FLOAT, as_float32, sync, to_mlx, to_numpy
-from .base import BackendMixin, mlx_guard, problem_work, release_mlx_cache
+from .base import BackendMixin, mlx_guard, release_mlx_cache
 from .config import (
     Config,
     Tuning,
@@ -61,7 +61,6 @@ __all__ = [
     "mlx_guard",
     "mlx_key",
     "numpy_generator",
-    "problem_work",
     "record_event",
     "release_mlx_cache",
     "reset_config",
