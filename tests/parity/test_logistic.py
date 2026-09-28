@@ -229,10 +229,14 @@ def test_no_centering_without_an_intercept():
 def test_objective_is_no_worse_at_an_equal_truncated_budget():
     """The fair comparison when neither solver has converged.
 
-    On a hard problem at ``max_iter=100`` both solvers stop on the iteration limit
-    and both warn. Comparing their coefficients then compares two arbitrary
+    On a hard problem at a small ``max_iter`` both solvers stop on the iteration
+    limit and both warn. Comparing their coefficients then compares two arbitrary
     intermediate iterates, and the observed gaps are large. What can be asserted —
     and what actually matters — is that mlxlearn has not made *less* progress.
+
+    The budget was 100 until the diagonal preconditioner, with which mlxlearn
+    converges on this problem in 76 iterations (scikit-learn needs 251); at 50 both
+    are still truncated.
     """
     from sklearn.utils.class_weight import compute_class_weight
 
@@ -244,12 +248,12 @@ def test_objective_is_no_worse_at_an_equal_truncated_budget():
     C = 39.0
 
     with tuning_context(force_backend="mlx"):
-        mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=100).fit(X, y)
+        mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=50).fit(X, y)
     ref = SkLogisticRegression(
-        C=C, class_weight="balanced", max_iter=100, solver="lbfgs"
+        C=C, class_weight="balanced", max_iter=50, solver="lbfgs"
     ).fit(X, y)
 
-    assert mlx.n_iter_[0] == 100 and ref.n_iter_[0] == 100, "precondition: neither converged"
+    assert mlx.n_iter_[0] == 50 and ref.n_iter_[0] == 50, "precondition: neither converged"
 
     encoded = np.searchsorted(ref.classes_, y)
     weights = compute_class_weight("balanced", classes=ref.classes_, y=y)[encoded]

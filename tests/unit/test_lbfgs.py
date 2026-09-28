@@ -189,6 +189,157 @@ def test_an_exhausted_budget_still_takes_the_best_sufficient_decrease_step():
     assert state.objective < 0.5 * 1e-4 * 100.0**2
 
 
+def test_the_zoom_has_no_absolute_step_floor():
+    """``f(x) = ½s²(x − 1/s)²`` at ``s = 1e8``, from ``x = 0``.
+
+    The first trial ``t = 1/‖g‖₁ = 1/s`` overshoots by a factor of ``s``, so the
+    acceptable step is about ``1/s² = 1e-16``. The zoom used to stop once the bracket
+    was narrower than 1e-12 *absolute*, returning a line-search failure at
+    ``n_iter=0`` — which is how LogisticRegression returned the null model for
+    features around 1e8.
+    """
+    s = 1e8
+
+    def fun(x):
+        v = np.asarray(x, dtype=np.float64)
+        return float(0.5 * s * s * np.sum((v - 1.0 / s) ** 2)), mx.array(
+            (s * s * (v - 1.0 / s)).astype(np.float32)
+        )
+
+    state = minimize(fun, mx.array([0.0]), LBFGSConfig())
+    assert state.n_iter >= 1, state.stop_reason
+    assert state.objective < 1e-6 * 0.5
+    np.testing.assert_allclose(np.asarray(state.x), 1.0 / s, rtol=1e-5)
+
+
+def test_the_preconditioner_reaches_coordinates_on_a_different_scale():
+    """Curvatures 1e12 apart: one coordinate the gradient is dominated by, one it is not.
+
+    The diagonal preconditioner is what lets the small-curvature coordinate move at
+    all before the budget runs out; without it every step is sized for the large
+    curvature. ``tol`` still applies to the unscaled gradient.
+    """
+    scale = np.array([1e12, 1.0])
+    fun = _quadratic(scale)
+    x0 = mx.array([1.0, 1.0])
+    config = LBFGSConfig(max_iter=20, tol=1e-3)
+
+    plain = minimize(fun, x0, config)
+    conditioned = minimize(fun, x0, config, preconditioner=1.0 / scale)
+
+    assert conditioned.converged and conditioned.stop_reason == "gtol"
+    assert conditioned.n_iter < plain.n_iter or not plain.converged
+    np.testing.assert_allclose(np.asarray(conditioned.x), 0.0, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "preconditioner", [np.zeros(2), -np.ones(2), np.array([1.0, np.inf]), np.ones(3)]
+)
+def test_an_invalid_preconditioner_is_rejected(preconditioner):
+    with pytest.raises(ValueError, match="preconditioner"):
+        minimize(_quadratic([1.0, 2.0]), mx.ones((2,)), LBFGSConfig(), preconditioner=preconditioner)
+
+
+def test_the_callback_sees_every_accepted_iterate():
+    seen = []
+    state = minimize(
+        _quadratic([1.0, 10.0]),
+        mx.array([3.0, 1.0]),
+        LBFGSConfig(tol=1e-6),
+        callback=lambda x: seen.append(x.copy()),
+    )
+    assert len(seen) == state.n_iter
+    np.testing.assert_array_equal(seen[-1], np.asarray(state.x, dtype=np.float64))
+    assert all(x.dtype == np.float64 and x.shape == (2,) for x in seen)
+
+
+# -------------------------------------------------------------- host bookkeeping
+
+
+def test_the_bookkeeping_never_touches_the_device(monkeypatch):
+    """One synchronization per evaluation of ``fun``, and none of the solver's own.
+
+    Every inner product used to be ``float(mx.sum(a * b))`` — a blocking device
+    round trip of ~120 µs, 12 to 33 of them per iteration — which is what made an
+    iteration cost milliseconds. The two-loop recursion, the curvature test and
+    ``max|g|`` are host NumPy now; this pins that down by making the MLX reductions
+    unusable while the solver runs, and counting evaluations.
+    """
+    a = np.array([1.0, 4.0, 9.0, 25.0], dtype=np.float32)
+    real_eval = mx.eval
+    evals = []
+
+    def fun(x):
+        grad = mx.array(a) * x
+        real_eval(grad)
+        evals.append(1)
+        v = np.asarray(x, dtype=np.float64)
+        return float(0.5 * np.sum(a * v * v)), grad
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("L-BFGS bookkeeping must not run on the device")
+
+    for name in ("sum", "max", "abs", "eval"):
+        monkeypatch.setattr(mx, name, forbidden)
+    state = minimize(fun, mx.array([1.0, -2.0, 0.5, 3.0]), LBFGSConfig(tol=1e-6))
+    monkeypatch.undo()
+
+    assert state.converged
+    assert len(evals) == state.n_fev
+
+
+# ----------------------------------------------------------------- float32 floor
+
+
+def _float32_valued(scale, center=0.0):
+    """``1 + ½Σ a(x − c)²`` whose *value* is rounded to float32, as an MLX sum is.
+
+    Near the optimum the decrease a step buys drops below float32's spacing at 1.0
+    (1.2e-7) while the float32 gradient is still accurate — the situation a
+    float32-accumulated log-loss is in when ``tol`` is small.
+    """
+    a = np.asarray(scale, dtype=np.float64)
+
+    def fun(x):
+        v = np.asarray(x, dtype=np.float64)
+        value = float(np.float32(1.0 + 0.5 * np.sum(a * (v - center) ** 2)))
+        return value, mx.array((a * (v - center)).astype(np.float32))
+
+    return fun
+
+
+def test_approximate_wolfe_reaches_a_tol_the_objective_cannot_resolve():
+    """The objective cannot see the last steps; the slope can.
+
+    Accepting only on a decrease of the float32 value stalled at ``max|g|`` about 50x
+    above the float32 gradient floor, with a line-search failure and a
+    ConvergenceWarning where scikit-learn converges silently.
+    """
+    fun = _float32_valued(np.linspace(1.0, 100.0, 8))
+    x0 = mx.full((8,), 0.1)
+
+    state = minimize(fun, x0, LBFGSConfig(tol=1e-6, max_iter=500))
+    assert state.converged and state.stop_reason == "gtol", state.stop_reason
+
+    exact = minimize(fun, x0, LBFGSConfig(tol=1e-6, max_iter=500, objective_noise=0.0))
+    assert not exact.converged and exact.stop_reason == "line-search-failure"
+
+
+def test_a_tol_below_the_float32_floor_stops_on_the_floor():
+    """``tol=0`` is honored as "run to the float32 floor", not as "run to max_iter".
+
+    Centered away from zero, so the iterate itself runs out of float32 resolution.
+    """
+    fun = _float32_valued(np.linspace(1.0, 100.0, 8), center=1.0)
+    state = minimize(fun, mx.zeros((8,)), LBFGSConfig(tol=0.0, max_iter=1000))
+
+    assert state.stop_reason == "float32-floor"
+    assert not state.converged
+    assert state.n_iter < 200
+    assert state.at_resolution_floor
+    assert state.initial_grad_max_abs == pytest.approx(100.0)
+
+
 # --------------------------------------------------------- pinned logistic trajectories
 
 #: ``(n_classes, C, fit_intercept) -> (n_iter, objective)`` measured with the solver as

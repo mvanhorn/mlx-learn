@@ -1,4 +1,4 @@
-"""Limited-memory BFGS with a strong-Wolfe line search, on MLX arrays.
+"""Limited-memory BFGS with a strong-Wolfe line search, for objectives evaluated in MLX.
 
 The contract is the one every solver in this package keeps: a frozen
 :class:`LBFGSConfig` and a callable in, a frozen :class:`LBFGSState` out. The
@@ -19,11 +19,9 @@ objective, so the history stays full and the iteration count stays near
 scikit-learn's.
 
 **A line-search failure is a stop reason, not an exception.** It is a legitimate
-outcome — near the float32 floor of a well-converged problem the objective simply
-stops decreasing along any direction. Raising would make an accurate answer look
-like a crash; silently returning ``converged=True`` would hide a real stall. So it
-returns, with ``stop_reason="line-search-failure"``, and the caller decides
-whether that deserves a warning.
+outcome. Raising would make an accurate answer look like a crash; silently
+returning ``converged=True`` would hide a real stall. So it returns, with a
+``stop_reason``, and the caller decides whether that deserves a warning.
 
 **The convergence test is on ``max|g|``.** That is scikit-learn's ``gtol`` for its
 lbfgs path, so the same ``tol`` means the same thing here as it does there. It is
@@ -32,28 +30,68 @@ ancestor incremented at the top of the loop before testing, which reported
 ``n_iter=1`` for a problem already converged at the starting point and counted a
 failed line search as work performed.
 
-Notes
------
-Everything the caller passes and everything returned is an ``mx.array``; only
-scalars (objective values, step lengths, inner products) cross to the host, where
-they are Python floats and therefore float64. That split is deliberate: the
-expensive work stays on the device in float32, while the scalar bookkeeping that
-decides *whether to stop* is done at full precision, so a float32 rounding wobble
-in one inner product cannot masquerade as convergence.
+Where the work happens
+----------------------
+The objective and its gradient — the ``O(n·d)`` part — are MLX, in float32, on
+whatever device the caller chose. **Everything else is NumPy float64 on the host**:
+the two-loop recursion, every inner product, the curvature test, ``max|g|``. The
+parameter vector is ``n_targets × (n_features + 1)`` floats, so moving it costs
+nothing, while keeping that bookkeeping in MLX cost a blocking device round trip
+(~120 µs on the GPU) for *every* inner product: ``2m + 1`` of them in the two-loop
+recursion alone, and 12 to 33 per iteration in total. The line search averages
+about 1.1 evaluations per iteration, so those scalar reads, not the line search,
+were what made an iteration cost milliseconds. Now each evaluation of ``fun``
+performs exactly one synchronization, the one that brings back its value and
+gradient.
+
+Doing the bookkeeping in float64 is also the more accurate choice: the scalar
+decisions about *whether to stop* are made at full precision, so a float32
+rounding wobble in one inner product cannot masquerade as convergence. Trial points
+are rounded to float32 on the host *before* they are evaluated, so the curvature
+pair ``(s, y)`` describes exactly the points whose objective was computed.
+
+The float32 floor
+-----------------
+Near the optimum the decrease a step would buy can be smaller than the resolution
+of a float32-accumulated objective, and a search that trusts only the objective
+then rejects every step while the gradient is still perfectly informative. Two
+mechanisms keep the solver honest there:
+
+* **Approximate Wolfe acceptance** (Hager & Zhang, 2005). A trial point whose value
+  is within ``objective_noise·|f₀|`` of the starting value — indistinguishable from
+  it at the objective's own resolution — is accepted when its *slope* meets the
+  strong-Wolfe curvature condition. With ``|gₜᵀd| ≤ c₂|g₀ᵀd|`` the trapezoid rule
+  predicts a decrease of at least ``t(1 − c₂)|g₀ᵀd|/2``, so the step is a descent
+  step even though the value alone cannot certify it.
+* **A floor stop.** When the objective can no longer resolve the progress the
+  gradient predicts — a failed search whose predicted decrease was already below
+  the noise level, or ``stall_iterations`` accepted steps in a row that neither
+  lowered the objective resolvably nor reached a new low of ``max|g|`` — the run
+  stops with ``stop_reason="float32-floor"``. Without it, a ``tol`` below what
+  float32 can resolve (``tol=0``, say) would wander at noise level until
+  ``max_iter``.
 """
 
 from __future__ import annotations
 
 import math
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
-__all__ = ["LBFGSConfig", "LBFGSState", "minimize"]
+import numpy as np
+
+__all__ = ["GRADIENT_RESOLUTION", "LBFGSConfig", "LBFGSState", "minimize"]
 
 #: ``fun(x) -> (objective, gradient)``: a Python float and an ``mx.array`` shaped
 #: like ``x``.
 ObjectiveGradient = Callable[[Any], "tuple[float, Any]"]
+
+#: ``max|g|`` below this fraction of its starting value is not resolvable in float32
+#: (``docs/fp32_policy.md`` §2.3). A run that stops on the float32 floor *below* it
+#: has done everything the arithmetic allows; one that stops above it has stalled.
+GRADIENT_RESOLUTION = 1e-6
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,9 +120,20 @@ class LBFGSConfig:
     c2 : float, default=0.9
         Curvature constant. Must satisfy ``0 < c1 < c2 < 1``.
     min_curvature : float, default=1e-12
-        Relative floor on ``sᵀy`` below which the curvature pair is skipped rather
-        than stored. Storing a pair with ``sᵀy ≤ 0`` makes the two-loop recursion
-        produce an ascent direction.
+        Floor on the cosine between ``s`` and ``y`` below which a curvature pair is
+        skipped rather than stored. Storing a pair with ``sᵀy ≤ 0`` makes the
+        two-loop recursion produce an ascent direction. The test is
+        ``sᵀy > min_curvature·‖s‖‖y‖``, which is invariant to the scale of the
+        features; a floor on ``sᵀy`` relative to ``yᵀy`` alone discarded every pair
+        once features reached ~1e6, and the run degenerated to steepest descent.
+    objective_noise : float, default=1e-7
+        Relative resolution of the objective values ``fun`` returns: two values
+        closer than ``objective_noise·|f|`` are treated as indistinguishable. Sets
+        the band for approximate-Wolfe acceptance and for the float32-floor stop.
+        ``0`` disables both, leaving the exact strong-Wolfe search.
+    stall_iterations : int, default=10
+        Accepted steps in a row that neither lower the objective resolvably nor
+        reach a new low of ``max|g|`` before the run stops on the float32 floor.
     """
 
     max_iter: int = 100
@@ -94,6 +143,8 @@ class LBFGSConfig:
     c1: float = 1e-4
     c2: float = 0.9
     min_curvature: float = 1e-12
+    objective_noise: float = 1e-7
+    stall_iterations: int = 10
 
     def __post_init__(self) -> None:
         if self.max_iter < 0:
@@ -115,6 +166,14 @@ class LBFGSConfig:
             raise ValueError(
                 f"min_curvature must be non-negative, got {self.min_curvature}"
             )
+        if not 0.0 <= self.objective_noise < 1.0:
+            raise ValueError(
+                f"objective_noise must be in [0, 1), got {self.objective_noise}"
+            )
+        if self.stall_iterations < 1:
+            raise ValueError(
+                f"stall_iterations must be at least 1, got {self.stall_iterations}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +183,7 @@ class LBFGSState:
     Attributes
     ----------
     x : mx.array
-        The best point found, shaped like ``x0``.
+        The final iterate, shaped like ``x0``, in float32.
     objective : float
         Objective value at ``x``.
     grad_max_abs : float
@@ -139,7 +198,10 @@ class LBFGSState:
         reason reports False, whatever its objective value looks like.
     stop_reason : str
         One of ``"gtol"``, ``"max_iter"``, ``"line-search-failure"``,
-        ``"non-finite-objective"``.
+        ``"float32-floor"``, ``"non-finite-objective"``.
+    initial_grad_max_abs : float
+        ``max|gradient|`` at ``x0``, the scale :data:`GRADIENT_RESOLUTION` is
+        relative to.
     """
 
     x: Any
@@ -149,22 +211,12 @@ class LBFGSState:
     n_fev: int
     converged: bool
     stop_reason: str
+    initial_grad_max_abs: float = math.nan
 
-
-# ------------------------------------------------------------------ device scalars
-
-
-def _dot(a: Any, b: Any) -> float:
-    """Inner product of two like-shaped MLX arrays, as a host float."""
-    import mlx.core as mx
-
-    return float(mx.sum(a * b))
-
-
-def _max_abs(g: Any) -> float:
-    import mlx.core as mx
-
-    return float(mx.max(mx.abs(g)))
+    @property
+    def at_resolution_floor(self) -> bool:
+        """Whether ``max|g|`` is below what float32 can resolve for this problem."""
+        return self.grad_max_abs <= GRADIENT_RESOLUTION * self.initial_grad_max_abs
 
 
 # ------------------------------------------------------------------- line search
@@ -208,10 +260,26 @@ def _safeguard(candidate: float | None, lo: float, hi: float) -> float:
     return candidate
 
 
+class _Step(NamedTuple):
+    """What a line search hands back. ``kind`` says how the step was certified."""
+
+    accepted: bool
+    #: ``"wolfe"`` (strong Wolfe), ``"approximate"`` (approximate Wolfe, inside the
+    #: objective's noise band), ``"armijo"`` (budget exhausted; best
+    #: sufficient-decrease point) or ``"none"``.
+    kind: str
+    t: float
+    x: Any
+    f: float
+    g: Any
+
+
 class _LineSearch:
     """Bracket-then-zoom search for a step satisfying the strong Wolfe conditions.
 
-    ``probe(t)`` must return ``(x_t, f_t, g_t, gtd_t)``. The search tracks the best
+    ``probe(t)`` must return ``(x_t, f_t, g_t, gtd_t)``, or ``None`` when the trial
+    point is indistinguishable from the start in float32 — at which point no smaller
+    step can be evaluated either, and the search ends. The search tracks the best
     point it saw that met sufficient decrease, so that exhausting the evaluation
     budget still yields progress instead of an abandoned iteration — the difference
     between "we could not certify this step" and "we could not move".
@@ -223,10 +291,11 @@ class _LineSearch:
         self._gtd0 = gtd0
         self._c1 = config.c1
         self._c2 = config.c2
+        self._noise = config.objective_noise * abs(f0)
         self._budget = config.max_line_search
         self.n_fev = 0
-        #: (t, x, f, g, gtd) for the best Armijo-acceptable point seen.
-        self._best: tuple[float, Any, float, Any, float] | None = None
+        #: (t, x, f, g) for the best Armijo-acceptable point seen.
+        self._best: tuple[float, Any, float, Any] | None = None
 
     def _armijo(self, t: float, f: float) -> bool:
         return f <= self._f0 + self._c1 * t * self._gtd0
@@ -234,16 +303,22 @@ class _LineSearch:
     def _curvature(self, gtd: float) -> bool:
         return abs(gtd) <= -self._c2 * self._gtd0
 
+    def _approximate_wolfe(self, f: float, gtd: float) -> bool:
+        """A value indistinguishable from ``f0``, with a slope that proves descent."""
+        return self._noise > 0.0 and f <= self._f0 + self._noise and self._curvature(gtd)
+
     def _evaluate(self, t: float):
-        x_t, f_t, g_t, gtd_t = self._probe(t)
+        result = self._probe(t)
+        if result is None:
+            return None
+        x_t, f_t, g_t, gtd_t = result
         self.n_fev += 1
         if math.isfinite(f_t) and self._armijo(t, f_t):
             if self._best is None or f_t < self._best[2]:
-                self._best = (t, x_t, f_t, g_t, gtd_t)
+                self._best = (t, x_t, f_t, g_t)
         return x_t, f_t, g_t, gtd_t
 
-    def run(self, t_init: float):
-        """Return ``(accepted, t, x, f, g, strong_wolfe)``."""
+    def run(self, t_init: float) -> _Step:
         lo = None  # (t, f, gtd, x, g) — the end with the lower objective
         hi = None
 
@@ -253,7 +328,10 @@ class _LineSearch:
         first = True
 
         while self.n_fev < self._budget:
-            x_t, f_t, g_t, gtd_t = self._evaluate(t)
+            evaluated = self._evaluate(t)
+            if evaluated is None:
+                return self._give_up()
+            x_t, f_t, g_t, gtd_t = evaluated
 
             if not math.isfinite(f_t):
                 # The trial point overflowed. Contracting toward the last finite
@@ -265,11 +343,13 @@ class _LineSearch:
                 continue
 
             if not self._armijo(t, f_t) or (not first and f_t >= f_prev):
+                if not self._armijo(t, f_t) and self._approximate_wolfe(f_t, gtd_t):
+                    return _Step(True, "approximate", t, x_t, f_t, g_t)
                 lo = (t_prev, f_prev, gtd_prev, x_prev, g_prev)
                 hi = (t, f_t, gtd_t, x_t, g_t)
                 break
             if self._curvature(gtd_t):
-                return True, t, x_t, f_t, g_t, True
+                return _Step(True, "wolfe", t, x_t, f_t, g_t)
             if gtd_t >= 0.0:
                 # The slope turned uphill: the minimum lies between the previous
                 # point and this one, with this end now the *upper* bracket.
@@ -287,25 +367,40 @@ class _LineSearch:
         while self.n_fev < self._budget:
             t_lo, f_lo, gtd_lo, _, _ = lo
             t_hi, f_hi, gtd_hi, _, _ = hi
-            if abs(t_hi - t_lo) <= 1e-12 * max(1.0, abs(t_lo)):
+            # Relative, not absolute. With ``t_lo = 0`` an absolute floor of 1e-12
+            # on the step is a floor on how large the features may be: steps scale
+            # like 1/scale², so at features ~1e8 the search gave up before reaching
+            # the first acceptable point and returned the null model. The
+            # evaluation budget and the "indistinguishable in float32" probe bound
+            # the search instead.
+            if abs(t_hi - t_lo) <= 1e-12 * max(abs(t_lo), abs(t_hi)):
                 break
             t = _safeguard(
                 _cubic_minimum(t_lo, f_lo, gtd_lo, t_hi, f_hi, gtd_hi), t_lo, t_hi
             )
-            x_t, f_t, g_t, gtd_t = self._evaluate(t)
+            evaluated = self._evaluate(t)
+            if evaluated is None:
+                break
+            x_t, f_t, g_t, gtd_t = evaluated
 
             if not math.isfinite(f_t) or not self._armijo(t, f_t) or f_t >= f_lo:
+                if (
+                    math.isfinite(f_t)
+                    and not self._armijo(t, f_t)
+                    and self._approximate_wolfe(f_t, gtd_t)
+                ):
+                    return _Step(True, "approximate", t, x_t, f_t, g_t)
                 hi = (t, f_t, gtd_t, x_t, g_t)
                 continue
             if self._curvature(gtd_t):
-                return True, t, x_t, f_t, g_t, True
+                return _Step(True, "wolfe", t, x_t, f_t, g_t)
             if gtd_t * (t_hi - t_lo) >= 0.0:
                 hi = lo
             lo = (t, f_t, gtd_t, x_t, g_t)
 
         return self._give_up()
 
-    def _give_up(self):
+    def _give_up(self) -> _Step:
         """Fall back to the best sufficient-decrease point, or report failure.
 
         Accepting a point that met Armijo but not the curvature condition is safe:
@@ -314,32 +409,55 @@ class _LineSearch:
         corrupting it.
         """
         if self._best is None:
-            return False, 0.0, None, self._f0, None, False
-        t, x_t, f_t, g_t, _ = self._best
-        return True, t, x_t, f_t, g_t, False
+            return _Step(False, "none", 0.0, None, self._f0, None)
+        t, x_t, f_t, g_t = self._best
+        return _Step(True, "armijo", t, x_t, f_t, g_t)
 
 
 # ------------------------------------------------------------------------ solver
 
 
-def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState:
+def minimize(
+    fun: ObjectiveGradient,
+    x0: Any,
+    config: LBFGSConfig,
+    *,
+    callback: Callable[[np.ndarray], None] | None = None,
+    preconditioner: np.ndarray | None = None,
+) -> LBFGSState:
     """Minimize ``fun`` from ``x0`` by limited-memory BFGS.
 
     Parameters
     ----------
     fun : callable
-        ``fun(x) -> (objective, gradient)``. ``x`` and ``gradient`` are
-        ``mx.array`` of identical shape; ``objective`` is a Python float. The pair
-        must be *consistent* — the gradient must be the derivative of the value
-        actually returned. A clipped objective paired with the unclipped analytic
-        gradient makes the line search chase a decrease the derivative does not
-        predict, which is how the ancestor produced ``ABNORMAL_TERMINATION_IN_LNSRCH``
-        and then reported it as ordinary non-convergence.
+        ``fun(x) -> (objective, gradient)``. ``x`` and ``gradient`` are float32
+        ``mx.array`` of identical shape; ``objective`` is a Python float. ``fun``
+        should evaluate its gradient before returning — one synchronization for the
+        value and the gradient together is the whole per-evaluation cost the solver
+        adds. The pair must be *consistent* — the gradient must be the derivative of
+        the value actually returned. A clipped objective paired with the unclipped
+        analytic gradient makes the line search chase a decrease the derivative does
+        not predict, which is how the ancestor produced
+        ``ABNORMAL_TERMINATION_IN_LNSRCH`` and then reported it as ordinary
+        non-convergence.
     x0 : mx.array
-        Starting point. Any shape; the solver treats it as a vector space and never
-        reshapes it, so a caller may keep a natural ``(n_targets, n_features)``
-        layout.
+        Starting point. Any shape; the solver treats it as a vector space and hands
+        ``fun`` the same shape back, so a caller may keep a natural
+        ``(n_targets, n_features)`` layout.
     config : LBFGSConfig
+    callback : callable, optional
+        Called as ``callback(x)`` after every accepted step, with the new iterate as
+        a read-only float64 NumPy array shaped like ``x0``. It observes; it cannot
+        steer the run.
+    preconditioner : ndarray, optional
+        Positive, finite, shaped like ``x0``: a diagonal initial inverse-Hessian
+        approximation used in place of the identity. The quasi-Newton update
+        learns curvature only along the directions the iterates have explored, so
+        a problem whose coordinates live on scales decades apart — a feature
+        measured in units of 1e8 beside an intercept of order one — otherwise
+        takes steps sized for the largest curvature in every direction and never
+        moves the others. ``None`` is the identity. Neither ``tol`` nor the
+        reported gradient is rescaled by it.
 
     Returns
     -------
@@ -357,141 +475,175 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
     """
     import mlx.core as mx
 
-    x = x0
-    objective, grad = fun(x)
-    mx.eval(grad)
+    shape = tuple(x0.shape)
+
+    def evaluate(point: np.ndarray) -> tuple[float, np.ndarray]:
+        # ``point`` is already float32-representable (see ``probe``), so the upload
+        # is exact and the value returned belongs to exactly this point.
+        value, grad = fun(mx.array(point.reshape(shape).astype(np.float32)))
+        return float(value), np.asarray(grad, dtype=np.float64).reshape(-1)
+
+    def finish(stop_reason: str, *, converged: bool = False) -> LBFGSState:
+        return LBFGSState(
+            x=mx.array(x.reshape(shape).astype(np.float32)),
+            objective=objective,
+            grad_max_abs=grad_max,
+            n_iter=n_iter,
+            n_fev=n_fev,
+            converged=converged,
+            stop_reason=stop_reason,
+            initial_grad_max_abs=initial_grad_max,
+        )
+
+    x = np.asarray(x0, dtype=np.float32).astype(np.float64).reshape(-1)
+    diagonal = None
+    if preconditioner is not None:
+        diagonal = np.asarray(preconditioner, dtype=np.float64).reshape(-1)
+        if diagonal.shape != x.shape or not np.all(np.isfinite(diagonal) & (diagonal > 0)):
+            raise ValueError(
+                "preconditioner must be positive and finite, shaped like x0 "
+                f"{shape}; got shape {np.shape(preconditioner)}"
+            )
+        if np.all(diagonal == 1.0):
+            diagonal = None
+
+    objective, grad = evaluate(x)
     n_fev = 1
-    grad_max = _max_abs(grad)
+    n_iter = 0
+    grad_max = initial_grad_max = float(np.max(np.abs(grad))) if grad.size else 0.0
 
     if not math.isfinite(objective):
-        return LBFGSState(
-            x=x,
-            objective=objective,
-            grad_max_abs=grad_max,
-            n_iter=0,
-            n_fev=n_fev,
-            converged=False,
-            stop_reason="non-finite-objective",
-        )
+        return finish("non-finite-objective")
     if grad_max <= config.tol:
-        return LBFGSState(
-            x=x,
-            objective=objective,
-            grad_max_abs=grad_max,
-            n_iter=0,
-            n_fev=n_fev,
-            converged=True,
-            stop_reason="gtol",
-        )
+        return finish("gtol", converged=True)
 
-    s_history: list[Any] = []
-    y_history: list[Any] = []
-    rho_history: list[float] = []
+    s_history: deque[np.ndarray] = deque(maxlen=config.history_size)
+    y_history: deque[np.ndarray] = deque(maxlen=config.history_size)
+    rho_history: deque[float] = deque(maxlen=config.history_size)
 
-    n_iter = 0
-    converged = False
-    stop_reason = "max_iter"
+    # Float32-floor bookkeeping: the best max|g| reached, and the objective at the
+    # last iteration that made verifiable progress.
+    best_grad_max = grad_max
+    reference_objective = objective
+    stalled = 0
 
     for _ in range(config.max_iter):
-        direction = _two_loop(mx, grad, s_history, y_history, rho_history)
-        gtd = _dot(grad, direction)
-        if gtd >= 0.0 or not math.isfinite(gtd):
+        direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
+        gtd = float(grad @ direction)
+        if not gtd < 0.0 or not math.isfinite(gtd):
             # The stored curvature no longer describes this objective — reset to
-            # steepest descent rather than taking a step that increases f.
+            # (preconditioned) steepest descent rather than taking a step that
+            # increases f.
             s_history.clear()
             y_history.clear()
             rho_history.clear()
-            direction = -grad
-            gtd = -_dot(grad, grad)
+            direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
+            gtd = float(grad @ direction)
 
         # Nocedal & Wright's initial step: unit for a quasi-Newton direction,
-        # scaled by 1/‖g‖₁ on the first (steepest-descent) iteration where the
+        # scaled by 1/‖d‖₁ on the first (steepest-descent) iteration where the
         # direction carries no curvature information and unit length is arbitrary.
         if s_history:
             t_init = 1.0
         else:
-            g_l1 = float(mx.sum(mx.abs(grad)))
-            t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
+            d_l1 = float(np.sum(np.abs(direction)))
+            t_init = min(1.0, 1.0 / d_l1) if d_l1 > 0.0 else 1.0
 
         def probe(t: float, _x=x, _d=direction):
-            x_t = _x + t * _d
-            f_t, g_t = fun(x_t)
-            mx.eval(g_t)
-            return x_t, f_t, g_t, _dot(g_t, _d)
+            # Rounded to float32 here, not by the upload, so that ``s`` and ``y``
+            # below describe the points that were actually evaluated.
+            x_t = (_x + t * _d).astype(np.float32).astype(np.float64)
+            if np.array_equal(x_t, _x):
+                return None
+            f_t, g_t = evaluate(x_t)
+            return x_t, f_t, g_t, float(g_t @ _d)
 
         search = _LineSearch(probe, objective, gtd, config)
-        accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
+        step = search.run(t_init)
         n_fev += search.n_fev
 
-        if not accepted or not (f_new < objective):
+        if not step.accepted or (step.kind != "approximate" and not step.f < objective):
             # A step that does not strictly lower the objective is a stall, not
-            # progress. In float32 this is the ordinary way a well-converged run
-            # ends: the remaining descent is smaller than the objective's own
-            # resolution. Continuing would take null steps until max_iter and
-            # report the iteration count as if work had been done.
-            stop_reason = "line-search-failure"
-            break
+            # progress; continuing would take null steps until max_iter and report
+            # the iteration count as if work had been done. Which kind of stall it
+            # is depends on what the slope predicted: a decrease already below the
+            # objective's resolution is the float32 floor, anything larger is a
+            # genuine failure — typically a gradient inconsistent with the value.
+            predicted = abs(gtd) * t_init
+            floor = predicted <= config.objective_noise * abs(objective)
+            return finish("float32-floor" if floor else "line-search-failure")
 
-        s = x_new - x
-        y = g_new - grad
-        mx.eval(s, y)
-        ys = _dot(y, s)
-        yy = _dot(y, y)
-        if ys > config.min_curvature * max(yy, 1.0):
+        s = step.x - x
+        y = step.g - grad
+        ys = float(s @ y)
+        if ys > config.min_curvature * math.sqrt(float(s @ s)) * math.sqrt(float(y @ y)):
             s_history.append(s)
             y_history.append(y)
             rho_history.append(1.0 / ys)
-            if len(s_history) > config.history_size:
-                s_history.pop(0)
-                y_history.pop(0)
-                rho_history.pop(0)
 
-        x, objective, grad = x_new, f_new, g_new
+        x, objective, grad = step.x, step.f, step.g
         n_iter += 1
-        grad_max = _max_abs(grad)
+        grad_max = float(np.max(np.abs(grad)))
+        if callback is not None:
+            view = x.reshape(shape)
+            view.flags.writeable = False
+            callback(view)
         if grad_max <= config.tol:
-            converged = True
-            stop_reason = "gtol"
-            break
-        if not math.isfinite(objective):
-            stop_reason = "non-finite-objective"
-            break
+            return finish("gtol", converged=True)
 
-    return LBFGSState(
-        x=x,
-        objective=objective,
-        grad_max_abs=grad_max,
-        n_iter=n_iter,
-        n_fev=n_fev,
-        converged=converged,
-        stop_reason=stop_reason,
-    )
+        if config.objective_noise > 0.0:
+            # The reference stays put while the run is stalled, so a sequence of
+            # individually unresolvable decreases still counts once it adds up.
+            resolved = objective < reference_objective - config.objective_noise * abs(
+                reference_objective
+            )
+            if grad_max < best_grad_max or resolved:
+                best_grad_max = min(best_grad_max, grad_max)
+                reference_objective = min(reference_objective, objective)
+                stalled = 0
+            else:
+                stalled += 1
+                if stalled >= config.stall_iterations:
+                    return finish("float32-floor")
+
+    return finish("max_iter")
 
 
-def _two_loop(mx, grad, s_history, y_history, rho_history):
+def _two_loop(grad, s_history, y_history, rho_history, diagonal=None):
     """Nocedal's two-loop recursion: ``-H∇f`` without forming ``H``.
 
-    Returns the *descent* direction directly, i.e. the negation is folded in.
-    ``gamma = sᵀy / yᵀy`` from the newest pair scales the initial Hessian, which is
-    what makes the first step of each iteration well-scaled.
+    Returns the *descent* direction directly, i.e. the negation is folded in. The
+    initial inverse Hessian is ``gamma·D``, with ``D`` the diagonal preconditioner
+    (the identity when ``None``) and ``gamma = sᵀy / yᵀDy`` from the newest pair,
+    which is what makes the first step of each iteration well-scaled. Host NumPy
+    float64 throughout: ``2m + 1`` inner products of vectors a few hundred elements
+    long.
     """
     if not s_history:
-        return -grad
+        return -grad if diagonal is None else -(diagonal * grad)
 
-    q = grad
+    q = grad.copy()
     alphas: list[float] = []
-    for s, y, rho in zip(reversed(s_history), reversed(y_history), reversed(rho_history), strict=True):
-        alpha = rho * _dot(s, q)
+    for s, y, rho in zip(
+        reversed(s_history), reversed(y_history), reversed(rho_history), strict=True
+    ):
+        alpha = rho * float(s @ q)
         alphas.append(alpha)
-        q = q - alpha * y
+        q -= alpha * y
 
     y_last = y_history[-1]
-    gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, y_last), 1e-30))
-    r = gamma * q
+    if diagonal is None:
+        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ y_last), 1e-300))
+        r = gamma * q
+    else:
+        y_scaled = diagonal * y_last
+        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ y_scaled), 1e-300))
+        r = gamma * (diagonal * q)
 
-    for index, (s, y, rho) in enumerate(zip(s_history, y_history, rho_history, strict=True)):
-        beta = rho * _dot(y, r)
-        r = r + s * (alphas[len(alphas) - 1 - index] - beta)
+    for s, y, rho, alpha in zip(
+        s_history, y_history, rho_history, reversed(alphas), strict=True
+    ):
+        beta = rho * float(y @ r)
+        r += s * (alpha - beta)
 
-    mx.eval(r)
     return -r
