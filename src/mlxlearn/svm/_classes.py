@@ -500,6 +500,8 @@ class MLXSVCMixin(BackendMixin):
         cache_rows = self._kernel_cache_rows(n_pair)
         k_diag = kernel_diagonal(spec, X_pair)
 
+        fetch_rows = None
+        prefetch_rows = 0
         if cache_rows >= n_pair:
             gram = kernel_matrix(spec, X_pair, backend=backend, center=center)
             # Rows of a materialized Gram are views, so the LRU adds no memory here.
@@ -507,13 +509,19 @@ class MLXSVCMixin(BackendMixin):
         else:
             rows = build_kernel_rows(X_pair, spec, backend=backend, center=center)
             fetch = rows.row
+            # Many rows per device round trip: a miss prefetches the near-violators
+            # (on the GPU, where a call costs ~200 us however many rows it carries),
+            # and shrinking rebuilds its gradient in bulk.
+            fetch_rows = rows.rows
+            prefetch_rows = rows.prefetch_rows
 
         config = SMOConfig(
             tol=float(self.tol),
             max_iter=self._resolve_max_iter(n_pair),
             cache_rows=max(2, min(cache_rows, n_pair)),
+            prefetch_rows=prefetch_rows,
         )
-        return solve_c_svc(y_pair, C_pair, k_diag, fetch, config)
+        return solve_c_svc(y_pair, C_pair, k_diag, fetch, config, fetch_rows=fetch_rows)
 
     def _fit_ovo(self, X64, y_encoded, sample_weight, backend, problem=None) -> None:
         """Fit every one-vs-one subproblem and assemble LIBSVM's model layout."""
