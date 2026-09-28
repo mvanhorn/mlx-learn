@@ -92,6 +92,17 @@ def test_the_minimum_versions_job_installs_exactly_the_declared_floors():
     assert ".github/constraints/minimum-versions.txt" in ci
 
 
+def test_every_ci_test_run_installs_pandas():
+    # The pandas cases in tests/unit/test_validation.py (sparse frames, per-column
+    # range reads) skip without it, and nothing else pulls it in: before it joined the
+    # test extra they skipped on every CI leg.
+    from packaging.requirements import Requirement
+
+    extras = _pyproject()["project"]["optional-dependencies"]
+    for extra in ("test", "dev"):
+        assert "pandas" in {Requirement(spec).name for spec in extras[extra]}, extra
+
+
 # ---------------------------------------------------------------------- workflows
 
 

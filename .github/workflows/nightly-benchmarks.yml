@@ -42,10 +42,12 @@ jobs:
           # Pinned, like the hardware: a different interpreter is a different machine.
           python-version: "3.13"
       - name: Install
+        # torch only here: its container cases in tests/unit/test_validation.py skip
+        # without it, and 400 MB installed is too much for every shared-runner cell.
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -e ".[bench,test]"
+          .venv/bin/pip install -e ".[bench,test]" torch
       - name: Versions and device
         run: .venv/bin/python tools/check_environment.py
       - name: Full test suite on the Metal device, slow tests included
