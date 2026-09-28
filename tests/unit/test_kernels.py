@@ -285,6 +285,14 @@ def test_resolution_check_refuses_an_offset_float32_cannot_resolve():
         # Standardized, and offset up to ten times the spread, it is served.
         for offset in (0.0, 10.0):
             check_frame_resolution(*_framed(spec, base + offset))
+        # Rows float32 holds as identical leave only rounding to learn from — a
+        # spread of 1e-10 at an offset of 3 000 fitted a dual 5 000 times off
+        # LIBSVM's, and differed from it by chance before — while all-zero rows
+        # have nothing to round.
+        rows = (base[:2, :5] * 1e-10 - 3000.0).astype(np.float32)
+        with pytest.raises(UnsupportedInputError):
+            check_frame_resolution(spec, rows)
+        check_frame_resolution(spec, np.zeros((4, 5), dtype=np.float32))
 
     # rbf is translated, and sigmoid measured unaffected: neither is checked.
     for kernel in ("rbf", "sigmoid"):
@@ -332,6 +340,8 @@ def test_a_row_does_not_depend_on_its_batch(backend, kernel):
     two-column product rather than a matrix-vector one. On the CPU device, where
     nothing is prefetched, the vectorized transcendental functions' scalar tail
     can still move an entry by an ulp, so there it is a float32-rounding claim.
+    Exact on the GPU at this width; at a thousand features and more it is not
+    (see the next test).
     """
     rng = np.random.default_rng(11)
     X = rng.normal(size=(1500, 24))

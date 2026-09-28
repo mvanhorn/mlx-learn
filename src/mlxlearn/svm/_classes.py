@@ -951,10 +951,10 @@ class SVC(MLXSVCMixin, _SkSVC):
     timestamps, projected coordinates — or a magnitude around 1e±19 therefore
     never reaches float32 at all. rbf entries between rows close to each other
     but far from the mean, whose float32 squared distance the Gram identity
-    cannot resolve, are recomputed directly. The other kernels read the raw inner
-    product, and data whose variation it cannot resolve in float32 — a large
-    offset with a small spread, for ``linear`` and ``poly`` — is refused. See
-    ``docs/fp32_policy.md`` §2.4.
+    cannot resolve, are recomputed on the host in float64. The other kernels
+    read the raw inner product, and data whose variation it cannot resolve in
+    float32 — a large offset with a small spread, for ``linear`` and ``poly`` —
+    is refused. See ``docs/fp32_policy.md`` §2.4.
 
     What float32 cannot represent — a value past ``3.4e38``, a linear-kernel
     inner product that large, a ``gamma`` that cannot be folded into range —

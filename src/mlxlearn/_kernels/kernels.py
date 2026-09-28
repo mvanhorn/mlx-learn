@@ -24,7 +24,8 @@ error grows with ``‖a‖² + ‖b‖²`` rather than with the distance
 (``docs/fp32_policy.md`` §2.1); distances are translation-invariant, so centering
 keeps that error at the variance scale. Where it is not enough — two rows close
 together but far from the mean, in tight well-separated clusters — the entries
-the identity may have got wrong are recomputed directly (:class:`_RbfRefiner`).
+the identity may have got wrong are recomputed on the host, in float64
+(:class:`_RbfRefiner`).
 ``linear``, ``poly`` and ``sigmoid`` read the raw inner product, which is not
 translation-invariant, so they are not translated; :func:`check_frame_resolution`
 refuses data whose variation float32's inner product cannot resolve. And every
@@ -552,13 +553,17 @@ def check_frame_resolution(spec: KernelSpec, X32: np.ndarray) -> None:
     """
     if spec.kernel not in ("linear", "poly") or X32.shape[0] < 2:
         return
-    spread = 2.0 * float(np.var(X32, axis=0, dtype=np.float64).sum())
-    if spread == 0.0:
-        return  # identical rows: every entry is computed identically
     reach = float(np.einsum("ij,ij->i", X32, X32).max())
-    ratio = _inner_product_error(X32.shape[1]) * reach / spread
-    if spec.kernel == "poly":
-        ratio += _U * abs(spec.coef0) / (spec.gamma * spread)
+    spread = 2.0 * float(np.var(X32, axis=0, dtype=np.float64).sum())
+    if reach == 0.0:
+        return  # every row is zero, and so is every entry, exactly
+    # Rows float32 holds as identical — often rows that were not, rounded at a
+    # large offset — leave only rounding for the solver to learn from.
+    ratio = math.inf
+    if spread > 0.0:
+        ratio = _inner_product_error(X32.shape[1]) * reach / spread
+        if spec.kernel == "poly":
+            ratio += _U * abs(spec.coef0) / (spec.gamma * spread)
     if ratio > _RESOLUTION_LIMIT:
         raise UnsupportedInputError(
             f"The {spec.kernel!r} kernel reads the raw inner product, and float32 "
@@ -603,21 +608,27 @@ class _RbfRefiner:
     norm ``α`` only the rows in a band of norms around it can be non-negligible,
     and only those far enough out for the error to matter: a binary search over the
     sorted norms finds them, so a lone far-out row costs its own band, not a pass
-    over the tile. Those entries are recomputed as ``Σ(b − a)²`` from the float32
-    rows, in float64 — exact for the values the device holds
-    (``docs/fp32_policy.md`` §3.4). On ordinary data :meth:`needed` is false and
-    nothing runs.
+    over the tile. The band's entries are recomputed from the float32 rows in
+    float64, accurate to float32's own rounding for the values the device holds
+    (``docs/fp32_policy.md`` §3.4). Where the identity's float64 error — 2⁻²⁹ of
+    float32's — stays below that rounding, that is one matrix-vector product
+    over the band's rows, kept contiguous in norm order (gathering the rows and
+    differencing measured 39 times slower on dense bands); beyond it, direct
+    differences ``Σ(b − a)²`` of the entries that can matter. On ordinary data
+    :meth:`needed` is false and nothing runs.
     """
 
-    __slots__ = ("gamma", "kappa", "rows", "sq", "order", "norms")
+    __slots__ = ("gamma", "kappa", "order", "sq", "norms", "rows")
 
     def __init__(self, gamma: float, rows: np.ndarray) -> None:
         self.gamma = float(gamma)
         self.kappa = _inner_product_error(rows.shape[1])
-        self.rows = rows
-        self.sq = np.einsum("ij,ij->i", rows, rows, dtype=np.float64)
-        self.order = np.argsort(self.sq, kind="stable")
-        self.norms = np.sqrt(self.sq[self.order])
+        sq = np.einsum("ij,ij->i", rows, rows, dtype=np.float64)
+        self.order = np.argsort(sq, kind="stable")
+        # All in norm order, so that a band is a contiguous slice.
+        self.sq = sq[self.order]
+        self.norms = np.sqrt(self.sq)
+        self.rows = rows[self.order].astype(np.float64)
 
     @staticmethod
     def needed(spec: KernelSpec, n_features: int, left_sq: float, right_sq: float) -> bool:
@@ -630,7 +641,8 @@ class _RbfRefiner:
     def __call__(self, tile: np.ndarray, left: np.ndarray) -> None:
         """Correct ``tile = K(left, rows)``, a writable float32 host array, in place."""
         g, k = self.gamma, self.kappa
-        left_sq = np.einsum("ij,ij->i", left, left, dtype=np.float64)
+        left64 = left.astype(np.float64)
+        left_sq = np.einsum("ij,ij->i", left64, left64)
         alpha = np.sqrt(left_sq)
         with np.errstate(divide="ignore", over="ignore"):
             # (α − β)² − κ(α² + β²) < L/γ: where an entry can be non-negligible ...
@@ -639,15 +651,23 @@ class _RbfRefiner:
             floor = np.sqrt(np.maximum(_RBF_REFINE_BOUND / (g * k) - left_sq, 0.0))
         first = np.searchsorted(self.norms, np.maximum((alpha - slack) / (1.0 - k), floor))
         last = np.searchsorted(self.norms, (alpha + slack) / (1.0 - k), side="right")
+        # The float64 identity's own error, in the exponent, against float32's rounding.
+        k64 = k * 2.0**-29
         for r in np.flatnonzero(last > first):
-            cols = self.order[first[r] : last[r]]
-            exponent_error = np.minimum(g * k * (left_sq[r] + self.sq[cols]), 700.0)
+            lo, hi = int(first[r]), int(last[r])
+            cols = self.order[lo:hi]
+            if g * k64 * (left_sq[r] + self.sq[hi - 1]) <= _U:
+                dots = self.rows[lo:hi] @ left64[r]
+                squared = np.maximum(left_sq[r] + self.sq[lo:hi] - 2.0 * dots, 0.0)
+                tile[r, cols] = np.exp(-g * squared)
+                continue
+            exponent_error = np.minimum(g * k * (left_sq[r] + self.sq[lo:hi]), 700.0)
             computed = tile[r, cols].astype(np.float64)
             upper = np.maximum(computed, _FLOAT32_TINY) * np.exp(exponent_error)
-            cols = cols[upper >= _RBF_NEGLIGIBLE]
-            if cols.size:
-                diff = self.rows[cols].astype(np.float64) - left[r].astype(np.float64)
-                tile[r, cols] = np.exp(-g * np.einsum("ij,ij->i", diff, diff))
+            keep = upper >= _RBF_NEGLIGIBLE
+            if keep.any():
+                diff = self.rows[lo:hi][keep] - left64[r]
+                tile[r, cols[keep]] = np.exp(-g * np.einsum("ij,ij->i", diff, diff))
 
 
 class KernelBasis:

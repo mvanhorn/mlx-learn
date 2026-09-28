@@ -216,15 +216,17 @@ clusters far apart with `gamma` matched to the clusters, or an explicit `gamma` 
 unscaled multi-modal data — got kernel entries wrong by up to 0.58, and fits returned
 decision values 3–6 away from scikit-learn's, silently, under `patch_sklearn()` too. So
 every entry whose identity error, in the exponent, can exceed `1e-4`, and whose value,
-computed or true, can exceed `1e-8`, is recomputed on the host as a direct difference of
-the float32 rows, in float64 — exact for the values the device holds (§3.4). Distance is at
-least the difference of the norms, so only rows in a band of similar norms can qualify: a
-lone far-out row costs its own band, not a pass over the Gram, and on ordinary data the
-test never opens — on standardized data at `gamma="scale"` the bound stays near `1e-5` up
-to 4 096 features. Measured: two clusters 2 000 apart, decision values within 1.1e-3 of
-scikit-learn's (6.1 before); 40 clusters at 2 400 × 512 on the GPU, within 3.1e-4 (3.5
-before), in 0.23 s against 0.08 s unrefined and 0.44 s for scikit-learn. The same test
-runs on queries at inference.
+computed or true, can exceed `1e-8`, is recomputed on the host from the float32 rows, in
+float64 — exact, for the values the device holds (§3.4), to float32's own rounding.
+Distance is at least the difference of the norms, so only rows in a band of similar norms
+can qualify: a lone far-out row costs its own band, not a pass over the Gram, and on
+ordinary data the test never opens — on standardized data at `gamma="scale"` the bound
+stays near `1e-5` up to 4 096 features. Measured: two clusters 2 000 apart, decision values
+within 1.1e-3 of scikit-learn's (6.1 before); 40 clusters at 2 400 × 512 on the GPU, within
+3.1e-4 (3.5 before), in 0.14 s against 0.05 s unrefined and 0.39 s for scikit-learn. Where
+every entry inside a cluster needs it — two clusters of 2 000 or 5 000 rows each — the fit
+took 2.6–3× as long as unrefined, 1.4–1.7× scikit-learn's time. The same test runs on
+queries at inference.
 
 **The raw inner product (linear, poly).** These kernels are not translation-invariant, so
 the frame cannot centre them: their float32 error scales with the offset, while the
