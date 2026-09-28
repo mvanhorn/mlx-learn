@@ -13,6 +13,8 @@ numerics can be checked on their own, and this is where that happens:
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pytest
 from sklearn.datasets import make_classification
@@ -70,6 +72,28 @@ def _solve(y, K32, C, *, fetch_rows=True, **config):
         fetch_rows=source.rows if fetch_rows else None,
     )
     return state, source
+
+
+def _integer_problem(n, d, seed, kernel):
+    """Integer features, so the kernel is exact however it is computed.
+
+    ``RandomState`` is NumPy's frozen legacy stream and an integer Gram leaves no
+    rounding for a BLAS build to decide, so this problem is the same bits on every
+    NumPy — which is what lets a test pin the solve itself, not just its optimum.
+    """
+    rs = np.random.RandomState(seed)
+    X = rs.randint(-4, 5, size=(n, d), dtype=np.int64)
+    y = np.where(X @ rs.randint(-3, 4, size=d, dtype=np.int64) > 0, 1.0, -1.0)
+    flip = rs.random_sample(n) < 0.1
+    y[flip] = -y[flip]
+    G = (X @ X.T).astype(np.float64)
+    K = G if kernel == "linear" else (G / 4.0 + 1.0) ** 3
+    return y, K.astype(np.float32)
+
+
+def _pin(state: SMOState):
+    digest = hashlib.sha256(np.ascontiguousarray(state.alpha, dtype="<f8").tobytes())
+    return state.n_iter, state.stop_reason, state.rho.hex(), digest.hexdigest()[:16]
 
 
 def _dual(coef, K64):
@@ -181,6 +205,10 @@ def test_max_iter_zero_returns_the_initial_iterate(shrinking):
     np.testing.assert_array_equal(state.alpha, 0.0)
     assert np.isfinite(state.rho)
     assert source.single == 0 and source.batches == []
+    # The violation at α = 0, where yg = −y, as the one selection of max_iter=1
+    # measures it — not an unmeasured 0.0 beside stop_reason="max_iter".
+    one, _ = _solve(y, K32, np.ones(200), max_iter=1, shrinking=shrinking)
+    assert state.max_kkt_violation == one.max_kkt_violation == 2.0
 
 
 @pytest.mark.parametrize("shrinking", [False, True])
@@ -248,6 +276,24 @@ def test_cache_capacity_changes_calls_not_the_solution():
     assert tiny_src.single > whole_src.single
 
 
+@pytest.mark.parametrize("cache_rows, fetch_rows", [(3, True), (2, False)])
+def test_cache_capacity_does_not_move_a_shrinking_solve(cache_rows, fetch_rows):
+    """With shrinking, the capacity also sets the batches the gradient is rebuilt in.
+
+    Each batch used to be reduced with a matrix product, so the capacity — and the
+    BLAS build — decided how the rebuilt gradient was rounded, and near a tie which
+    pair came next: this problem took a different path at each of these
+    capacities. The terms are now added one at a time in index order, however the
+    rows were read.
+    """
+    _, y, K32 = _problem(n=500, seed=3, kernel="poly", flip_y=0.1)
+    C = np.full(500, 10.0)
+    whole, _ = _solve(y, K32, C, shrinking=True)
+    small, _ = _solve(y, K32, C, shrinking=True, cache_rows=cache_rows, fetch_rows=fetch_rows)
+    assert whole.n_iter > 500  # past the first shrinking pass, at min(n, 1000)
+    _assert_same_state(whole, small)
+
+
 @pytest.mark.parametrize("cache_rows", [3, 40, 250, 500])
 def test_prefetch_changes_calls_not_the_solution(cache_rows):
     """Batched prefetch, into free room and — once full — over the LRU tail."""
@@ -288,23 +334,106 @@ def test_prefetched_rows_own_their_memory_and_capacity_holds():
     assert len(cache) == before
 
 
+# ----------------------------------------------------------------- pinned paths
+
+#: ``(kernel, n, d, seed, C, per-sample boxes, max_iter)`` to
+#: ``(n_iter, stop_reason, rho, alpha digest)``.
+_PINNED_PLAIN = {
+    ("linear", 300, 4, 0, 1.0, False, 10_000_000):
+        (2371, "converged", "-0x1.a6a4c80d1eb72p-4", "56f8203634578a6f"),
+    ("poly", 300, 4, 1, 0.05, False, 10_000_000):
+        (4062, "converged", "0x1.619fa2b81d7a8p-1", "391564d06a4cbdc2"),
+    ("linear", 400, 5, 2, 0.5, True, 10_000_000):
+        (6506, "converged", "0x1.61ce468977635p-3", "df9242d8db0db65c"),
+    ("linear", 1200, 5, 4, 0.5, False, 10_000_000):
+        (8520, "converged", "0x1.43b864c24f4d2p-4", "df4a1e65c7bb0651"),
+    ("linear", 1200, 6, 7, 1.0, True, 1800):
+        (1800, "max_iter", "0x1.170d1115c9b5dp-3", "ee14dfc2877d5cce"),
+}
+
+
+def _pinned_solve(case, **config):
+    kernel, n, d, seed, C, per_sample, max_iter = case
+    y, K32 = _integer_problem(n, d, seed, kernel)
+    Cs = np.full(n, C)
+    if per_sample:
+        Cs = C * np.random.RandomState(seed + 100).randint(2, 9, size=n, dtype=np.int64) / 4.0
+    state, _ = _solve(y, K32, Cs, max_iter=max_iter, **config)
+    return state
+
+
+@pytest.mark.parametrize("cache_rows", [None, 2])
+@pytest.mark.parametrize("case", list(_PINNED_PLAIN), ids=lambda case: "-".join(map(str, case[:5])))
+def test_the_non_shrinking_path_is_pinned(case, cache_rows):
+    """``shrinking=False`` takes exactly the steps it always has, bit for bit.
+
+    The pins were taken from the plain loop before the shrinking loop absorbed it,
+    so they are what shows the two were the same loop, and what notices when the
+    statements they share change. Nothing on this path reduces through BLAS and the
+    kernel is exact, so the pins hold on every NumPy and BLAS build (checked on
+    NumPy 1.23 with OpenBLAS and 2.5 with Accelerate). ``n = 1200`` runs past the
+    1000-iteration shrinking period, where an ungated shrink would move the path.
+    """
+    config = {} if cache_rows is None else {"cache_rows": cache_rows}
+    assert _pin(_pinned_solve(case, **config)) == _PINNED_PLAIN[case]
+
+
+_PINNED_SHRINKING = {
+    ("linear", 300, 4, 0, 1.0, False, 10_000_000):
+        (2389, "converged", "-0x1.a6ac2a478c996p-4", "08a098a44ef23833"),
+    ("poly", 300, 4, 1, 0.05, False, 10_000_000):
+        (3876, "converged", "0x1.6194aa39f5147p-1", "23f5434e94de4c0b"),
+    ("linear", 400, 5, 2, 0.5, True, 10_000_000):
+        (5895, "converged", "0x1.61a42c4966343p-3", "653f821c971726d8"),
+}
+
+
+@pytest.mark.parametrize("cache_rows", [None, 2])
+@pytest.mark.parametrize(
+    "case", list(_PINNED_SHRINKING), ids=lambda case: "-".join(map(str, case[:5]))
+)
+def test_the_shrinking_path_is_pinned(case, cache_rows):
+    """Shrinking fits are the same bits on every cache capacity and BLAS build.
+
+    The rebuilt gradient decides working pairs near a tie, so its rounding is part
+    of the path. When each batch of rows was reduced with a matrix product, every
+    one of these problems took a different path at each of the two capacities, and
+    the third also on NumPy 1.23 with OpenBLAS against 2.5 with Accelerate at the
+    same capacity. The pins hold on both builds.
+    """
+    config = {"shrinking": True}
+    if cache_rows is not None:
+        config["cache_rows"] = cache_rows
+    assert _pin(_pinned_solve(case, **config)) == _PINNED_SHRINKING[case]
+
+
 # ------------------------------------------------------------------- shrinking
 
 
 @pytest.mark.parametrize(
-    "kernel, C", [("rbf", 0.1), ("rbf", 1.0), ("rbf", 10.0), ("poly", 1.0), ("linear", 0.1)]
+    "kernel, C, n",
+    [
+        # Small C converges fastest: at n = 1200 this case stopped at 791
+        # iterations, before the first shrinking pass, and never shrank.
+        ("rbf", 0.1, 2000),
+        ("rbf", 1.0, 1200),
+        ("rbf", 10.0, 1200),
+        ("poly", 1.0, 1200),
+        ("linear", 0.1, 1200),
+    ],
 )
-def test_shrinking_reaches_the_same_optimum(kernel, C, monkeypatch):
+def test_shrinking_reaches_the_same_optimum(kernel, C, n, monkeypatch):
     """LIBSVM's shrinking is a speed heuristic; the optimum must not move.
 
-    Per-sample boxes stand in for sample and class weights. n is above the
-    1000-iteration shrinking period, so samples really are set aside. The path
-    itself may change — a set-aside sample can become a violator again before
-    the next reconstruction, and then the two solvers select differently, as
-    LIBSVM's do — so the models are compared at the float32-policy tolerance and
-    the optimum on the objective and the KKT conditions.
+    Per-sample boxes stand in for sample and class weights. Every case runs past
+    the first shrinking pass, which comes after ``min(n, 1000)`` iterations, and
+    fails if nothing was set aside. The path itself may change — a set-aside
+    sample can become a violator again before the next reconstruction, and then
+    the two solvers select differently, as LIBSVM's do — so the models are
+    compared at the float32-policy tolerance and the optimum on the objective and
+    the KKT conditions.
     """
-    _, y, K32 = _problem(n=1200, d=10, seed=8, kernel=kernel, flip_y=0.1)
+    _, y, K32 = _problem(n=n, d=10, seed=8, kernel=kernel, flip_y=0.1)
     K64 = K32.astype(np.float64)
     Cs = C * np.random.default_rng(1).uniform(0.5, 2.0, y.shape[0])
 
@@ -330,8 +459,9 @@ def test_shrinking_reaches_the_same_optimum(kernel, C, monkeypatch):
         atol=2e-2,
         rtol=5e-3,
     )
-    if plain.n_iter > 1000:  # past the first shrinking pass
-        assert sum(set_aside) > 0, "nothing was ever shrunk; the test exercised nothing"
+    assert sum(set_aside) > 0, (
+        f"nothing was set aside in {shrunk.n_iter} iterations; the case tests nothing"
+    )
 
 
 def test_shrinking_keeps_the_path_when_nothing_ties():

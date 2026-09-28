@@ -175,9 +175,12 @@ that is dense for its dimension stock scikit-learn's KD-tree is the faster choic
   Gram and on-demand rows accumulate in different orders (up to 2.2e-3 in the decision
   values at 2 000 × 10, and a different iteration count). On the GPU they are
   bit-identical (measured). See [`fp32_policy.md`](fp32_policy.md) §2.4.
-- **`SVC(shrinking=True)`**, the default, can move where inside `tol` the solver stops
-  on the linear kernel, as LIBSVM's shrinking does (up to 5.9e-3 in the decision values
-  measured, same labels and support-vector count).
+- **`SVC(shrinking=True)`**, the default, can move where inside `tol` the solver stops,
+  on every kernel, as LIBSVM's shrinking does and by the same order — most at large `C` on
+  the polynomial and linear kernels (up to 2.3e-2 in the decision values measured, poly at
+  `C=10`, where LIBSVM's moved 3.2e-2). The support-vector count can change by one, and a
+  training point that close to the boundary can change label. See
+  [`fp32_policy.md`](fp32_policy.md) §2.4.
 - **Neighbor ties** are decided by `(distance, training index)` over the whole training
   set, where scikit-learn's order among exactly equal distances is undefined
   ([`fp32_policy.md`](fp32_policy.md) §3.1).

@@ -46,7 +46,9 @@ every sample. Two departures from LIBSVM, both deliberate: the active set is kep
 ascending index order rather than compacted by swapping, so the last-index
 tie-breaking above means the same thing with and without shrinking; and the
 reconstruction reads the rows it needs in batches, outside the LRU, so it neither
-costs one round trip per row nor evicts the rows the next iterations need.
+costs one round trip per row nor evicts the rows the next iterations need. It
+still adds them up one row at a time in index order, as LIBSVM does, so neither
+the batch size nor the BLAS build decides how the rebuilt gradient rounds.
 
 This module imports numpy and nothing else. It never sees an estimator, never
 reads global configuration, and never imports scikit-learn.
@@ -99,7 +101,7 @@ class SMOConfig:
         fixed cost per call that a batch amortizes — which the solver cannot see.
     shrinking : bool
         LIBSVM's shrinking heuristic; see the module docstring. Off by default,
-        which runs the plain loop over every sample.
+        which never sets a sample aside.
     """
 
     tol: float = 1e-3
@@ -148,7 +150,8 @@ class SMOState:
         Whether the loop ended on the KKT test, with every gradient finite.
     max_kkt_violation : float
         The violation measured at the final selection, i.e. what the stopping test
-        saw. Reported rather than discarded because it is the only honest evidence
+        saw — at the initial iterate when ``max_iter=0`` left no selection to run.
+        Reported rather than discarded because it is the only honest evidence
         of how well an unconverged fit did. With shrinking, a converged fit
         measured it over every sample; one that ran out of budget while samples
         were set aside measured it over the active ones. NaN when the gradient
@@ -436,91 +439,7 @@ def solve_c_svc(
         fetch_rows=fetch_rows,
         prefetch=config.prefetch_rows,
     )
-    if config.shrinking:
-        return _solve_shrinking(y, C, k_diag, cache, config)
-
-    alpha = np.zeros(n, dtype=np.float64)
-    # ∇ = −e at α = 0, so yg = y ⊙ ∇ = −y.
-    yg = -y.copy()
-    positive = y > 0.0
-    tau = float(config.tau)
-    tol = float(config.tol)
-
-    # I_up and I_low as LIBSVM derives them from the single alpha status. They are
-    # maintained incrementally rather than rebuilt: an SMO update moves exactly two
-    # coordinates, so recomputing n memberships every iteration does n/2 times the
-    # work the algorithm needs, and at n = 2000 that alone dominated the loop.
-    upper, lower = _bound_status(alpha, C)
-    up_set = np.where(positive, ~upper, ~lower)
-    low_set = np.where(positive, ~lower, ~upper)
-
-    n_iter = 0
-    converged = False
-    violation = 0.0
-
-    while n_iter < config.max_iter:
-        if not up_set.any() or not low_set.any():
-            # No violating pair exists at all; LIBSVM reports this as convergence.
-            converged = True
-            violation = 0.0
-            break
-
-        candidates_i = np.where(up_set, -yg, -np.inf)
-        i = _last_argmax(candidates_i)
-        gmax = float(candidates_i[i])
-        candidates_j = np.where(low_set, yg, -np.inf)
-        gmax2 = float(candidates_j.max())
-        violation = gmax + gmax2
-        if not math.isfinite(violation):
-            # Every sample is in I_up or I_low, so a NaN or infinite gradient
-            # anywhere surfaces here. Without this test the NaN comparisons below
-            # found no eligible j and reported convergence.
-            break
-
-        # Only evaluated on a miss that prefetches, and bound to this
-        # iteration's extremes so the two fetches below rank the same way.
-        priority = partial(_violation_rank, candidates_i, gmax, candidates_j, gmax2)
-        row_i = cache.get(i, priority)
-        grad_diff = gmax + yg
-        quad = k_diag[i] + k_diag - 2.0 * row_i
-        # LIBSVM substitutes TAU only when the coefficient is non-positive; a
-        # clamp with maximum() would also rewrite small positive coefficients and
-        # silently change which j gets selected.
-        quad = np.where(quad > 0.0, quad, tau)
-        eligible = low_set & (grad_diff > 0.0)
-        if not eligible.any():
-            converged = True
-            break
-        objective_gain = -(grad_diff * grad_diff) / quad
-        j = _last_argmin(np.where(eligible, objective_gain, np.inf))
-
-        if violation < tol:
-            converged = True
-            break
-
-        n_iter += 1
-
-        row_j = cache.get(j, priority)
-        y_i = y[i]
-        y_j = y[j]
-        old_i = alpha[i]
-        old_j = alpha[j]
-        new_i, new_j = _pair_update(
-            y_i, y_j, C[i], C[j], old_i, old_j, y_i * yg[i], y_j * yg[j],
-            k_diag[i] + k_diag[j] - 2.0 * float(row_i[j]), tau,
-        )
-
-        alpha[i] = new_i
-        alpha[j] = new_j
-        # The float32 kernel row is widened explicitly (see _widened); every
-        # gradient update in this module, shrinking included, goes through it.
-        yg += _widened(row_i, (new_i - old_i) * y_i)
-        yg += _widened(row_j, (new_j - old_j) * y_j)
-
-        for t in (i, j):
-            _update_sets(t, alpha[t] >= C[t], alpha[t], positive, up_set, low_set)
-
-    return _finish(alpha, C, yg, positive, n_iter, converged, violation)
+    return _solve(y, C, k_diag, cache, config)
 
 
 def _finish(
@@ -680,20 +599,23 @@ def _pair_update(
     return new_i, new_j
 
 
-def _solve_shrinking(
+def _solve(
     y: np.ndarray,
     C: np.ndarray,
     k_diag: np.ndarray,
     cache: _RowCache,
     config: SMOConfig,
 ) -> SMOState:
-    """:func:`solve_c_svc` with LIBSVM's shrinking; same contract, same optimum.
+    """The SMO loop behind :func:`solve_c_svc`, shrinking when the config asks.
 
-    The loop is the plain one run over *compact copies* of the active samples'
-    arrays, indexed by position in ``active`` — an ascending array of sample
-    indices, so "last index wins" still means the last sample. The full-length
-    arrays are the record of truth and are written back whenever the active set
-    changes. Besides the gradient, one more vector is kept for every sample:
+    There is one loop, whether or not samples are ever set aside, so the numerics
+    that decide LIBSVM parity exist once. It runs over *compact copies* of the
+    active samples' arrays, indexed by position in ``active`` — an ascending array
+    of sample indices, so "last index wins" still means the last sample. With every
+    sample active, which is always the case without shrinking, the copies are the
+    full arrays themselves. The full-length arrays are the record of truth and are
+    written back whenever the active set changes. Once shrinking has run, one more
+    vector is kept for every sample:
 
     ``ygbar_t = Σ_{s at upper bound} C_s y_s K_ts`` — LIBSVM's ``G_bar`` in the
     ``yg`` convention, updated with a full row whenever a sample enters or leaves
@@ -712,11 +634,17 @@ def _solve_shrinking(
     n = int(y.shape[0])
     tau = float(config.tau)
     tol = float(config.tol)
+    shrinking = bool(config.shrinking)
 
     alpha = np.zeros(n, dtype=np.float64)
+    # ∇ = −e at α = 0, so yg = y ⊙ ∇ = −y.
     yg = -y.copy()
     ygbar: np.ndarray | None = None  # built at the first shrinking pass
     positive = y > 0.0
+    # I_up and I_low as LIBSVM derives them from the single alpha status. They are
+    # maintained incrementally rather than rebuilt: an SMO update moves exactly two
+    # coordinates, so recomputing n memberships every iteration does n/2 times the
+    # work the algorithm needs, and at n = 2000 that alone dominated the loop.
     upper, lower = _bound_status(alpha, C)
     up_set = np.where(positive, ~upper, ~lower)
     low_set = np.where(positive, ~lower, ~upper)
@@ -728,7 +656,11 @@ def _solve_shrinking(
     unshrunk = False
     n_iter = 0
     converged = False
+    # Measured at α = 0 too, so a zero budget reports the violation it stopped at
+    # rather than an unmeasured 0.0 that reads as optimal.
     violation = 0.0
+    if up_set.any() and low_set.any():
+        violation = float((-yg[up_set]).max() + yg[low_set].max())
 
     while True:
         # Compact working copies for this active set. With every sample active
@@ -748,13 +680,15 @@ def _solve_shrinking(
             # pass ``period + 1``. A pass here that shrinks does not also select,
             # so the counter restarts one higher to keep ``period`` selections
             # between shrinks, as LIBSVM has.
-            counter -= 1
-            if counter == 0:
-                counter = period + 1
-                event = "shrink"
-                break
+            if shrinking:
+                counter -= 1
+                if counter == 0:
+                    counter = period + 1
+                    event = "shrink"
+                    break
 
             if not a_up.any() or not a_low.any():
+                # No violating pair exists at all; LIBSVM reports this as convergence.
                 violation = 0.0
                 event = "optimal"
                 break
@@ -765,9 +699,14 @@ def _solve_shrinking(
             gmax2 = float(candidates_j.max())
             violation = gmax + gmax2
             if not math.isfinite(violation):
+                # Every sample is in I_up or I_low, so a NaN or infinite gradient
+                # anywhere surfaces here. Without this test the NaN comparisons below
+                # found no eligible j and reported convergence.
                 event = "non-finite"
                 break
 
+            # Only evaluated on a miss that prefetches, and bound to this
+            # iteration's extremes so the two fetches below rank the same way.
             priority = partial(
                 _violation_rank, candidates_i, gmax, candidates_j, gmax2,
                 None if whole else active, n,
@@ -777,6 +716,9 @@ def _solve_shrinking(
             row_i = full_i if whole else full_i[active]
             grad_diff = gmax + a_yg
             quad = a_kd[ii] + a_kd - 2.0 * row_i
+            # LIBSVM substitutes TAU only when the coefficient is non-positive; a
+            # clamp with maximum() would also rewrite small positive coefficients and
+            # silently change which j gets selected.
             quad = np.where(quad > 0.0, quad, tau)
             eligible = a_low & (grad_diff > 0.0)
             if not eligible.any():
@@ -805,6 +747,8 @@ def _solve_shrinking(
             )
             a_alpha[ii] = new_i
             a_alpha[jj] = new_j
+            # The float32 kernel row is widened explicitly (see _widened), as in
+            # every gradient product in this module.
             a_yg += _widened(row_i, (new_i - old_i) * y_i)
             a_yg += _widened(row_j, (new_j - old_j) * y_j)
 
@@ -890,7 +834,7 @@ _RECONSTRUCT_ROWS = 256
 def _upper_bound_part(
     y: np.ndarray, C: np.ndarray, alpha: np.ndarray, cache: _RowCache
 ) -> np.ndarray:
-    """``ygbar`` from scratch: ``Σ_{s at upper bound} C_s y_s K[s, :]``."""
+    """``ygbar`` from scratch: ``Σ_{s at upper bound} C_s y_s K[s, :]``, in index order."""
     upper, _ = _bound_status(alpha, C)
     # A zero box is "at its upper bound" too, and contributes nothing.
     bounded = np.flatnonzero(upper & (C > 0.0))
@@ -898,7 +842,8 @@ def _upper_bound_part(
     weights = C[bounded] * y[bounded]
     chunk = max(2, min(_RECONSTRUCT_ROWS, cache.capacity))
     for start in range(0, bounded.shape[0], chunk):
-        total += weights[start : start + chunk] @ _read_rows(cache, bounded[start : start + chunk])
+        block = _read_rows(cache, bounded[start : start + chunk])
+        _add_rows(total, block, weights[start : start + chunk])
     return total
 
 
@@ -920,6 +865,12 @@ def _reconstruct_gradient(
     batches of ``_RECONSTRUCT_ROWS`` through ``fetch_rows`` and outside the LRU,
     using resident rows where there are any. Reading them one ``fetch_row`` at a
     time through the cache measured slower than not shrinking at all.
+
+    Either way the terms are added in LIBSVM's order — to ``ygbar_t − y_t``, one
+    free sample at a time, in index order — so the batching decides only how rows
+    are read. A matrix product per batch rounded the sum by the batch size, which
+    follows the cache capacity, and by the BLAS build; near a tie that rounding
+    picks the working pair, so ``cache_size`` moved shrinking fits.
     """
     inactive = np.setdiff1d(np.arange(y.shape[0]), active, assume_unique=True)
     if inactive.shape[0] == 0:
@@ -935,10 +886,22 @@ def _reconstruct_gradient(
         for start in range(0, sources.shape[0], chunk):
             block = _read_rows(cache, sources[start : start + chunk])
             if by_free:
-                rebuilt += weights[start : start + chunk] @ block[:, inactive]
+                _add_rows(rebuilt, block[:, inactive], weights[start : start + chunk])
             else:
-                rebuilt[start : start + chunk] += block[:, free] @ weights
+                for k, row in enumerate(block[:, free], start=start):
+                    # A running sum from rebuilt[k], in the by-free branch's order:
+                    # accumulate is sequential by definition, where sum() may
+                    # reassociate.
+                    terms = np.multiply(row, weights, dtype=np.float64)
+                    terms[0] += rebuilt[k]
+                    rebuilt[k] = np.add.accumulate(terms)[-1]
     yg[inactive] = rebuilt
+
+
+def _add_rows(total: np.ndarray, block: np.ndarray, weights: np.ndarray) -> None:
+    """``total += weights @ block``, one row at a time in row order, in float64."""
+    for row, weight in zip(block, weights, strict=True):
+        total += _widened(row, weight)
 
 
 def _read_rows(cache: _RowCache, indices: np.ndarray) -> np.ndarray:
