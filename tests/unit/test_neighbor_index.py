@@ -7,6 +7,7 @@ aliasing rather than as a wrong distance.
 
 from __future__ import annotations
 
+import copy
 import pickle
 import sys
 import threading
@@ -20,7 +21,8 @@ from mlxlearn._common.config import config_context, tuning_context
 from mlxlearn._common.device import gpu_available
 from mlxlearn._kernels import distance
 from mlxlearn._kernels.distance import NeighborIndex, build_index, resolve_blocks
-from mlxlearn.exceptions import DeviceError
+from mlxlearn.exceptions import DeviceError, UnsupportedInputError
+from mlxlearn.neighbors import KNeighborsRegressor, NearestNeighbors
 
 MiB = 1024 * 1024
 
@@ -193,6 +195,34 @@ def test_a_gpu_built_index_runs_on_the_cpu_where_there_is_no_gpu(rng, monkeypatc
         pickle.loads(payload).query(Q, 5)
 
 
+def test_the_cpu_device_does_not_compile(rng, monkeypatch):
+    """Only the GPU fuses the elementwise pieces.
+
+    On MLX's CPU each compiled graph shells out to a C compiler, once per MLX
+    version and ``$TMPDIR``, and runs no faster: a 200-row fit and predict — the
+    Layer 1 path for every problem below the crossover — took 3-4 s on a fresh
+    machine, against 0.1 s for 0.1.0a2.
+    """
+    compiled = []
+    real_compile = mx.compile
+
+    def recording_compile(fn, *args, **kwargs):
+        compiled.append(fn.__name__)
+        return real_compile(fn, *args, **kwargs)
+
+    monkeypatch.setattr(mx, "compile", recording_compile)
+    distance._kernels.cache_clear()
+    try:
+        X = rng.normal(size=(200, 5))
+        for data in (X.astype(np.float32), X):  # the float64 residual path too
+            index = build_index(data, backend="cpu")
+            index.query(data[:7] + 0.1, 3)
+            index.query(index.X, 3, exclude_self=True)
+    finally:
+        distance._kernels.cache_clear()
+    assert compiled == []
+
+
 # ----------------------------------------------------------------------------------
 # pickling
 # ----------------------------------------------------------------------------------
@@ -211,6 +241,31 @@ def test_a_float64_index_round_trips_exactly(rng):
         np.testing.assert_array_equal(got, want)
 
 
+@pytest.mark.parametrize(
+    "reload",
+    [lambda model: pickle.loads(pickle.dumps(model)), copy.deepcopy],
+    ids=["pickle", "deepcopy"],
+)
+@pytest.mark.parametrize("estimator", [NearestNeighbors, KNeighborsRegressor])
+def test_a_reloaded_model_keeps_one_copy_of_its_training_rows(estimator, reload, rng):
+    """A fitted model's ``_fit_X`` is the index's own host view, and stays that way.
+
+    Reloaded, the index rebuilds its device copy on the first query and points its
+    ``X`` at it; ``_fit_X`` stayed on the loaded array, so the model held one more
+    full copy of the training set than a fresh fit, and saving it again doubled the
+    file.
+    """
+    X = rng.normal(size=(3000, 16)).astype(np.float32)
+    model = estimator(n_neighbors=3).fit(X, X[:, 0])
+    assert model.execution_backend_ == "mlx"
+    fresh = len(pickle.dumps(model))
+
+    loaded = reload(model)
+    loaded.kneighbors(X[:5])
+    assert loaded._fit_X is loaded._index_.X
+    assert len(pickle.dumps(loaded)) < 1.05 * fresh
+
+
 def test_a_pickle_from_before_the_residual_still_loads(rng):
     X = rng.normal(size=(500, 4)).astype(np.float32)
     Q = rng.normal(size=(10, 4)).astype(np.float32)
@@ -220,6 +275,35 @@ def test_a_pickle_from_before_the_residual_still_loads(rng):
     old.__setstate__({"X": np.array(index.X), "center": index.center, "backend": "cpu"})
     for got, want in zip(old.query(Q, 3), index.query(Q, 3), strict=True):
         np.testing.assert_array_equal(got, want)
+
+
+# ----------------------------------------------------------------------------------
+# row limits
+# ----------------------------------------------------------------------------------
+
+
+def test_exact_search_keys_address_rows_past_int32():
+    """The exact search packs each training index into the low 32 bits of its key.
+
+    The indices were an ``arange`` starting at the tile's first row, which MLX 0.31
+    — the supported floor — rejects with a TypeError from row ``2**31`` on.
+    """
+    vals = mx.array([[1.0, 0.5, 2.0]], dtype=mx.float32)
+    for t_start in (0, 2**31 + 5, 2**32 - 3):
+        keys = np.asarray(distance._composite_keys(mx, vals, t_start))
+        np.testing.assert_array_equal(keys & 0xFFFFFFFF, [t_start + np.arange(3)])
+        values = (keys >> np.uint64(32)).astype(np.uint32).view(np.float32)
+        np.testing.assert_array_equal(values, [[1.0, 0.5, 2.0]])
+
+
+def test_more_rows_than_a_key_can_address_are_refused():
+    """Past ``2**32`` rows the index would come back truncated, and the distance
+    corrupted by its high bits: refused at fit instead, before anything is copied."""
+    X = np.lib.stride_tricks.as_strided(
+        np.zeros(1, np.float32), shape=(2**32 + 1, 1), strides=(0, 4)
+    )
+    with pytest.raises(UnsupportedInputError, match="rows"):
+        build_index(X, backend="cpu")
 
 
 # ----------------------------------------------------------------------------------

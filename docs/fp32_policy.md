@@ -54,7 +54,8 @@ training data's span around its mean, `SVC` by its kernel frame (§2.4), with th
 folded back into `gamma`. Scaling by a power of two is exact, so data already in range is
 unchanged bit for bit, and data around `1e19` and `1e-20` is served (both are tested).
 What still does not fit raises `"float32-overflow"`: neighbor training data spanning more
-than `FLOAT32_MAX / 8` from its mean, and a linear-kernel `SVC` row whose squared norm
+than `FLOAT32_MAX / 8` from its mean, or spanning so far beyond the gaps between its rows
+that no scale holds both (§2.1), and a linear-kernel `SVC` row whose squared norm
 exceeds float32 — the linear kernel has no `gamma` to absorb a scale. mlxlearn also
 defines a squared-range guard with a second reason slug, `"float32-underflow"`, for a
 path that cannot rescale; every 0.1.x estimator rescales, so none of them raises it.
@@ -92,12 +93,20 @@ and then it proves the selection right:
 1. **Translation and scaling.** Distances are translation-invariant, so the training mean
    is subtracted from the training and the query rows before the identity is applied. That
    moves ‖·‖² from "distance from the origin squared" down to "variance scale", where the
-   identity is far better behaved. float64 input is translated in float64, before anything
-   is rounded to float32, so a large constant offset — Unix timestamps, projected
-   coordinates — costs nothing. The translated rows are then scaled by a power of two, which
-   is exact, so that data around 1e19, whose squares overflow float32, and data around
-   1e-20, whose squares underflow it (the GPU flushes those to zero), both come back into
-   range.
+   identity is far better behaved. float64 input is translated by its float64 mean, with
+   the rows and the mean each carried as a float32 value plus a float32 residual, so the
+   translation is good to about 2⁻⁴⁸ of the coordinate and a large constant offset — Unix
+   timestamps, projected coordinates — costs nothing: timestamps a few seconds apart
+   certify on the first pass. (Rounding the mean to float32 first left up to 64 of offset
+   near 1.7e9 in every row, and sent every such query to the second pass at 4–5× the
+   time.) The translated rows are then scaled by a power of two, which is exact, so that
+   data around 1e19, whose squares overflow float32, and data around 1e-20, whose squares
+   underflow it (the GPU flushes those to zero), both come back into range. Only as far as
+   that: ordinary data is not scaled at all, and a large span is scaled down just until its
+   squares, with room for queries 2²⁰ times farther out, stop overflowing. Scaling down
+   shrinks the gaps between neighbors too. Normalizing every span to 1, as mlxlearn once
+   did, let a single unmasked fill value of 1e20 among unit-scale rows push their squared
+   gaps below float32's normal range, and the GPU answered every query with zeros.
 2. **Over-selection.** The identity selects `k + margin` candidates per query, the margin
    growing with `k` and with the number of features.
 3. **Refinement.** The candidates' distances are recomputed directly as `Σ(t − q)²` from the
@@ -129,17 +138,36 @@ among unit-scale ones — it returned wrong neighbor sets without a word: 290 of
 embeddings, with or without a far-out training row — every query certifies on the first pass,
 and the certificate is host arithmetic on one number per query. Where the old margin failed,
 correctness costs the second pass. Measured on 50 000 training rows and 4096 queries (2048
-for the last case): 1.5× the old (wrong) query time for 1000 clusters of spread 1e-3, 1.7×
-for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for two clusters at 0
-and 1000, which needs the exact search for every query. Binary and small-integer data got
-*faster*, because it no longer goes through the identity at all. When a call needed the
-wider pass or the exact search, its diagnostics event says for how many rows.
+for the last case), against the old (wrong) query time: 1.5× for 1000 clusters of spread
+1e-3 at 32 features, 1.7× for `make_blobs(cluster_std=0.01)` at 16, 1.6× for the 0–1e4
+column at 16, and 2.2× for two clusters at 0 and 1000 at 4 features. That last case needs
+the exact search for every query — direct differences against every training row — so its
+cost grows with the number of features: 2.8× at 16, 5× at 64. So does a tie at the k-th
+distance, which the test above counts as uncertain: a training row repeated more than
+about `k + 4` times sends every query whose k-th neighbor is one of its copies to the
+wider pass, 1.5× the old time for 20 copies of each row at 16 features. The old answer
+there was right on the GPU only because MLX's GPU partition happens to keep the lowest
+indices among equal values; on the CPU it was not. Binary and small-integer data got
+*faster*, because it no longer goes through the identity at all. A far-out row is not
+ordinary once it moves the mean itself — a fill value of 1e10 among a few thousand
+unit-scale rows does: every translated norm then carries the shift, the noise band
+outgrows the gaps, and every query takes the exact search. When a call needed the wider
+pass or the exact search, its diagnostics event says for how many rows.
 
 What scaling cannot bring into range is refused (§1): refinement subtracts two translated
 coordinates in float32, so training data spanning more than `FLOAT32_MAX / 8` (about
 4.3e37) from its mean is a capability mismatch at `fit` — an `UnsupportedInputError`
 directly imported, a fallback to scikit-learn under `patch_sklearn()` — and a query too far
-from the training data for the scale chosen at `fit` is an error at inference.
+from the training data for the scale chosen at `fit` is an error at inference. So is
+training data whose span dwarfs the gaps between its rows — a fill value of 1e30, or the
+NetCDF default of 9.97e36, left among unit-scale rows: no power of two keeps the span's
+squares finite and the gaps' squares out of the underflow range (a scaled squared distance
+below 2⁻⁹⁶) at once. When the span has to be scaled down, a sample of 64 training rows is
+searched at `fit`, and if their own nearest neighbors come within 2¹⁰ of that limit, the
+fit is refused the same way. A query that still lands nearer a training row than the limit
+is an error at inference, never a distance of zero; an exact duplicate of a training row
+is the one exception. Both devices refuse the same data, and within the limit both answer
+it to float32 rounding.
 
 **What remains.** Exact means exact with respect to the refined float32 distances. Two
 training rows whose true distances from a query differ by less than float32 can resolve
@@ -274,7 +302,9 @@ for being better, so those assertions are `j_mlxlearn ≤ j_sklearn · (1 + rtol
 mlxlearn returns the first `k` training rows under `(distance, training index)` — a total
 order over the *whole* training set, not merely an ordering of whichever rows it returns.
 Rows tied at the k-th distance are decided by index too, so `kneighbors(k)` is always a
-prefix of `kneighbors(k + m)`, and no answer depends on block sizes. "Distance" is the
+prefix of `kneighbors(k + m)`, and no answer depends on block sizes. That includes
+`kneighbors()` with no query, which is the same order with each row itself left out: a
+row with more than `k` exact duplicates before it gets the first `k` of them. "Distance" is the
 refined float32 value of §2.1. Where that value is exact — integer, binary and one-hot
 features, halves and quarters — the answer is also identical on the GPU and the CPU;
 elsewhere the two devices may round a long sum differently, and so break a near-tie
@@ -371,8 +401,8 @@ Wherever the model is invariant to it, it is removed in float64, before anything
 rounded to float32:
 
 - The **neighbor estimators** translate by the float64 training mean and keep a float32
-  residual beside each float32 value, so refined differences are taken to about 2⁻⁴⁸ of
-  the coordinate (§2.1). 5 000 Unix timestamps within one hour, which collapse to 29
+  residual beside each float32 value, the mean's included, so the translation and the
+  refined differences are taken to about 2⁻⁴⁸ of the coordinate (§2.1). 5 000 Unix timestamps within one hour, which collapse to 29
   distinct values when cast first, return their exact neighbors.
 - **`LogisticRegression`** centers float64 input in float64 when it fits an intercept, and
   rounds only the centered values; the intercept is un-centered with exactly the mean that

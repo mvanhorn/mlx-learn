@@ -77,7 +77,9 @@ _SELECT_SEGMENT_MAX = 8192
 #: each cost a tile, and a full-row GPU ``argpartition`` — still used when ``k`` is
 #: too large for segmented selection — allocates five more. Measured with
 #: ``mx.get_peak_memory``: the unfactored budget peaked at 7.0× (7.2 GB against
-#: 1 GiB); with this factor, 0.2-0.6 GB. Query time was flat across factors 1-7.
+#: 1 GiB); with this factor, 0.2-0.6 GB. Query time was flat across factors 1-7. The
+#: CPU evaluates the tile expression unfused, a tile or two more, which the GPU's
+#: argpartition share covers there.
 _TILE_WORKSET_FACTOR = 7
 
 #: Peak device memory per byte of the ``(rows, k_carry, n_features)`` refinement
@@ -100,6 +102,35 @@ _FLOAT32_MAX = float(np.finfo(np.float32).max)
 #: this must stay finite, because refinement subtracts two such coordinates before
 #: scaling them.
 _SPAN_LIMIT = _FLOAT32_MAX / 8.0
+
+#: Room, in bits, the scaling leaves between the training span and float32's
+#: overflow for queries lying farther out: one about 2**20 times the span from the
+#: training mean is still served. Every bit of it is a bit less for resolving small
+#: gaps under a large span; see _span_exponent.
+_QUERY_HEADROOM_BITS = 20
+
+#: The smallest scaled squared distance refinement is trusted with. Below it, the
+#: squares of per-coordinate differences may have left float32's normal range — the
+#: GPU flushes those to zero and the CPU keeps them as subnormals, so the devices
+#: disagree and neither is right. At or above it, all that underflow can remove,
+#: d·2**-126, is 2**-30·d of the value: far inside refinement's own rounding.
+_RESOLVED_SQ = 2.0**-96
+
+#: At fit, a training set whose own rows' nearest neighbors come within this factor
+#: of _RESOLVED_SQ is refused, so that such data falls back at fit under
+#: patch_sklearn() rather than failing its queries at inference.
+_RESOLVED_MARGIN = 2.0**20
+
+#: Training rows searched at fit for that check, spread evenly over the rows.
+_PROBE_ROWS = 64
+
+#: The exact search packs a training index into 32 bits of its sort key.
+_MAX_TRAIN_ROWS = 2**32
+
+#: Training matrices up to this many elements have their column extremes found on
+#: the host at build: faster than the device round trip that reduction otherwise
+#: costs (0.1 ms on the GPU), up to about 8000 x 32, where the two measured even.
+_HOST_REDUCE_ELEMENTS = 1 << 18
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,23 +233,27 @@ def _compute_device(backend: str) -> str:
     return inference_device(backend)
 
 
-@functools.lru_cache(maxsize=1)
-def _kernels() -> SimpleNamespace:
-    """The fused elementwise pieces, compiled once per process.
+@functools.lru_cache(maxsize=2)
+def _kernels(device: str) -> SimpleNamespace:
+    """The elementwise pieces for ``device``: fused on the GPU, eager on the CPU.
 
-    ``mx.compile`` fuses each expression into one kernel, so the tile costs one
-    temporary where the unfused expression cost four, and the refinement difference
-    one where it cost three. Compiled functions are cached by MLX on input shape and
-    stream only — never on data — and are built lazily so that importing mlxlearn
-    does not import MLX.
+    On the GPU ``mx.compile`` fuses each expression into one kernel, so the tile
+    costs one temporary where the unfused expression cost four, and the refinement
+    difference one where it cost three. On MLX's CPU device the compiled graphs ran
+    no faster, and each one shells out to a C compiler once per MLX version and
+    ``$TMPDIR``: a 200-row fit and predict took 3-4 s on a fresh machine, against
+    0.1 s eager. So the CPU evaluates the same expressions eagerly, as
+    ``kernels._tile_transform`` does for the rbf tile; the answers are identical.
+    Compiled functions are cached by MLX on input shape and stream only — never on
+    data — and are built lazily so that importing mlxlearn does not import MLX.
     """
     import mlx.core as mx
 
     def center_scale(hi, center, scale):
         return (hi - center) * scale
 
-    def center_scale_lo(hi, lo, center, scale):
-        return ((hi - center) + lo) * scale
+    def center_scale_lo(hi, lo, center, center_lo, scale):
+        return ((hi - center) + (lo - center_lo)) * scale
 
     def tile(q_sq, t_sq, gram):
         # The clamp only ever moves a value toward the truth: distances are >= 0.
@@ -232,19 +267,65 @@ def _kernels() -> SimpleNamespace:
         diff = ((t - q) + (t_lo - q_lo)) * scale
         return diff * diff
 
-    return SimpleNamespace(
-        center_scale=mx.compile(center_scale),
-        center_scale_lo=mx.compile(center_scale_lo),
-        tile=mx.compile(tile),
-        pair_sq=mx.compile(pair_sq),
-        pair_sq_lo=mx.compile(pair_sq_lo),
-    )
+    fns = {
+        "center_scale": center_scale,
+        "center_scale_lo": center_scale_lo,
+        "tile": tile,
+        "pair_sq": pair_sq,
+        "pair_sq_lo": pair_sq_lo,
+    }
+    if device == "gpu":
+        fns = {name: mx.compile(fn) for name, fn in fns.items()}
+    return SimpleNamespace(**fns)
+
+
+def _translate(fns, hi, lo, center, center_lo, scale, zero):
+    """``(hi + lo − center − center_lo) · scale`` in float32, into the index's frame.
+
+    ``lo`` is a float64 row's residual and ``center_lo`` a float64 center's, either
+    of them ``None``. Every row, training or query, residual or not, is translated
+    here, so all of them share one frame; with neither residual it is the plain
+    ``(hi − center) · scale`` it always was.
+    """
+    if lo is None and center_lo is None:
+        return fns.center_scale(hi, center, scale)
+    lo = zero if lo is None else lo
+    center_lo = zero if center_lo is None else center_lo
+    return fns.center_scale_lo(hi, lo, center, center_lo, scale)
 
 
 def _gamma(n: int) -> float:
     """Higham's γₙ = n·u / (1 − n·u): the relative error bound of an n-term float32 sum."""
     nu = n * _U
     return nu / (1.0 - nu) if nu < 0.5 else math.inf
+
+
+def _scaled_limit(n_features: int) -> float:
+    """Largest scaled coordinate whose Gram tile — ``4·d`` squares — stays finite."""
+    return math.sqrt(_FLOAT32_MAX / (4.0 * max(n_features, 1)))
+
+
+def _span_exponent(spread: float, n_features: int) -> int:
+    """The index scales by ``2**-exponent``: exact, and only as far as float32 needs.
+
+    A span below 1 is scaled up into [0.5, 1): data around 1e-20 squares into the
+    subnormal range, which the GPU flushes to zero. A span whose squares, with
+    ``2**_QUERY_HEADROOM_BITS`` of room for queries beyond it, would overflow is
+    scaled down just below that, and no further. Anything between is left alone.
+
+    Scaling down shrinks the gaps between neighbors along with the span. Every span
+    used to be normalized into [0.5, 1), and one 1e20 fill value among unit-scale
+    rows then put their squared gaps near 2**-134: the GPU returned every distance
+    as zero and the neighbors in index order, with nothing raised. What even the
+    smallest scale-down cannot resolve is refused; see :func:`_require_resolvable`.
+    """
+    if spread == 0.0:
+        return 0
+    exponent = math.frexp(spread)[1]
+    if exponent <= 0:
+        return max(exponent, -126)
+    top = math.floor(math.log2(_scaled_limit(n_features))) - _QUERY_HEADROOM_BITS
+    return max(0, exponent - top)
 
 
 def _first_pass_carry(k_search: int, n_features: int, n_train: int) -> int:
@@ -277,9 +358,11 @@ class _DeviceState:
     sel_t: Any  # sel.T
     sel_sq: Any  # (n,) squared row norms of sel
     center: Any  # (d,) float32
+    center_lo: Any  # (d,) float32 residual of a float64 center, or None
     scale: Any  # 0-d, 2**-exponent
     zero: Any  # 0-d, 0.0
     exponent: int
+    spread: float  # largest |X - center|, unscaled
     norms_sorted: np.ndarray  # ascending float64 row norms of sel, for the certificate
     raw_norm_bound: float  # upper bound on any training row's ||x||, unscaled
     int_limit: int  # > 0 when the rows are small integers and the Gram is exact
@@ -340,10 +423,14 @@ class NeighborIndex:
         zero-copy view of it, so on unified memory the host and the device share
         one buffer instead of holding two.
     center : ndarray of shape (n_features,)
-        The float32 translation applied before the Gram identity — the training
-        mean, rounded. Distances are translation-invariant, so any shift is exact
-        in real arithmetic; the mean is the one that keeps float32 cancellation
-        manageable.
+        The translation applied before the Gram identity: the training mean.
+        Distances are translation-invariant, so any shift is exact in real
+        arithmetic; the mean is the one that keeps float32 cancellation manageable.
+        float64 for wider-than-float32 input, and applied as a float32 value and
+        residual, like ``X``: rounded to float32, a mean near 1.7e9 is up to 64 away
+        from the true one, and that offset alone swamped the certificate for
+        timestamps a few seconds apart. float32 — the mean, rounded — for float32
+        input.
     backend : {"mlx", "cpu"}
         Which MLX device the index was built for.
     X_lo : ndarray of shape (n_samples, n_features) or None
@@ -532,6 +619,7 @@ class NeighborIndex:
             k_search=k_search,
             k_carry=k_carry,
             segmented=device == "gpu",
+            fns=_kernels(device),
             plan_backend=plan_backend,
             train_block_size=train_block_size,
             counts={"rows": n_query, "widened_rows": 0, "exact_rows": 0},
@@ -564,6 +652,7 @@ class _Search:
     k_search: int
     k_carry: int
     segmented: bool
+    fns: SimpleNamespace  # _kernels() for the device the search runs on
     plan_backend: str  # "mlx" or "cpu": whose memory budget the blocks follow
     train_block_size: int | None
     counts: dict
@@ -573,7 +662,7 @@ class _Search:
     def query_block(self, Q, start: int, end: int, *, self_query: bool) -> _QueryBlock:
         """Prepare rows ``start:end`` of the query in every representation needed."""
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
 
         if self_query:
             # The training rows themselves: already on the device, already
@@ -606,9 +695,8 @@ class _Search:
         # scaling. Inference cannot fall back — the backend is sticky — so this is
         # an error rather than a row of infinities.
         offset = float(np.max(np.abs(rows64 - self.index.center.astype(np.float64))))
-        scaled_limit = math.sqrt(_FLOAT32_MAX / (4.0 * self.index.n_features))
         if not math.isfinite(offset) or offset > _SPAN_LIMIT or (
-            math.ldexp(offset, -state.exponent) > scaled_limit
+            math.ldexp(offset, -state.exponent) > _scaled_limit(self.index.n_features)
         ):
             raise UnsupportedInputError(
                 f"A query row lies {offset:.3g} from the training data's mean, which "
@@ -619,10 +707,7 @@ class _Search:
 
         hi = mx.array(hi_np)
         lo = None if lo_np is None else mx.array(lo_np)
-        if lo is None:
-            sel = fns.center_scale(hi, state.center, state.scale)
-        else:
-            sel = fns.center_scale_lo(hi, lo, state.center, state.scale)
+        sel = _translate(fns, hi, lo, state.center, state.center_lo, state.scale, state.zero)
         sq = mx.sum(sel * sel, axis=1, keepdims=True)
 
         raw_norm = None
@@ -663,7 +748,37 @@ class _Search:
                 bad = np.flatnonzero(~ok)
                 idx[bad], sq[bad] = self.resolve(qb.take(mx, bad))
 
+        if state.exponent > 0:
+            self.require_resolved(qb, idx, sq)
         return idx, np.ldexp(sq.astype(np.float64), 2 * state.exponent)
+
+    def require_resolved(self, qb: _QueryBlock, idx: np.ndarray, sq: np.ndarray) -> None:
+        """Raise if a neighbor returned for ``qb`` is nearer than float32 resolves.
+
+        Only a span scaled down can put a distance below ``_RESOLVED_SQ``, where
+        underflow has taken terms from it — all of them on the GPU. An exact
+        duplicate of the query is the one neighbor that legitimately sits there.
+        Any other would sort first and be returned, so checking the returned
+        neighbors is enough; and the certificate, which compares against the k-th
+        refined distance, is sound only once that distance is resolved.
+        """
+        rows, cols = np.nonzero(sq < _RESOLVED_SQ)
+        if rows.size == 0:
+            return
+        train = idx[rows, cols]
+        differ = np.any(self.index.X[train] != np.asarray(qb.hi)[rows], axis=1)
+        if self.index.X_lo is not None or qb.lo is not None:
+            t_lo = 0.0 if self.index.X_lo is None else self.index.X_lo[train]
+            q_lo = 0.0 if qb.lo is None else np.asarray(qb.lo)[rows]
+            differ |= np.any(t_lo != q_lo, axis=1)
+        if differ.any():
+            raise UnsupportedInputError(
+                "A query row lies nearer to a training row than float32 can resolve at "
+                "the training data's scale: the data spans so far from its mean that "
+                "the squares of gaps this small underflow. Rescale the data, or compute "
+                "these neighbors with scikit-learn.",
+                reason="float32-overflow",
+            )
 
     def candidates(self, qb: _QueryBlock, k_carry: int, train_cols: int):
         """Running top-``k_carry`` by Gram value over train tiles, entirely on device.
@@ -674,7 +789,7 @@ class _Search:
         builds on.
         """
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
         n_train = self.index.n_samples
         best_idx = None
         best_val = None
@@ -712,7 +827,7 @@ class _Search:
         taken to nearly double precision before it is squared.
         """
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
         n_rows, k_carry = (int(s) for s in cand_idx.shape)
 
         # The gather is (rows, k_carry, n_features): with a large k on wide data it
@@ -771,7 +886,9 @@ class _Search:
         )
         lower = bound * (1.0 - 2.0 * _gamma(d + 4))
         if qb.raw_norm is not None:
-            # The float64 residual is itself rounded, at u² of the raw magnitude.
+            # The float64 residuals — the rows' and the center's — are themselves
+            # rounded, at u² of the raw magnitudes. The center is the training mean,
+            # inside the rows' bounding box, so raw_norm_bound covers it as well.
             absolute = math.ldexp(12.0 * _U * _U, -state.exponent) * (
                 qb.raw_norm + state.raw_norm_bound
             )
@@ -838,7 +955,7 @@ class _Search:
         :meth:`refine`'s, or by ``4**int_shift`` when ``integer``.
         """
         mx, state = self.mx, self.state
-        fns = _kernels()
+        fns = self.fns
         n_train = self.index.n_samples
         d = self.index.n_features
         k_search = self.k_search
@@ -889,9 +1006,7 @@ class _Search:
                         sq = fns.pair_sq_lo(t, t_lo, q, q_lo, state.scale)
                     vals = mx.sum(sq, axis=2)
 
-                key = mx.left_shift(mx.view(vals, mx.uint32).astype(mx.uint64), 32) | mx.arange(
-                    t_start, t_end, dtype=mx.uint64
-                )[None, :]
+                key = _composite_keys(mx, vals, t_start)
                 take = min(k_search, t_end - t_start)
                 _, part = _select_smallest(mx, key, take, segmented=self.segmented)
                 if best is None:
@@ -909,6 +1024,17 @@ class _Search:
         idx = (packed & np.uint64(0xFFFFFFFF)).astype(INDEX_DTYPE)
         sq = (packed >> np.uint64(32)).astype(np.uint32).view(NUMPY_FLOAT)
         return idx, sq
+
+
+def _composite_keys(mx, vals, t_start: int):
+    """``bits(vals) << 32 | index`` for a tile whose first column is row ``t_start``.
+
+    32 bits of index, which is why :func:`build_index` refuses ``2**32`` rows. The
+    indices are built from 0 and offset, because MLX 0.31's ``arange`` rejects a
+    start or stop of ``2**31`` or more.
+    """
+    index = mx.arange(int(vals.shape[1]), dtype=mx.uint64) + t_start
+    return mx.left_shift(mx.view(vals, mx.uint32).astype(mx.uint64), 32) | index[None, :]
 
 
 def _select_smallest(mx, vals, take: int, *, segmented: bool):
@@ -1013,9 +1139,12 @@ def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
     which returned a row as its own nearest neighbor whenever the training set
     exceeded one query block.
 
-    A row with no self match — possible when duplicate points push the self index
-    past the retained candidates — drops its nearest neighbor instead, which is
-    what scikit-learn does.
+    A row with no self match — more than ``k`` exact duplicates precede it by index
+    — drops its *last* candidate. Under ``(distance, index)`` the row itself sorts
+    after every candidate kept, so that leaves the first ``k`` excluding it, and a
+    prefix of the answer for any larger ``k``. scikit-learn drops column 0 there,
+    but its column 0 is an arbitrary one of the tied duplicates; mlxlearn's is the
+    lowest-indexed, the one its own order keeps.
     """
     n_rows, width = idx.shape
     global_rows = (np.arange(n_rows, dtype=idx.dtype) + offset)[:, None]
@@ -1023,7 +1152,7 @@ def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
 
     missing = np.all(mask, axis=1)
     if np.any(missing):
-        mask[missing, 0] = False
+        mask[missing, -1] = False
 
     keep = width - 1
     out_idx = idx[mask].reshape(n_rows, keep)
@@ -1085,16 +1214,24 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
     """
     import mlx.core as mx
 
-    fns = _kernels()
+    device = _compute_device(backend)
+    fns = _kernels(device)
     n, d = (int(s) for s in X.shape)
-    with use_device(_compute_device(backend)):
+    with use_device(device):
         # mx.array copies. This is the index's one private copy of the training
         # rows; nothing below allocates another.
         raw = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT))
         raw_lo = None if X_lo is None else mx.array(np.ascontiguousarray(X_lo, dtype=NUMPY_FLOAT))
-        col_max = mx.max(raw, axis=0)
-        col_min = mx.min(raw, axis=0)
-        mx.eval(raw, col_max, col_min, *([] if raw_lo is None else [raw_lo]))
+        # The column extremes set the scale, which everything below needs on the
+        # host. A small matrix is reduced there in less than a device round trip.
+        if n * d <= _HOST_REDUCE_ELEMENTS:
+            host = np.asarray(X, dtype=NUMPY_FLOAT)
+            col_max = host.max(axis=0)
+            col_min = host.min(axis=0)
+        else:
+            col_max = mx.max(raw, axis=0)
+            col_min = mx.min(raw, axis=0)
+            mx.eval(raw, col_max, col_min, *([] if raw_lo is None else [raw_lo]))
 
         c64 = np.asarray(center, dtype=np.float64)
         hi_col = np.asarray(col_max, dtype=np.float64)
@@ -1111,27 +1248,32 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
                 reason="float32-overflow",
                 advice="Rescale it, or compute these neighbors with scikit-learn.",
             )
-        # Scale by an exact power of two so the largest translated coordinate lands
-        # in [0.5, 1). Scaling by 2**k is exact, so ordinary data is unchanged bit
-        # for bit — but data around 1e19, whose squares overflow float32, and data
-        # around 1e-20, whose squares underflow it (and which the GPU flushes to
-        # zero), are both brought back to where float32 squares them faithfully.
-        exponent = min(max(math.frexp(spread)[1], -126), 126) if spread > 0 else 0
+        # Scale by an exact power of two, and only where float32 needs it: data
+        # around 1e19, whose squares overflow float32, and data around 1e-20, whose
+        # squares underflow it (and which the GPU flushes to zero), are both brought
+        # back to where float32 squares them faithfully. Scaling by 2**k is exact,
+        # and ordinary data is not scaled at all.
+        exponent = _span_exponent(spread, d)
         scale = mx.array(math.ldexp(1.0, -exponent), dtype=mx.float32)
-        center_dev = mx.array(np.asarray(center, dtype=NUMPY_FLOAT))
+        c_hi = c64.astype(NUMPY_FLOAT)
+        c_lo = (c64 - c_hi).astype(NUMPY_FLOAT)
+        center_dev = mx.array(c_hi)
+        center_lo = mx.array(c_lo) if c_lo.any() else None
+        zero = mx.array(0.0, dtype=mx.float32)
 
-        if raw_lo is None:
-            sel = fns.center_scale(raw, center_dev, scale)
-        else:
-            sel = fns.center_scale_lo(raw, raw_lo, center_dev, scale)
+        sel = _translate(fns, raw, raw_lo, center_dev, center_lo, scale, zero)
         sel_sq = _row_sq_norms(mx, sel)
-        norms = mx.sort(mx.sqrt(sel_sq))
         # Everything that goes into the state is evaluated here, the transposes
         # included: an unevaluated node belongs to this thread's stream, and a query
         # from another thread that forces it fails with "There is no Stream(gpu, N)
         # in current thread".
         sel_t = sel.T
-        pending = [sel, sel_t, sel_sq, norms]
+        pending = [raw, sel, sel_t, sel_sq, *([] if raw_lo is None else [raw_lo])]
+        # The certificate's sorted norms. MLX's CPU sort took a third of a CPU
+        # build, four times NumPy's; the float32 square roots are the same either way.
+        norms = mx.sort(mx.sqrt(sel_sq)) if device == "gpu" else None
+        if norms is not None:
+            pending.append(norms)
 
         # Small integers — binary, one-hot, counts — make the raw Gram identity
         # exact in float32: every product and partial sum is an integer below 2**24.
@@ -1141,7 +1283,11 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         int_limit = int(math.isqrt((1 << 24) // (4 * d))) if d else 0
         raw_t = raw_sq = None
         if raw_lo is None and 0 < int_limit and max_abs <= int_limit:
-            if _all_integral(mx, raw):
+            # Real-valued data within the bound — standardized features, say —
+            # nearly always shows it in its first rows, which the host can check
+            # without a pass over the device copy or a synchronization.
+            head = np.asarray(X[:256], dtype=NUMPY_FLOAT)
+            if np.array_equal(head, np.rint(head)) and _all_integral(mx, raw):
                 raw_t = raw.T
                 raw_sq = _row_sq_norms(mx, raw)
                 pending += [raw_t, raw_sq]
@@ -1158,10 +1304,14 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         sel_t=sel_t,
         sel_sq=sel_sq,
         center=center_dev,
+        center_lo=center_lo,
         scale=scale,
-        zero=mx.array(0.0, dtype=mx.float32),
+        zero=zero,
         exponent=exponent,
-        norms_sorted=np.asarray(norms, dtype=np.float64),
+        spread=spread,
+        norms_sorted=(
+            np.sort(np.sqrt(np.asarray(sel_sq))) if norms is None else np.asarray(norms)
+        ).astype(np.float64),
         raw_norm_bound=float(np.sqrt(np.sum(np.maximum(np.abs(hi_col), np.abs(lo_col)) ** 2))),
         int_limit=int_limit,
         int_max=max_abs,
@@ -1208,18 +1358,71 @@ def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
     because an index that aliases the caller's array silently changes its own
     answers when that array is mutated. Wider input (float64, integers) is split
     into a float32 value and a float32 residual, and translated by its float64
-    mean, so the float32 cast does not quantize away what the caller supplied:
-    Unix timestamps collapse to 128-second steps in float32, but not here.
+    mean, carried as a float32 pair the same way, so the float32 cast does not
+    quantize away what the caller supplied: Unix timestamps collapse to 128-second
+    steps in float32, but not here.
     """
     X = np.asarray(X)
     if X.ndim != 2:
         raise ValueError(f"X must be 2-dimensional; got shape {X.shape}.")
+    if X.shape[0] > _MAX_TRAIN_ROWS:
+        raise UnsupportedInputError(
+            f"The training data has {X.shape[0]} rows; the neighbor index addresses at "
+            f"most {_MAX_TRAIN_ROWS}.",
+            advice="Compute these neighbors with scikit-learn.",
+        )
     if X.dtype == NUMPY_FLOAT:
         hi = np.ascontiguousarray(X)
         lo = None
-        center = hi.mean(axis=0, dtype=np.float64)
+        center = hi.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT)
     else:
         X64 = np.asarray(X, dtype=np.float64)
         hi, lo = _split_float64(X64)
         center = X64.mean(axis=0)
-    return NeighborIndex(X=hi, center=center.astype(NUMPY_FLOAT), backend=backend, X_lo=lo)
+    index = NeighborIndex(X=hi, center=center, backend=backend, X_lo=lo)
+    _require_resolvable(index)
+    return index
+
+
+def _require_resolvable(index: NeighborIndex) -> None:
+    """Refuse, at fit, training rows whose own neighbors float32 cannot resolve.
+
+    Only reachable when the span had to be scaled down: a few values far larger than
+    the rest — an unmasked fill value, 1e20 or the NetCDF default 9.97e36, among
+    unit-scale rows — leave the rest's gaps too small to square at that scale. A
+    query would then raise at inference, where nothing can fall back, so a sample
+    of the training rows is searched here instead, and a fit whose rows sit within
+    ``_RESOLVED_MARGIN`` of the limit is a capability mismatch: a directly imported
+    estimator raises, and a patched one falls back to scikit-learn.
+    """
+    state = index._ensure_device()
+    n = index.n_samples
+    if state.exponent <= 0 or n < 2:
+        return
+    rows = np.unique(np.linspace(0, n - 1, min(n, _PROBE_ROWS)).astype(np.intp))
+    probe = index.X[rows]
+    if index.X_lo is not None:
+        probe = probe.astype(np.float64) + index.X_lo[rows]
+    try:
+        # Each row finds itself, or a duplicate, first; the second is its nearest.
+        dist, idx = index.query(probe, 2)
+    except UnsupportedInputError:
+        unresolved = True  # a neighbor already below the limit itself
+    else:
+        near = idx[:, 1]
+        close = np.ldexp(np.square(dist[:, 1]), -2 * state.exponent) < (
+            _RESOLVED_SQ * _RESOLVED_MARGIN
+        )
+        differ = np.any(index.X[near] != index.X[rows], axis=1)
+        if index.X_lo is not None:
+            differ |= np.any(index.X_lo[near] != index.X_lo[rows], axis=1)
+        unresolved = bool(np.any(close & differ))
+    if unresolved:
+        raise UnsupportedInputError(
+            f"The training data spans {state.spread:.3g} from its mean, too wide for float32 to "
+            "also resolve the distances between its nearest rows: their squares underflow "
+            "at that scale.",
+            reason="float32-overflow",
+            advice="A fill or sentinel value left in the data does this; mask it, or "
+            "rescale the data, or compute these neighbors with scikit-learn.",
+        )
