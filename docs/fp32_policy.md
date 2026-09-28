@@ -79,8 +79,8 @@ among unit-scale ones — it returned wrong neighbor sets without a word: 290 of
 embeddings, with or without a far-out training row — every query certifies on the first pass,
 and the certificate is host arithmetic on one number per query. Where the old margin failed,
 correctness costs the second pass. Measured on 50 000 training rows and 4096 queries (2048
-for the last case): 1.8× the old (wrong) query time for 1000 clusters of spread 1e-3, 2.0×
-for `make_blobs(cluster_std=0.01)`, 1.8× for the 0–1e4 column, and 2.6× for two clusters at 0
+for the last case): 1.5× the old (wrong) query time for 1000 clusters of spread 1e-3, 1.7×
+for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for two clusters at 0
 and 1000, which needs the exact search for every query. Binary and small-integer data got
 *faster*, because it no longer goes through the identity at all.
 

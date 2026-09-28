@@ -374,14 +374,14 @@ class NeighborIndex:
         """Build and publish the device state. Idempotent and thread-safe.
 
         It doubles as the rebuild path after unpickling, and there the first query
-        may well be a burst from a thread pool. The ancestor-shaped version
-        published its device arrays one at a time, still unevaluated, so a second
-        thread could pass the "already built" check and read ``None`` — or evaluate
-        a lazy graph belonging to another thread's stream, which MLX answers with
-        "There is no Stream(gpu, N) in current thread" or a segfault. Here the
-        state is built into locals, evaluated, and published with one assignment,
-        under double-checked locking so that concurrent first queries also do not
-        each upload their own copy of the training set.
+        may well be a burst from a thread pool. This method used to publish the
+        device arrays one at a time, still unevaluated, so a second thread could pass
+        the "already built" check and read ``None`` — or evaluate a lazy graph
+        belonging to another thread's stream, which MLX answers with "There is no
+        Stream(gpu, N) in current thread" or a segfault. Here the state is built
+        into locals, evaluated, and published with one assignment, under
+        double-checked locking so that concurrent first queries also do not each
+        upload their own copy of the training set.
         """
         state = self._state
         if state is not None:
@@ -428,8 +428,8 @@ class NeighborIndex:
         self._lock = threading.Lock()
         self._state = None
         # Rebuilt lazily on the first query rather than here, so that unpickling
-        # on a machine without a GPU does not fail until something actually asks
-        # for a computation.
+        # never touches a device. On a machine without a GPU that query then runs
+        # on MLX's CPU; see _compute_device.
 
     # ------------------------------------------------------------------ query
 
