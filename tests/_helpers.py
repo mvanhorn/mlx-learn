@@ -104,11 +104,14 @@ def assert_ties_break_on_smallest_index(dist, idx, *, atol=1e-6):
 
 
 def logistic_objective(coef, intercept, X, y_encoded, *, C, classes, sample_weight=None):
-    """scikit-learn's regularized logistic objective, in float64.
+    """scikit-learn's regularized logistic objective, in float64, in liblinear's scaling.
 
-    Used to compare two solvers fairly. Comparing ``coef_`` alone is the weak
-    assertion — on an ill-conditioned problem two correct solvers land in
-    different places — so every coefficient comparison is paired with this.
+    ``C·Σ swᵢ·lossᵢ + ½‖W‖²``, which is ``C·sw_sum`` times the objective the parity
+    tests compare (:func:`mlxlearn._solvers.logistic.reference_objective`), and
+    infinite for ``C = inf``. It is deliberately written differently from that
+    function — signed margins for binary, an explicit log-softmax for multiclass —
+    because its job is to check the oracle the parity tests rely on, which would
+    otherwise be the library grading itself.
     """
     X = np.asarray(X, dtype=np.float64)
     coef = np.atleast_2d(np.asarray(coef, dtype=np.float64))

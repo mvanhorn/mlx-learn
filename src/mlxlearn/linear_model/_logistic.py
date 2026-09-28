@@ -16,18 +16,22 @@ fallback.
 
 from __future__ import annotations
 
+import inspect
 import math
+import re
 import warnings
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 import numpy as np
+import sklearn
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression as _SkLogisticRegression
 
-from .._common.arrays import NUMPY_FLOAT
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.validation import (
-    check_finite_float32,
+    check_classification_targets,
     check_float32_range,
     check_is_fitted,
     check_sample_weight,
@@ -40,6 +44,20 @@ from .._common.validation import (
 from .._solvers.logistic import LogisticConfig, solve_logistic
 from ..exceptions import UnsupportedInputError, UnsupportedParameterError
 
+try:  # scikit-learn >= 1.9: tears callbacks down after fit, whatever the outcome
+    from sklearn.callback import with_callbacks as _with_callbacks
+
+    #: The frame the decorator adds between the caller and ``fit``, which the
+    #: ``stacklevel`` of a warning raised from inside ``fit`` has to step over.
+    _WRAPPER_FRAMES = 1
+except ImportError:  # scikit-learn 1.7 / 1.8 have no callback API
+
+    def _with_callbacks(method):
+        return method
+
+    _WRAPPER_FRAMES = 0
+
+
 __all__ = ["LogisticRegression", "MLXLogisticMixin"]
 
 _SUPPORTED_SOLVERS = ("lbfgs",)
@@ -48,6 +66,29 @@ _SUPPORTED_PENALTIES = ("l2", None)
 #: value it replaced; both mean "binary problems get one weight vector, everything
 #: else gets the multinomial loss", which is what this implementation does.
 _SUPPORTED_MULTI_CLASS = ("deprecated", "auto")
+
+#: ``(major, minor)`` of the installed scikit-learn. Only the fit-time warnings are
+#: version-gated on it; capability is decided on resolved values (see
+#: :meth:`MLXLogisticMixin._effective_penalty`), never on version numbers.
+_SKLEARN = tuple(int(part) for part in re.match(r"(\d+)\.(\d+)", sklearn.__version__).groups())
+
+#: Whether ``penalty`` is a deprecated sentinel on the installed scikit-learn (1.8+).
+_PENALTY_DEPRECATED = (
+    inspect.signature(_SkLogisticRegression.__init__).parameters["penalty"].default
+    == "deprecated"
+)
+
+#: Identities of the estimators whose public inference call is in progress on this
+#: thread or task. scikit-learn's ``predict``, ``predict_proba``, ``predict_log_proba``
+#: and ``score`` call back into the overridden ``decision_function`` /
+#: ``predict_proba`` / ``predict``, so without it one public call recorded two or
+#: three diagnostics events, labelled with whichever method ran last. A
+#: ``ContextVar`` holding an immutable set is per-thread and per-task by
+#: construction, and an identity is only in it for the duration of the call that
+#: put it there — nothing here outlives a call or is keyed on data.
+_INFERENCE_IN_PROGRESS: ContextVar[frozenset[int]] = ContextVar(
+    "mlxlearn_logistic_inference", default=frozenset()
+)
 
 
 class MLXLogisticMixin(BackendMixin):
@@ -64,7 +105,7 @@ class MLXLogisticMixin(BackendMixin):
 
         * **1.7** — ``penalty`` is real, default ``"l2"``; ``l1_ratio`` defaults
           to ``None``.
-        * **1.9** — ``penalty`` defaults to the sentinel ``"deprecated"`` and the
+        * **1.8+** — ``penalty`` defaults to the sentinel ``"deprecated"`` and the
           effective penalty comes from ``l1_ratio`` (0 → l2, 1 → l1, else
           elasticnet), with ``C=inf`` meaning unpenalized. ``l1_ratio`` defaults
           to ``0.0``.
@@ -88,16 +129,108 @@ class MLXLogisticMixin(BackendMixin):
             resolved = "elasticnet"
         return None if self.C == math.inf else resolved
 
+    def _mirror_fit_warnings(self) -> None:
+        """Emit the warnings scikit-learn's own ``fit`` would have emitted.
+
+        scikit-learn raises its deprecation notices for ``penalty``,
+        ``l1_ratio=None`` and ``n_jobs`` from inside ``fit``, so a fit that never
+        reaches ``super().fit`` never showed them — and a Layer 1 estimator never
+        reaches it at all. The only advance notice before 1.10 turns these into
+        errors depended on which backend happened to run. Called once, on the MLX
+        path only, so a scikit-learn fallback does not warn twice.
+
+        The conditions and wording follow the installed version's ``fit``;
+        ``tests/parity/test_logistic.py`` compares them against scikit-learn's own
+        on every version CI runs.
+        """
+        penalty, l1_ratio, C = self.penalty, self.l1_ratio, self.C
+        emitted: list[tuple[str, type[Warning]]] = []
+
+        if not _PENALTY_DEPRECATED:  # scikit-learn 1.7
+            if penalty != "elasticnet" and l1_ratio is not None:
+                emitted.append((
+                    "l1_ratio parameter is only used when penalty is 'elasticnet'. "
+                    f"Got (penalty={penalty})",
+                    UserWarning,
+                ))
+            if penalty is None and C != 1.0:
+                emitted.append((
+                    "Setting penalty=None will ignore the C and l1_ratio parameters",
+                    UserWarning,
+                ))
+            if getattr(self, "multi_class", "deprecated") == "auto":
+                emitted.append((
+                    "'multi_class' was deprecated in version 1.5 and will be removed in "
+                    "1.8. From then on, it will always use 'multinomial'. Leave it to "
+                    "its default value to avoid this warning.",
+                    FutureWarning,
+                ))
+        else:  # scikit-learn 1.8, 1.9
+            resolved = self._effective_penalty()
+            if penalty == "deprecated":
+                if l1_ratio is None:
+                    emitted.append((
+                        "'l1_ratio=None' was deprecated in version 1.8 and will "
+                        "trigger an error in 1.10. Use 0<=l1_ratio<=1 instead.",
+                        FutureWarning,
+                    ))
+            else:
+                emitted.append((
+                    "'penalty' was deprecated in version 1.8 and will be removed in "
+                    "1.10. To avoid this warning, leave 'penalty' set to its default "
+                    "value and use 'l1_ratio' or 'C' instead. Use l1_ratio=0 instead of "
+                    "penalty='l2', l1_ratio=1 instead of penalty='l1', "
+                    + (
+                        "l1_ratio set to a float between 0 and 1 instead of "
+                        "penalty='elasticnet', and "
+                        if _SKLEARN >= (1, 9)
+                        else "and "
+                    )
+                    + "C=np.inf instead of penalty=None.",
+                    FutureWarning,
+                ))
+            if resolved != "elasticnet" and l1_ratio is not None and 0 < l1_ratio < 1:
+                emitted.append((
+                    "l1_ratio parameter is only used when penalty is 'elasticnet'. "
+                    f"Got (penalty={resolved})",
+                    UserWarning,
+                ))
+            if (penalty == "l2" and l1_ratio != 0) or (penalty == "l1" and l1_ratio != 1):
+                emitted.append((
+                    f"Inconsistent values: penalty={penalty} with l1_ratio={l1_ratio}. "
+                    "penalty is deprecated. Please use l1_ratio only.",
+                    UserWarning,
+                ))
+            # 1.8 tests the resolved penalty here, 1.9 the raw parameter, so
+            # LogisticRegression(C=np.inf) warns on one and not the other.
+            unpenalized = penalty is None if _SKLEARN >= (1, 9) else resolved is None
+            if unpenalized and C != 1.0:
+                emitted.append((
+                    "Setting penalty=None will ignore the C and l1_ratio parameters",
+                    UserWarning,
+                ))
+            if self.n_jobs is not None:
+                emitted.append((
+                    "'n_jobs' has no effect since 1.8 and will be removed in 1.10. "
+                    f"You provided 'n_jobs={self.n_jobs}', please leave it unspecified.",
+                    FutureWarning,
+                ))
+
+        for message, category in emitted:
+            warnings.warn(message, category, stacklevel=3 + _WRAPPER_FRAMES)
+
     # --------------------------------------------------------------- capability
 
-    def _check_logistic_capability(self, X, y) -> None:
-        """Raise :class:`CapabilityError` for anything the MLX path cannot serve."""
+    def _check_logistic_params(self, X) -> None:
+        """The capability checks that cost nothing: parameters, and sparsity.
+
+        Run before the crossover decision on every path, so a request mlxlearn
+        cannot serve is always reported as such — with its warning and its
+        ``fallback_policy`` — even when the problem is small enough that
+        scikit-learn would have been used anyway.
+        """
         name = type(self).__name__
         require_dense(X, estimator=name)
-        # Before validate_data, so a float64 value that overflows float32 is a
-        # capability limit patched mode can fall back on rather than scikit-learn's
-        # generic post-conversion "contains infinity" ValueError.
-        check_float32_range(X)
 
         params = {
             "solver": self.solver,
@@ -112,10 +245,10 @@ class MLXLogisticMixin(BackendMixin):
             "warm_start": (False,),
         }
 
-        # scikit-learn 1.9 removed multi_class outright; 1.7 and 1.8 still carry it
-        # as a deprecated sentinel. Reading it unconditionally raised AttributeError
-        # on 1.9 — a version pair pyproject.toml declares supported and CI schedules.
-        # Checked only where it exists, rather than pinned away.
+        # scikit-learn 1.8 removed multi_class outright; 1.7 still carries it as a
+        # deprecated sentinel. Reading it unconditionally raised AttributeError on
+        # 1.8 and 1.9 — version pairs pyproject.toml declares supported and CI
+        # schedules. Checked only where it exists, rather than pinned away.
         if hasattr(self, "multi_class"):
             params["multi_class"] = self.multi_class
             supported["multi_class"] = _SUPPORTED_MULTI_CLASS
@@ -145,6 +278,22 @@ class MLXLogisticMixin(BackendMixin):
                 value=self.intercept_scaling,
             )
 
+    def _check_logistic_capability(self, X, y, sample_weight=None) -> None:
+        """Raise :class:`CapabilityError` for anything the MLX path cannot serve.
+
+        Everything :meth:`_check_logistic_params` checks, plus the checks that have
+        to look at the data. All of them run before :meth:`BackendMixin._select_backend`
+        makes its decision, because only a capability error raised *inside* that
+        decision becomes a Layer 2 fallback; one raised afterwards escapes as an
+        exception from a class standing in for scikit-learn's.
+        """
+        name = type(self).__name__
+        self._check_logistic_params(X)
+        # Before validate_data, so a float64 value that overflows float32 is a
+        # capability limit patched mode can fall back on rather than scikit-learn's
+        # generic post-conversion "contains infinity" ValueError.
+        check_float32_range(X)
+
         y_array = np.asarray(y)
         if y_array.ndim > 1 and y_array.shape[1] > 1:
             raise UnsupportedInputError(
@@ -154,62 +303,185 @@ class MLXLogisticMixin(BackendMixin):
                 reason="multi-label-target",
             )
 
-    def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
+        if sample_weight is not None:
+            weights = np.asarray(sample_weight)
+            # Anything non-numeric is left for validation to reject with
+            # scikit-learn's own message.
+            if weights.dtype.kind in "biuf" and np.any(weights < 0):
+                raise UnsupportedInputError(
+                    "sample_weight contains negative values. mlxlearn's solvers "
+                    "require non-negative weights, because a negative weight makes "
+                    "the objective non-convex. scikit-learn accepts them, so under "
+                    "patch_sklearn() this falls back rather than failing.",
+                    reason="negative-sample-weight",
+                )
+
+    def _below_crossover(
+        self, n_samples: int, n_features: int, n_targets: int = 1
+    ) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        The threshold is **high**, and both conditions must be met, because the
-        measurements say so. See ``docs/benchmarks.md``.
+        Both conditions must be met, and the work proxy is
+        ``n_samples × n_features × n_targets`` — one weight vector for a binary
+        problem, one per class for a multinomial one — because each objective
+        evaluation is a pair of ``(n, d) × (d, n_targets)`` products. Counting only
+        ``n × d`` sent a five-class 60 000 × 128 problem to scikit-learn as
+        "small".
 
-        The iteration counts match scikit-learn's almost exactly — 17 against 17,
-        20 against 19 — so the solver is not doing extra work. What it pays is
-        per-iteration overhead: at 20 000 x 16 an L-BFGS iteration costs about
-        5.9 ms while the matmul inside it costs 163 us. The line search evaluates
-        the objective several times per step and each evaluation forces a host
-        synchronization, so the fixed cost of crossing the boundary dominates
-        everything MLX is good at until the arithmetic per iteration becomes large.
-
-        Measured: 0.02x-0.11x up to 60 000 x 128, reaching 1.26x only at
-        20 000 x 1024 and 1.34x at 60 000 x 1024. So MLX is used only for tall
-        *and* wide problems; everything else goes to scikit-learn, which is faster
-        and says so honestly rather than being dressed up by a threshold that
-        pretends otherwise.
-
-        This is a known optimization target, not a permanent property — see
-        ``docs/benchmarks.md`` for what would change it.
+        The per-iteration cost is what the threshold has to beat. It used to be
+        dominated by blocking host synchronizations inside the L-BFGS bookkeeping
+        — every inner product was a device round trip of ~120 µs, 12 to 33 per
+        iteration, while the line search averaged only about 1.1 evaluations per
+        iteration — and that bookkeeping is host NumPy now, with one
+        synchronization per objective evaluation. The thresholds themselves are
+        measurements; see ``docs/benchmarks.md``.
         """
         tuning = get_tuning()
-        work = n_samples * n_features
+        work = n_samples * n_features * max(int(n_targets), 1)
         if n_samples < tuning.logreg_min_samples or work < tuning.logreg_min_work:
             return True, (
-                f"{n_samples} samples x {n_features} features is below the measured "
-                f"logistic-regression crossover ({tuning.logreg_min_samples} samples "
-                f"and {tuning.logreg_min_work} element-ops, both required)"
+                f"{n_samples} samples x {n_features} features x {n_targets} "
+                f"target(s) is below the measured logistic-regression crossover "
+                f"({tuning.logreg_min_samples} samples and {tuning.logreg_min_work} "
+                "element-ops, both required)"
             )
         return False, ""
+
+    def _crossover_from_raw(self, shape: tuple[int, int], y) -> tuple[bool, str]:
+        """:meth:`_below_crossover` from the raw input, before any validation.
+
+        The class count only changes the answer when there are enough samples and
+        ``n × d`` alone falls short of the work threshold, so ``y`` is only looked
+        at in that band.
+        """
+        n_samples, n_features = shape
+        tuning = get_tuning()
+        n_targets = 1
+        if (
+            n_samples >= tuning.logreg_min_samples
+            and n_samples * n_features < tuning.logreg_min_work
+        ):
+            n_targets = _count_targets(y)
+        return self._below_crossover(n_samples, n_features, n_targets)
+
+    def _select_fit_backend(self, X, y, sample_weight) -> tuple[str, bool]:
+        """Decide the backend for ``fit`` once. Returns ``(backend, decided)``.
+
+        For a patched estimator on a problem below the crossover, the decision is
+        made from the raw shape after only the parameter checks: the problem is
+        going to scikit-learn regardless, and scanning ``X`` for float32 overflow,
+        copying it to float32 and validating ``y`` first — all of which
+        scikit-learn then repeats — made the handed-off fit up to 2x slower than
+        stock. Data-dependent capability limits are moot for a fit MLX will not
+        run, so they are checked only when it will.
+
+        ``decided`` is False when the input has no 2-D shape to decide on (a
+        list, say); the crossover is then applied after validation.
+        """
+        shape = _safe_shape(X)
+        if shape is None:
+            backend = self._select_backend(
+                "fit",
+                capability_check=lambda: self._check_logistic_capability(X, y, sample_weight),
+                shape=None,
+            )
+            return backend, False
+
+        below, detail = self._crossover_from_raw(shape, y)
+        handed_off = below and self._mlxlearn_allow_fallback and not get_tuning().force_backend
+        if handed_off:
+            check = lambda: self._check_logistic_params(X)  # noqa: E731
+        else:
+            check = lambda: self._check_logistic_capability(X, y, sample_weight)  # noqa: E731
+        backend = self._select_backend(
+            "fit",
+            capability_check=check,
+            below_crossover=below,
+            crossover_detail=detail,
+            shape=shape,
+        )
+        return backend, True
+
+    # ---------------------------------------------------------------- inference
+
+    @contextmanager
+    def _inference(self, operation: str, X):
+        """Record one diagnostics event per public inference call, then run it.
+
+        Inference for this estimator is always scikit-learn's float64 NumPy code on
+        ``coef_``, ``intercept_`` and ``classes_`` — every backend populates exactly
+        those — so the event records the backend that *owns* the fitted state, with
+        ``compute="numpy-float64"`` saying what actually did the arithmetic.
+
+        A model whose attributes were assigned rather than fitted — federated
+        averaging, a model imported from elsewhere — has no owner. scikit-learn
+        predicts from it, so mlxlearn does too, recorded as ``"external-state"``.
+        That is distinguished from a fit that started and did not complete, which
+        can leave new ``classes_`` next to the previous ``coef_`` and still raises.
+        """
+        check_is_fitted(self)
+        active = _INFERENCE_IN_PROGRESS.get()
+        if id(self) not in active:
+            self._record_inference(operation, _safe_shape(X))
+        token = _INFERENCE_IN_PROGRESS.set(active | {id(self)})
+        try:
+            yield
+        finally:
+            _INFERENCE_IN_PROGRESS.reset(token)
+
+    def _record_inference(self, operation: str, shape) -> None:
+        backend = getattr(self, "_execution_backend_", None)
+        if backend is None and not getattr(self, "_mlxlearn_fit_started", False):
+            self._backend_event(
+                operation,
+                "sklearn",
+                reason="external-state",
+                detail=(
+                    f"{type(self).__name__} was not fitted by mlxlearn; predicting "
+                    "from its assigned coef_, intercept_ and classes_."
+                ),
+                shape=shape,
+                compute="numpy-float64",
+            )
+            return
+        backend = self._fitted_backend(operation)
+        self._backend_event(
+            operation,
+            backend,
+            reason="sticky",
+            shape=shape,
+            fallback=backend == "sklearn",
+            compute="numpy-float64",
+        )
 
 
 class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     """L2-penalized logistic regression fitted with L-BFGS on MLX.
 
     A drop-in replacement for :class:`sklearn.linear_model.LogisticRegression`
-    restricted to ``solver="lbfgs"`` with ``penalty="l2"`` or ``penalty=None`` on
-    dense, single-output data. The objective minimized is scikit-learn's, term for
-    term, so the two agree on the objective value at their respective solutions.
+    restricted to ``solver="lbfgs"`` with an L2 penalty or none, on dense,
+    single-output data. The objective minimized is scikit-learn's, term for term,
+    so the two agree on the objective value at their respective solutions.
 
     Parameters
     ----------
-    penalty : {"l2", None}, default="l2"
-        ``"l1"`` and ``"elasticnet"`` are not implemented and raise.
+    penalty : {"l2", None}, default="l2" on scikit-learn 1.7, "deprecated" on 1.8+
+        On 1.8+ this is a deprecated sentinel and the penalty is spelled with
+        ``l1_ratio`` and ``C`` instead — ``l1_ratio=0`` for L2, ``C=np.inf`` for
+        none — exactly as in scikit-learn. ``"l1"`` and ``"elasticnet"``, however
+        spelled, are not implemented and raise.
     dual : bool, default=False
         Only ``False`` is implemented.
     tol : float, default=1e-4
         Tolerance on ``max|gradient|``, the same criterion and scale scikit-learn's
-        lbfgs path uses.
+        lbfgs path uses. A value below what float32 can resolve — ``0``, say — is
+        honored as "run to the float32 floor"; see Notes.
     C : float, default=1.0
-        Inverse regularization strength.
+        Inverse regularization strength. ``np.inf`` means unpenalized.
     fit_intercept : bool, default=True
     intercept_scaling : float, default=1
-        Only ``1.0`` is accepted; it affects nothing outside ``solver="liblinear"``.
+        Only ``1.0`` is accepted with an intercept; it affects nothing outside
+        ``solver="liblinear"``.
     class_weight : dict or "balanced", default=None
         Folded into the sample weights exactly as scikit-learn folds them, before
         the penalty scale is derived from their sum.
@@ -218,17 +490,21 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     solver : {"lbfgs"}, default="lbfgs"
     max_iter : int, default=100
     multi_class : str, default="deprecated"
-        Only scikit-learn 1.7's default is implemented — multinomial for three or
-        more classes, a single weight vector for two. ``"ovr"`` and
-        ``"multinomial"`` raise rather than being reinterpreted.
+        scikit-learn 1.7 only; 1.8 removed it. Only the default is implemented —
+        multinomial for three or more classes, a single weight vector for two — and
+        ``"auto"``, which means the same. ``"ovr"`` and ``"multinomial"`` raise
+        rather than being reinterpreted.
     verbose : int, default=0
         Accepted and ignored.
     warm_start : bool, default=False
         Only ``False`` is implemented.
     n_jobs : int, default=None
-        Accepted and ignored; the MLX path is not joblib-parallel.
-    l1_ratio : float, default=None
-        Only ``None`` is accepted.
+        Accepted and ignored; the MLX path is not joblib-parallel. scikit-learn
+        1.8+ deprecates it and warns when it is set, and so does this class.
+    l1_ratio : float, default=None on scikit-learn 1.7, 0.0 on 1.8+
+        On 1.8+ it selects the penalty, and only ``0`` (or the deprecated
+        ``None``) is implemented. On 1.7 it is ignored unless
+        ``penalty="elasticnet"``, as scikit-learn ignores it.
 
     Attributes
     ----------
@@ -248,15 +524,27 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     Notes
     -----
     **Precision.** Computation is float32 (``docs/fp32_policy.md``); ``coef_`` and
-    ``intercept_`` are float64 containers. The objective is evaluated through
-    ``logaddexp``/``logsumexp`` and never exponentiates a raw score, so separable
-    data with logits in the hundreds produces finite losses rather than the floored
-    plateaus that a ``clip``-based formulation gives in float32.
+    ``intercept_`` are float64 containers. Float64 input is centered in float64
+    before it is rounded, so a large constant offset — timestamps, coordinates —
+    costs no more precision than the spread of the data does. The objective is
+    evaluated through ``logaddexp``/``logsumexp`` and never exponentiates a raw
+    score, so separable data with logits in the hundreds produces finite losses
+    rather than the floored plateaus that a ``clip``-based formulation gives in
+    float32.
 
-    **Convergence is reported.** A run that exhausts ``max_iter`` or stalls in the
-    line search emits :class:`sklearn.exceptions.ConvergenceWarning`, as
-    scikit-learn does. ``n_iter_`` counts accepted steps, so a problem already
-    optimal at the zero start reports ``0``.
+    **Convergence is reported.** A run that exhausts ``max_iter`` or stalls emits
+    :class:`sklearn.exceptions.ConvergenceWarning`, as scikit-learn does, and
+    records the stop in the diagnostics (operation ``"lbfgs"``). The exception is
+    a run that stops because the objective can no longer resolve progress with
+    ``max|gradient|`` already below about 1e-6 of its starting value: that is the
+    float32 floor ``docs/fp32_policy.md`` §2.3 describes, reached rather than
+    missed, so it is recorded without a warning. ``n_iter_`` counts accepted steps,
+    so a problem already optimal at the zero start reports ``0``.
+
+    **Callbacks.** On scikit-learn 1.9+, callbacks set with ``set_callbacks`` see
+    the same task tree as scikit-learn's lbfgs path: the fit, and one subtask per
+    accepted L-BFGS iteration carrying that iterate's ``coef_`` and
+    ``intercept_``. Like scikit-learn 1.9, a request to stop early is not acted on.
 
     **No warm start, no caches.** ``fit`` is a pure function of ``(X, y,
     sample_weight, params)``. Nothing about a previous fit in the same process can
@@ -275,6 +563,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     array([1])
     """
 
+    @_with_callbacks
     def fit(self, X, y, sample_weight=None):
         """Fit the model.
 
@@ -295,41 +584,28 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self._validate_params()
 
         self._clear_backend()
-        backend = self._select_backend(
-            "fit",
-            capability_check=lambda: self._check_logistic_capability(X, y),
-            shape=_safe_shape(X),
-        )
-        if backend == "sklearn":
-            super().fit(X, y, sample_weight)
-            self._set_backend("sklearn")
-            return self
+        # Distinguishes "a fit started here" from "coef_ was assigned from outside"
+        # for inference; see MLXLogisticMixin._inference. Deliberately not a
+        # trailing-underscore name, which check_is_fitted would read as fitted state.
+        self._mlxlearn_fit_started = True
 
+        backend, decided = self._select_fit_backend(X, y, sample_weight)
+        if backend == "sklearn":
+            return self._fit_with_sklearn(X, y, sample_weight)
+
+        # float64 is kept as float64 — the solver centers it before rounding to
+        # float32, see _solvers/logistic.py — and float32 input is not upcast.
         X_checked, y_checked = validate_data(
             self,
             X,
             y,
             accept_sparse=False,
-            dtype=NUMPY_FLOAT,
+            dtype=[np.float64, np.float32],
             order="C",
             ensure_min_samples=1,
             reset=True,
         )
-        check_finite_float32(X_checked)
         _check_classification_target(y_checked)
-
-        below, detail = self._below_crossover(*X_checked.shape)
-        if below and backend != "cpu":
-            backend = self._select_backend(
-                "fit",
-                below_crossover=True,
-                crossover_detail=detail,
-                shape=X_checked.shape,
-            )
-            if backend == "sklearn":
-                super().fit(X, y, sample_weight)
-                self._set_backend("sklearn")
-                return self
 
         self.classes_, y_encoded = np.unique(y_checked, return_inverse=True)
         n_classes = self.classes_.shape[0]
@@ -341,19 +617,26 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                 f"the data contains only one class: {self.classes_[0]!r}"
             )
 
+        if not decided:
+            below, detail = self._below_crossover(
+                *X_checked.shape, n_targets=1 if n_classes == 2 else n_classes
+            )
+            if below and backend != "cpu":
+                backend = self._select_backend(
+                    "fit",
+                    below_crossover=True,
+                    crossover_detail=detail,
+                    shape=X_checked.shape,
+                )
+                if backend == "sklearn":
+                    return self._fit_with_sklearn(X, y, sample_weight)
+
+        self._mirror_fit_warnings()
         weights = self._resolve_weights(X_checked, y_checked, y_encoded, sample_weight)
 
-        # Resolved rather than read, so that C=inf on scikit-learn 1.9 means
+        # Resolved rather than read, so that C=inf on scikit-learn 1.8+ means
         # "unpenalized" here exactly as it does there.
-        if self._effective_penalty() is None:
-            if self.C not in (1.0, math.inf):
-                warnings.warn(
-                    "Setting penalty=None will ignore the C and l1_ratio parameters",
-                    stacklevel=2,
-                )
-            C = math.inf
-        else:
-            C = float(self.C)
+        C = math.inf if self._effective_penalty() is None else float(self.C)
 
         tuning = get_tuning()
         config = LogisticConfig(
@@ -366,6 +649,23 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
             device="gpu" if backend == "mlx" else "cpu",
         )
 
+        callback_ctx = bridge = None
+        metadata = None if sample_weight is None else {"sample_weight": sample_weight}
+        if hasattr(self, "_init_callback_context"):  # scikit-learn >= 1.9
+            # The same task tree scikit-learn's lbfgs path builds: the fit, one
+            # subtask per iteration, plus the trailing empty one its scipy bridge
+            # always leaves.
+            callback_ctx = self._init_callback_context(max_subtasks=max(self.max_iter, 1) + 1)
+            callback_ctx.call_on_fit_task_begin(
+                estimator=self, X=X_checked, y=y_checked, metadata=metadata
+            )
+            if hasattr(self, "_skl_callbacks"):
+                bridge = _CallbackBridge(
+                    callback_ctx, self, X_checked, y_checked, metadata, backend,
+                    n_targets=1 if n_classes == 2 else n_classes,
+                    n_features=X_checked.shape[1],
+                )
+
         with mlx_guard(type(self).__name__, "fit"):
             solution = solve_logistic(
                 X_checked,
@@ -373,26 +673,99 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                 n_classes=n_classes,
                 sample_weight=weights,
                 config=config,
+                callback=bridge,
             )
+
+        if bridge is not None:
+            bridge.close()
 
         self.coef_ = solution.coef
         self.intercept_ = solution.intercept
         self.n_iter_ = np.array([solution.n_iter], dtype=np.int32)
         self._set_backend(backend)
+        self._report_convergence(solution, backend)
 
-        if not solution.converged:
-            # The ancestor unpacked `converged` and discarded it at every call
-            # site, so a model that stopped at max_iter was indistinguishable from
-            # one that reached the tolerance.
-            warnings.warn(
-                f"{type(self).__name__} failed to converge "
-                f"({solution.stop_reason}) after {solution.n_iter} iterations; "
-                f"max|gradient| is {solution.grad_max_abs:.3g} against tol="
-                f"{self.tol:g}. Increase max_iter, scale the data, or relax tol.",
-                ConvergenceWarning,
-                stacklevel=2,
+        if callback_ctx is not None:
+            callback_ctx.call_on_fit_task_end(
+                estimator=self,
+                X=X_checked,
+                y=y_checked,
+                metadata=metadata,
+                reconstruction_attributes={},
             )
         return self
+
+    def _fit_with_sklearn(self, X, y, sample_weight):
+        """Hand the whole fit to scikit-learn, which manages its own fitted state.
+
+        The in-progress marker goes first: scikit-learn 1.9 builds mid-fit copies
+        of this estimator for callbacks, and those have to be able to predict. A
+        scikit-learn fit that fails partway leaves exactly the state it leaves for
+        scikit-learn's own class.
+        """
+        self.__dict__.pop("_mlxlearn_fit_started", None)
+        super().fit(X, y, sample_weight)
+        self._set_backend("sklearn")
+        return self
+
+    def _report_convergence(self, solution, backend) -> None:
+        """Warn about a run that did not converge, and record every such stop.
+
+        The ancestor unpacked ``converged`` and discarded it at every call site, so
+        a model that stopped at max_iter was indistinguishable from one that
+        reached the tolerance.
+        """
+        if solution.converged:
+            return
+        name = type(self).__name__
+        floor = solution.stop_reason == "float32-floor" and solution.at_resolution_floor
+        state = (
+            f"after {solution.n_iter} iterations; max|gradient| is "
+            f"{solution.grad_max_abs:.3g} against tol={self.tol:g}"
+        )
+        if floor:
+            detail = (
+                f"{name} ran to the float32 floor {state}, below the ~1e-6 x "
+                f"{solution.initial_grad_max_abs:.3g} that float32 resolves "
+                "(docs/fp32_policy.md §2.3)."
+            )
+        elif solution.stop_reason == "max_iter":
+            detail = (
+                f"{name} failed to converge (max_iter) {state}. Increase max_iter, "
+                "scale the data, or relax tol."
+            )
+        elif solution.stop_reason == "float32-floor":
+            detail = (
+                f"{name} failed to converge (float32-floor) {state}: the objective "
+                "stopped resolving progress in float32 before the gradient reached "
+                "tol. Scale the data, or relax tol."
+            )
+        elif solution.stop_reason == "line-search-failure":
+            detail = (
+                f"{name} failed to converge (line-search-failure) {state}: no step "
+                "along the search direction decreased the objective. Scale the data, "
+                "or relax tol."
+            )
+        else:
+            detail = (
+                f"{name} failed to converge ({solution.stop_reason}) {state}. The "
+                "objective is not finite at the starting point; check the data for "
+                "extreme values, or scale it."
+            )
+
+        self._backend_event(
+            "lbfgs",
+            backend,  # type: ignore[arg-type]
+            reason=solution.stop_reason,
+            detail=detail,
+            n_iter=solution.n_iter,
+            n_fev=solution.n_fev,
+            grad_max_abs=solution.grad_max_abs,
+            tol=float(self.tol),
+            at_resolution_floor=solution.at_resolution_floor,
+        )
+        if not floor:
+            warnings.warn(detail, ConvergenceWarning, stacklevel=3 + _WRAPPER_FRAMES)
 
     # ------------------------------------------------------------------ weights
 
@@ -425,15 +798,15 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
 
     # ---------------------------------------------------------------- inference
 
-    # scikit-learn computes all three of these from coef_, intercept_ and
-    # classes_, in float64, and an MLX fit populates exactly those attributes with
-    # exactly those shapes. Reimplementing them in MLX would trade float64
-    # exactness for nothing: the work is one (n, d) x (d, K) matmul, far below any
-    # crossover. So these overrides add only the sticky-backend bookkeeping —
-    # _note_inference asserts that a fit completed and records which backend owns
-    # this estimator — and then defer. The ancestor did reimplement them, in
-    # float32, with `score >= 0` where scikit-learn uses `score > 0`, so its
-    # predict and its decision_function could disagree on the decision boundary.
+    # scikit-learn computes all of these from coef_, intercept_ and classes_, in
+    # float64, and an MLX fit populates exactly those attributes with exactly those
+    # shapes. Reimplementing them in MLX would trade float64 exactness for nothing:
+    # the work is one (n, d) x (d, K) matmul, far below any crossover. So these
+    # overrides add only the sticky-backend bookkeeping — one diagnostics event per
+    # public call, see MLXLogisticMixin._inference — and then defer. The ancestor
+    # did reimplement them, in float32, with `score >= 0` where scikit-learn uses
+    # `score > 0`, so its predict and its decision_function could disagree on the
+    # decision boundary.
 
     def decision_function(self, X):
         """Confidence scores, ``X @ coef_.T + intercept_``.
@@ -447,9 +820,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         scores : ndarray of shape (n_samples,) or (n_samples, n_classes)
             One-dimensional for binary problems.
         """
-        check_is_fitted(self)
-        self._note_inference("decision_function", shape=_safe_shape(X))
-        return super().decision_function(X)
+        with self._inference("decision_function", X):
+            return super().decision_function(X)
 
     def predict(self, X):
         """Predict class labels.
@@ -463,9 +835,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         y : ndarray of shape (n_samples,)
             Labels drawn from ``classes_``.
         """
-        check_is_fitted(self)
-        self._note_inference("predict", shape=_safe_shape(X))
-        return super().predict(X)
+        with self._inference("predict", X):
+            return super().predict(X)
 
     def predict_proba(self, X):
         """Predict class probabilities.
@@ -479,27 +850,128 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         p : ndarray of shape (n_samples, n_classes)
             float64, rows sum to 1, columns ordered by ``classes_``.
         """
-        check_is_fitted(self)
-        self._note_inference("predict_proba", shape=_safe_shape(X))
-        return super().predict_proba(X)
+        with self._inference("predict_proba", X):
+            return super().predict_proba(X)
+
+    def predict_log_proba(self, X):
+        """Predict the logarithm of class probabilities.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+
+        Returns
+        -------
+        log_p : ndarray of shape (n_samples, n_classes)
+        """
+        with self._inference("predict_log_proba", X):
+            return super().predict_log_proba(X)
+
+    def score(self, X, y, sample_weight=None):
+        """Mean accuracy on the given data and labels.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+        y : array-like of shape (n_samples,)
+        sample_weight : array-like of shape (n_samples,), default=None
+
+        Returns
+        -------
+        score : float
+        """
+        with self._inference("score", X):
+            return super().score(X, y, sample_weight=sample_weight)
+
+
+class _CallbackBridge:
+    """Drives scikit-learn 1.9 callbacks from the L-BFGS iterations.
+
+    The same hook sequence as scikit-learn's ``_LbfgsCallbackBridge``: a subtask is
+    begun with the starting point, each accepted step ends the current subtask
+    and begins the next, and :meth:`close` ends the last one as an empty task.
+    Each iterate is handed over with the attributes a callback needs to build a
+    usable estimator from it — including the backend that owns it, so that the
+    copy scikit-learn builds mid-fit can predict.
+
+    The per-iteration hooks run inside the solver, and so inside ``mlx_guard``: a
+    callback's ``ValueError``/``TypeError`` passes through unchanged, and anything
+    else it raises arrives wrapped in ``BackendExecutionError`` with the original
+    as ``__cause__`` — attributed to the wrong layer, but never swallowed.
+    """
+
+    def __init__(self, ctx, estimator, X, y, metadata, backend, *, n_targets, n_features):
+        self._ctx = ctx
+        self._estimator = estimator
+        self._X = X
+        self._y = y
+        self._metadata = metadata
+        self._backend = backend
+        self._iteration = self._begin(
+            np.zeros((n_targets, n_features)), np.zeros(n_targets)
+        )
+
+    def _attributes(self, coef, intercept):
+        return {"coef_": coef, "intercept_": intercept, "_execution_backend_": self._backend}
+
+    def _begin(self, coef, intercept):
+        context = self._ctx.subcontext(task_name="lbfgs-iter")
+        context.call_on_fit_task_begin(
+            estimator=self._estimator,
+            X=self._X,
+            y=self._y,
+            metadata=self._metadata,
+            reconstruction_attributes=self._attributes(coef, intercept),
+        )
+        return context
+
+    def __call__(self, coef, intercept):
+        self._iteration.call_on_fit_task_end(
+            estimator=self._estimator,
+            X=self._X,
+            y=self._y,
+            metadata=self._metadata,
+            reconstruction_attributes=self._attributes(coef, intercept),
+        )
+        self._iteration = self._begin(coef, intercept)
+
+    def close(self):
+        self._iteration.call_on_fit_task_end(estimator=self._estimator)
+
+
+def _count_targets(y) -> int:
+    """Weight vectors the fit will have: 1 for binary, else the class count.
+
+    Used only as a size hint for the crossover, before validation, so anything it
+    cannot read cheaply counts as binary — the smaller work estimate, which errs
+    toward handing the problem to scikit-learn.
+    """
+    labels = np.asarray(y)
+    if labels.ndim == 2 and labels.shape[1] == 1:
+        labels = labels.ravel()
+    if labels.ndim != 1 or labels.dtype.kind not in "biufUS":
+        return 1
+    n_classes = np.unique(labels).shape[0]
+    return 1 if n_classes <= 2 else int(n_classes)
 
 
 def _check_classification_target(y: np.ndarray) -> None:
-    """Reject regression targets with scikit-learn's message.
+    """Reject non-classification targets with scikit-learn's own message and warning.
 
-    Uses the public ``type_of_target`` rather than scikit-learn's
-    ``check_classification_targets``, which is not part of its documented API.
+    Multi-output targets are a capability limit, not an invalid request, so they
+    get :class:`~mlxlearn.exceptions.UnsupportedInputError`; everything else goes
+    through ``check_classification_targets``, which raises scikit-learn's exact
+    "Unknown label type" error and emits its "more than 50% unique classes"
+    warning.
     """
     target_type = type_of_target(y, input_name="y")
-    if target_type in ("binary", "multiclass"):
-        return
     if target_type in ("multilabel-indicator", "multiclass-multioutput", "continuous-multioutput"):
         raise UnsupportedInputError(
             "LogisticRegression implements single-output classification only; got a "
             f"{target_type!r} target.",
             reason="multi-label-target",
         )
-    raise ValueError(f"Unknown label type: {target_type!r}")
+    check_classification_targets(y)
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:
