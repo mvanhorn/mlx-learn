@@ -37,10 +37,8 @@ from mlxlearn._common.arrays import (
 from mlxlearn._common.config import tuning_context
 from mlxlearn._common.diagnostics import get_backend_diagnostics
 from mlxlearn._common.validation import (
-    check_finite_float32,
     check_float32_range,
     check_sample_weight,
-    class_weight_vector,
     is_sparse,
     require_dense,
     require_nonnegative_weights,
@@ -573,7 +571,7 @@ def test_range_helpers_are_importable_without_scikit_learn():
 
 
 # ----------------------------------------------------------------------------------
-# validate_float32_input and check_finite_float32
+# validate_float32_input
 # ----------------------------------------------------------------------------------
 
 
@@ -615,10 +613,6 @@ def test_validate_float32_input_float64_path_checks_the_validated_array(rng):
     with pytest.raises(UnsupportedInputError):
         validate_float32_input(probe, X_bad, dtype=np.float64)
 
-    # range_checked=True: the capability check already ran it, so it is not repeated.
-    out = validate_float32_input(probe, X_bad, dtype=np.float64, range_checked=True)
-    assert out[4, 1] == OVERFLOW
-
 
 def test_validate_float32_input_names_the_operation_for_sparse_input(rng):
     probe = _Probe().fit(rng.normal(size=(5, 3)))
@@ -636,22 +630,8 @@ def test_validate_float32_input_returns_y_when_given(rng):
     np.testing.assert_array_equal(y_out, y)
 
 
-def test_check_finite_float32_is_a_real_check_after_a_cast():
-    """It used to be a documented no-op on float32, which is where a cast leaves an inf."""
-    with np.errstate(over="ignore"):
-        cast = np.array([[1.0, OVERFLOW]]).astype(np.float32)  # inf, with only a warning
-    with pytest.raises(UnsupportedInputError) as excinfo:
-        check_finite_float32(cast)
-    assert excinfo.value.reason == "float32-overflow"
-
-    check_finite_float32(np.ones((4, 2), np.float32))
-    check_finite_float32(np.empty((0, 2), np.float32))
-    with pytest.raises(UnsupportedInputError):
-        check_finite_float32(np.array([[1e300]]))  # float64: the pre-cast check
-
-
 # ----------------------------------------------------------------------------------
-# sample weights and class weights
+# sample weights
 # ----------------------------------------------------------------------------------
 
 
@@ -668,31 +648,17 @@ def test_require_nonnegative_weights():
         assert excinfo.value.reason == "negative-sample-weight"
 
 
-def test_check_sample_weight_allow_negative():
+def test_check_sample_weight():
     X = np.zeros((3, 2))
     with pytest.raises(UnsupportedInputError) as excinfo:
         check_sample_weight([1.0, -1.0, 2.0], X)
     assert excinfo.value.reason == "negative-sample-weight"
 
-    weights = check_sample_weight([1.0, -1.0, 2.0], X, dtype=np.float64, allow_negative=True)
-    np.testing.assert_array_equal(weights, [1.0, -1.0, 2.0])
-    assert check_sample_weight(1.0, X, allow_negative=True) is None
+    weights = check_sample_weight([1.0, 0.0, 2.0], X, dtype=np.float64)
+    np.testing.assert_array_equal(weights, [1.0, 0.0, 2.0])
+    assert check_sample_weight(1.0, X) is None
     with pytest.raises(ValueError, match="NaN"):
-        check_sample_weight([1.0, np.nan, 2.0], X, allow_negative=True)
-
-
-def test_class_weight_vector():
-    classes = np.array([0, 1])
-    balanced_y = np.array([0, 0, 1, 1])
-    assert class_weight_vector(None, classes, balanced_y) is None
-    assert class_weight_vector("balanced", classes, balanced_y) is None
-
-    weights = class_weight_vector("balanced", classes, np.array([0, 0, 0, 1]))
-    np.testing.assert_allclose(weights, [4 / 6, 4 / 2])
-
-    # Exactly 1, not approximately: a weight the user set is never ignored.
-    weights = class_weight_vector({0: 1.0, 1: 1.000001}, classes, balanced_y)
-    assert weights is not None and weights[1] == 1.000001
+        check_sample_weight([1.0, np.nan, 2.0], X)
 
 
 # ----------------------------------------------------------------------------------

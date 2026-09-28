@@ -22,9 +22,11 @@ promoted to float32 the same way scikit-learn promotes them to float64.
 values stay representable through the arithmetic done on them. :func:`finite_range`
 measures an array cheaply, and :func:`check_squared_float32_range` answers the
 question kernels actually face — whether *squares* of the data stay inside float32
-— for a value that fits in float32 but whose square does not. Both live here rather
-than in ``validation`` because ``_kernels`` may call them, and ``validation``
-imports scikit-learn, which a kernel module must not.
+— for a value that fits in float32 but whose square does not. No 0.1.x estimator
+needs that guard: each rescales its data, and the kernels check their own compute
+frames. What is here stays free of scikit-learn, which ``validation`` imports and a
+kernel module must not, so the kernels share its constants — the float32 limits,
+and the ``patch_sklearn()`` advice their fit-time errors carry.
 """
 
 from __future__ import annotations
@@ -260,8 +262,9 @@ def finite_range(array: Any) -> ValueRange | None:
     return ValueRange(float(low), float(high))
 
 
-#: The Layer 1 advice for data float32 cannot hold (kept out of a patched
-#: estimator's messages; see CapabilityError.advice).
+#: The Layer 1 advice for data float32 cannot hold, at ``fit``: a patched estimator
+#: hands such data to scikit-learn's float64 path (and leaves this out of its own
+#: messages; see CapabilityError.advice).
 _FLOAT64_FIT_ADVICE = (
     "Or run under patch_sklearn(), which hands a fit on such data to scikit-learn's "
     "float64 path."

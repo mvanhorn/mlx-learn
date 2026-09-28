@@ -42,6 +42,7 @@ from sklearn.utils.validation import (
 
 from ..exceptions import SparseInputError, UnsupportedInputError, UnsupportedParameterError
 from .arrays import (
+    _FLOAT64_FIT_ADVICE,
     FLOAT32_MAX,
     FLOAT32_TINY,
     NUMPY_FLOAT,
@@ -67,19 +68,29 @@ __all__ = [
     "require_nonnegative_weights",
     "check_sample_weight",
     "check_float32_range",
-    "check_finite_float32",
     "check_squared_float32_range",
     "finite_range",
     "validate_float32_input",
     "ValueRange",
     "FLOAT32_MAX",
     "FLOAT32_TINY",
-    "class_weight_vector",
 ]
 
 
 def _is_pandas(X: Any) -> bool:
     return type(X).__module__.startswith("pandas")
+
+
+def _safe_shape(X: Any) -> tuple[int, int] | None:
+    """``(n_samples, n_features)`` of input as the caller passed it, or ``None``.
+
+    ``None`` for anything without a two-dimensional ``shape`` — a list, say —
+    whose size is known only once it has been validated.
+    """
+    shape = getattr(X, "shape", None)
+    if shape is None or len(shape) != 2:
+        return None
+    return (int(shape[0]), int(shape[1]))
 
 
 def is_sparse(X: Any) -> bool:
@@ -162,14 +173,6 @@ def require_supported_params(
             )
 
 
-#: The Layer 1 advice for data float32 cannot hold: at ``fit`` a patched estimator
-#: hands such data to scikit-learn's float64 path.
-_FLOAT64_FIT_ADVICE = (
-    "Or run under patch_sklearn(), which hands a fit on such data to scikit-learn's "
-    "float64 path."
-)
-
-
 def _negative_weight_error(estimator: str | None) -> UnsupportedInputError:
     # A capability error, not a plain ValueError. scikit-learn accepts negative
     # sample weights; mlxlearn's logistic solver does not, because a negative weight
@@ -212,28 +215,19 @@ def check_sample_weight(
     X: np.ndarray,
     *,
     dtype: Any = NUMPY_FLOAT,
-    allow_negative: bool = False,
-    estimator: str | None = None,
 ) -> np.ndarray | None:
     """Validate ``sample_weight`` against ``X``, returning ``None`` when unweighted.
 
     scikit-learn's own helper for this is private, so this reimplements the parts
     of its contract mlxlearn relies on: scalars broadcast, 1-D arrays must match
-    ``n_samples``, weights must be finite and — unless ``allow_negative`` — non-negative.
+    ``n_samples``, weights must be finite and non-negative. A negative weight is
+    refused before this runs, where it can still fall back
+    (:func:`require_nonnegative_weights`), or given a meaning first — SVC clips it
+    to zero, which is what LIBSVM makes of it.
 
     Returning ``None`` for the unweighted case — rather than an array of ones —
     is deliberate: solvers can then skip the weighted code path entirely instead
     of multiplying by ones and losing exactness.
-
-    Parameters
-    ----------
-    allow_negative : bool, default=False
-        Pass negative weights through instead of raising. For solvers where a
-        negative weight has a defined meaning — LIBSVM drops every row whose
-        weight is not positive, so for SVC a negative weight is exactly a zero
-        weight — rejecting them would refuse input scikit-learn serves.
-    estimator : str, optional
-        Class name for the negative-weight message.
     """
     if sample_weight is None:
         return None
@@ -260,8 +254,8 @@ def check_sample_weight(
 
     if not np.all(np.isfinite(weights)):
         raise ValueError("sample_weight contains NaN or infinity.")
-    if not allow_negative and np.any(weights < 0):
-        raise _negative_weight_error(estimator)
+    if np.any(weights < 0):
+        raise _negative_weight_error(None)
     return weights
 
 
@@ -414,35 +408,6 @@ def check_float32_range(
     return value_range
 
 
-def check_finite_float32(X: np.ndarray, *, name: str = "X") -> None:
-    """Assert that data about to be computed on in float32 is finite there.
-
-    Handed data wider than float32, this is :func:`check_float32_range`: the
-    conversion has not happened yet, and that check reports what it would do.
-
-    Handed float32 data — typically fresh from a cast of validated float64 — it
-    checks the values themselves, because the cast is where an out-of-range
-    float64 turns into an infinity, and an infinity inside a kernel produces NaN
-    decision values with no error at all. One pass over the data.
-
-    ``validate_data(dtype=float32)`` already rejects non-finite values, so there is
-    nothing for this to add directly after it.
-    """
-    array = np.asarray(X)
-    if array.dtype.kind == "f" and array.dtype.itemsize <= 4:
-        if array.size and not np.isfinite(array).all():
-            raise UnsupportedInputError(
-                f"{name} contains a non-finite value after conversion to float32. "
-                f"A float64 beyond float32's limit ({FLOAT32_MAX:.3g}) becomes "
-                "infinity in that conversion, and mlxlearn computes in float32; it "
-                "will not compute on the result. Rescale the data, or use "
-                "scikit-learn's float64 path.",
-                reason="float32-overflow",
-            )
-        return
-    check_float32_range(X, name=name)
-
-
 def validate_float32_input(
     estimator: Any,
     X: Any,
@@ -451,7 +416,6 @@ def validate_float32_input(
     operation: str = "predict",
     dtype: Any = NUMPY_FLOAT,
     reset: bool | None = None,
-    range_checked: bool = False,
     **check_params: Any,
 ):
     """``validate_data`` for an MLX path, with mlxlearn's input capability checks in front.
@@ -474,11 +438,10 @@ def validate_float32_input(
     when any member is: the validated array then keeps float32 input as float32,
     which the range check skips, and scans only what came out wider.
 
-    At fit time, steps 1 and 2 belong inside ``_select_backend``'s
-    ``capability_check``, the only place a capability error can still fall back;
-    pass ``range_checked=True`` when they already ran there. At inference the
-    backend is sticky, so the same errors are simply raised — an MLX-fitted model
-    has no scikit-learn state to hand ``predict`` to.
+    At fit time the same checks belong inside ``_select_backend``, the only place a
+    capability error can still fall back. At inference the backend is sticky, so
+    they are simply raised — an MLX-fitted model has no scikit-learn state to hand
+    ``predict`` to.
 
     Parameters
     ----------
@@ -493,8 +456,6 @@ def validate_float32_input(
     reset : bool, optional
         Passed to ``validate_data``. Defaults to ``operation == "fit"``, so an
         inference call cannot reset ``n_features_in_`` by forgetting to say so.
-    range_checked : bool, default=False
-        Skip steps 1 and 2 because the capability check already ran them.
     **check_params
         Passed through to ``validate_data``.
 
@@ -508,36 +469,15 @@ def validate_float32_input(
     dtypes = dtype if isinstance(dtype, (tuple, list)) else (dtype,)
     wide = any(np.dtype(d).itemsize > np.dtype(NUMPY_FLOAT).itemsize for d in dtypes)
     advice = operation == "fit"  # only a fit has a scikit-learn path to fall back to
-    if not range_checked:
-        require_dense(X, estimator=type(estimator).__name__, operation=operation)
-        if not wide:
-            check_float32_range(X, fallback_advice=advice)
+    require_dense(X, estimator=type(estimator).__name__, operation=operation)
+    if not wide:
+        check_float32_range(X, fallback_advice=advice)
     validated = validate_data(
         estimator, X, y, accept_sparse=False, dtype=dtype, reset=reset, **check_params
     )
-    if wide and not range_checked:
+    if wide:
         check_float32_range(
             validated[0] if isinstance(validated, tuple) else validated,
             fallback_advice=advice,
         )
     return validated
-
-
-def class_weight_vector(
-    class_weight: Any,
-    classes: np.ndarray,
-    y: np.ndarray,
-) -> np.ndarray | None:
-    """Resolve ``class_weight`` to a per-class weight vector aligned with ``classes``.
-
-    Returns ``None`` when every weight is exactly 1, so the caller can skip the
-    weighted path entirely. Exactly, not approximately: a weight of ``1.000001``
-    is what the user asked for, and treating it as unweighted would ignore it.
-    """
-    if class_weight is None:
-        return None
-    weights = compute_class_weight(class_weight, classes=classes, y=y)
-    weights = np.asarray(weights, dtype=np.float64)
-    if np.all(weights == 1.0):
-        return None
-    return weights
