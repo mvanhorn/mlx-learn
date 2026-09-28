@@ -87,6 +87,11 @@ class MLXNeighborsMixin(BackendMixin):
     def _check_neighbors_capability(self, X, *, data: bool = True) -> None:
         """Raise :class:`CapabilityError` for anything the MLX path cannot serve.
 
+        Runs before ``validate_data``, so a float64 value that overflows float32
+        is reported as a capability limit — which scikit-learn's float64 path can
+        serve, and therefore which patched mode can fall back on — rather than as
+        scikit-learn's generic post-conversion "contains infinity" ``ValueError``.
+
         Parameters
         ----------
         data : bool, default=True
@@ -95,11 +100,6 @@ class MLXNeighborsMixin(BackendMixin):
             size alone: scikit-learn validates the data itself, and scanning it
             first is the kind of overhead that made patched fits slower than the
             stock ones they replaced.
-
-        Runs before ``validate_data``, so a float64 value that overflows float32
-        is reported as a capability limit — which scikit-learn's float64 path can
-        serve, and therefore which patched mode can fall back on — rather than as
-        scikit-learn's generic post-conversion "contains infinity" ``ValueError``.
         """
         name = type(self).__name__
 
