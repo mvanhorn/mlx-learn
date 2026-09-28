@@ -10,16 +10,24 @@ only host transfer is the final ``(n_query, k)`` result — one copy per query b
 
 Three correctness properties this module is responsible for:
 
-**Exactness under float32.** Squared distances come from the expanded identity
-``‖q‖² + ‖t‖² − 2⟨q,t⟩``, which is one matmul but loses catastrophic precision when
-the data sits far from the origin. Mitigated by translating both matrices by the
-training mean (exact — distances are translation-invariant), over-selecting
-candidates, and recomputing the survivors' distances directly. See
-``docs/fp32_policy.md`` §2.1 for what remains.
+**Exactness under float32.** Candidates are *selected* with the expanded identity
+``‖q‖² + ‖t‖² − 2⟨q,t⟩`` — one matmul, and numerically hostile — on training rows
+translated by their mean and scaled by a power of two, and the survivors' distances
+are then *refined* directly as ``Σ(t − q)²`` from the untranslated coordinates. A
+fixed over-selection margin alone is not enough: on clustered or near-duplicate data
+the Gram noise exceeds the gaps between neighbors and true neighbors are silently
+dropped. So every row is **certified**. A rigorous float32 error bound on the
+identity proves that no training row left out of the candidate set can beat the
+k-th refined distance; a row it cannot certify is searched again with a much wider
+candidate set, and if that fails too, exactly, by direct differences against every
+training row. See ``docs/fp32_policy.md`` §2.1.
 
-**A total order.** Results are ordered by ``(distance, index)`` ascending, so ties
-break on the smaller training index exactly as scikit-learn's stable sort does, and
-so results do not depend on the block sizes.
+**A total order.** Results are the first ``k`` training rows under ``(refined
+distance, training index)``, so exact ties break on the smaller index — including
+ties at the k-th boundary, which the certificate treats as uncertain — and the
+answer for ``k`` is a prefix of the answer for any larger ``k``. Across devices the
+answers agree wherever the refined distances are exact (integer and binary data, for
+example); the GPU and the CPU may round a long sum differently.
 
 **Blocking invariance.** Any combination of query- and train-block sizes yields
 identical output. The tests sweep this.
@@ -27,20 +35,72 @@ identical output. The tests sweep this.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import functools
+import math
+import threading
+from dataclasses import dataclass, field
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 
+from .._common import device as _device
 from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .._common.config import get_tuning
 from .._common.device import physical_memory_bytes, use_device
+from ..exceptions import UnsupportedInputError
 
 __all__ = ["NeighborIndex", "build_index", "resolve_blocks"]
 
-#: Extra candidates carried per tile beyond ``k``. Cheap insurance against a
-#: candidate that residual float32 noise in the Gram identity ranked just outside
-#: the cut; the refinement pass then orders the enlarged set exactly.
+#: Extra candidates carried per tile beyond ``k`` on the first pass — at least this
+#: many, and more for wide data and large ``k`` (see :func:`_first_pass_carry`). This
+#: is not what makes the answer exact — the certificate is — but it is what lets the
+#: certificate succeed on the first pass for ordinary data.
 _OVERSELECT = 4
+
+#: Candidates carried on the second pass over rows the first pass could not certify:
+#: ``max(4 * k_carry, k_carry + _WIDEN_EXTRA)``. When a cluster is tight relative to
+#: its distance from the mean, all of its members sit inside the Gram noise band
+#: together, so the second pass has to be able to carry a whole cluster —
+#: ``make_blobs`` at ``cluster_std=0.01`` puts ~250 points in each.
+_WIDEN_EXTRA = 256
+
+#: Segment widths for two-stage selection on the GPU: at least 512, at least four
+#: times the number kept, at most 8192. MLX's GPU ``argpartition`` is effectively a
+#: full sort of the row, which made selection cost several times the Gram matmul on
+#: a wide tile. Partitioning segments first and then the survivors measured 2.5-4×
+#: faster keeping 14 of 100 000 and 1.2-2.5× keeping 64-1030, with identical sets.
+_SELECT_SEGMENT = 512
+_SELECT_SEGMENT_MAX = 8192
+
+#: Peak device memory per byte of distance tile. The budget below is for the whole
+#: working set, not the tile alone: the matmul output and the fused tile expression
+#: each cost a tile, and a full-row GPU ``argpartition`` — still used when ``k`` is
+#: too large for segmented selection — allocates five more. Measured with
+#: ``mx.get_peak_memory``: the unfactored budget peaked at 7.0× (7.2 GB against
+#: 1 GiB); with this factor, 0.2-0.6 GB. Query time was flat across factors 1-7.
+_TILE_WORKSET_FACTOR = 7
+
+#: Peak device memory per byte of the ``(rows, k_carry, n_features)`` refinement
+#: gather: the gathered rows, the fused difference, and — for float64 input — the
+#: gathered residuals. Unbudgeted, ``k=1000`` at 768 features reached 7.4 GB.
+_REFINE_WORKSET_FACTOR = 4
+
+#: Queries on small-integer training data stay on the exact integer path when they
+#: are multiples of ``2**-_DYADIC_SHIFTS`` — half-integers, quarters — because
+#: scaling both sides by a power of two keeps every product an integer.
+_DYADIC_SHIFTS = 4
+
+#: float32 unit roundoff.
+_U = 2.0**-24
+
+#: float32's largest finite value.
+_FLOAT32_MAX = float(np.finfo(np.float32).max)
+
+#: Largest distance from the training mean mlxlearn will subtract in float32. Twice
+#: this must stay finite, because refinement subtracts two such coordinates before
+#: scaling them.
+_SPAN_LIMIT = _FLOAT32_MAX / 8.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,12 +115,14 @@ class BlockPlan:
 
 
 def _distance_budget_bytes(backend: str) -> int:
-    """Bytes to spend on one distance tile.
+    """Bytes the query working set may occupy on the device.
 
-    On unified memory a bigger tile means fewer, wider matmuls, which is what the
-    GPU wants. The budget is derived from installed memory and clamped, because a
-    fixed constant is wrong by an order of magnitude on both an 8 GB Air and a
-    128 GB Studio.
+    Derived from installed memory and clamped, because a fixed constant is wrong by
+    an order of magnitude on both an 8 GB Air and a 128 GB Studio. It bounds the
+    *working set* — tile, selection temporaries and the refinement gather together —
+    not merely the distance tile: bounding only the tile let the real peak reach
+    seven times the budget, and MLX's buffer cache then kept that peak resident after
+    the call returned. Wider tiles bought nothing once selection was segmented.
     """
     tuning = get_tuning()
     if backend != "mlx":
@@ -73,6 +135,10 @@ def _distance_budget_bytes(backend: str) -> int:
     )
 
 
+def _align_down(value: int, align: int) -> int:
+    return (value // align) * align if align > 1 and value >= align else value
+
+
 def resolve_blocks(
     n_query: int,
     n_train: int,
@@ -82,19 +148,24 @@ def resolve_blocks(
     query_block_size: int | None = None,
     train_block_size: int | None = None,
 ) -> BlockPlan:
-    """Choose tile sizes so a distance tile fits the budget.
+    """Choose tile sizes so the distance tile's working set fits the budget.
 
     Unlike the ancestor, the device kind is passed in rather than inferred from
     whether the byte budget happens to exceed a GPU-ish constant — conflating a
     memory budget with a device kind meant an explicit CPU budget above 256 MiB
     silently switched on GPU alignment, and the CPU path could never shrink its
     block no matter how wide the training set was.
+
+    The refinement gather, which grows with ``k * n_features`` rather than with the
+    training set, is budgeted separately, by row chunks inside a block, so that a
+    large ``k`` does not also shrink the matmul.
     """
     if n_query <= 0 or n_train <= 0:
         return BlockPlan(query_rows=0, train_cols=0)
 
     tuning = get_tuning()
     budget = _distance_budget_bytes(backend)
+    tile_budget = max(budget // _TILE_WORKSET_FACTOR, 1)
     itemsize = 4
 
     if query_block_size is not None:
@@ -103,24 +174,158 @@ def resolve_blocks(
         rows = tuning.query_block_rows if backend == "mlx" else tuning.cpu_query_block_rows
         # Keep a full-width tile inside the budget when the training set is small
         # enough to be scanned in one pass; otherwise the train tiling handles it.
-        max_rows = budget // max(n_train * itemsize, 1)
-        if 0 < max_rows < rows:
+        full_width_rows = tile_budget // max(n_train * itemsize, 1)
+        if 0 < full_width_rows < rows:
             align = tuning.query_block_align if backend == "mlx" else 1
-            aligned = (max_rows // align) * align if align > 1 else max_rows
-            rows = aligned if aligned > 0 else max_rows
+            rows = _align_down(full_width_rows, align)
         rows = max(1, min(n_query, rows))
 
     min_cols = min(k_search, n_train)
     if train_block_size is not None:
         cols = max(min_cols, min(int(train_block_size), n_train))
     else:
-        cols = budget // max(rows * itemsize, 1)
+        cols = tile_budget // max(rows * itemsize, 1)
         cols = max(min_cols, min(n_train, int(cols)))
 
     return BlockPlan(query_rows=int(rows), train_cols=int(cols))
 
 
+def _compute_device(backend: str) -> str:
+    """The MLX device an index built for ``backend`` runs on in this process.
+
+    ``"cpu"`` is MLX's CPU. ``"mlx"`` is the GPU — unless this process has none, as
+    when a model fitted on a Mac is unpickled somewhere without Metal. MLX's CPU
+    runs the identical float32 code, so that is used rather than refusing to
+    predict, except when the configuration names the GPU explicitly: then
+    :func:`~mlxlearn._common.device.resolve_device` raises, as it does everywhere
+    else an explicit device cannot be honored.
+    """
+    if backend != "mlx":
+        return "cpu"
+    if _device.gpu_available():
+        return "gpu"
+    return _device.resolve_device()
+
+
+@functools.lru_cache(maxsize=1)
+def _kernels() -> SimpleNamespace:
+    """The fused elementwise pieces, compiled once per process.
+
+    ``mx.compile`` fuses each expression into one kernel, so the tile costs one
+    temporary where the unfused expression cost four, and the refinement difference
+    one where it cost three. Compiled functions are cached by MLX on input shape and
+    stream only — never on data — and are built lazily so that importing mlxlearn
+    does not import MLX.
+    """
+    import mlx.core as mx
+
+    def center_scale(hi, center, scale):
+        return (hi - center) * scale
+
+    def center_scale_lo(hi, lo, center, scale):
+        return ((hi - center) + lo) * scale
+
+    def tile(q_sq, t_sq, gram):
+        # The clamp only ever moves a value toward the truth: distances are >= 0.
+        return mx.maximum((q_sq + t_sq) - 2.0 * gram, 0.0)
+
+    def pair_sq(t, q, scale):
+        diff = (t - q) * scale
+        return diff * diff
+
+    def pair_sq_lo(t, t_lo, q, q_lo, scale):
+        diff = ((t - q) + (t_lo - q_lo)) * scale
+        return diff * diff
+
+    return SimpleNamespace(
+        center_scale=mx.compile(center_scale),
+        center_scale_lo=mx.compile(center_scale_lo),
+        tile=mx.compile(tile),
+        pair_sq=mx.compile(pair_sq),
+        pair_sq_lo=mx.compile(pair_sq_lo),
+    )
+
+
+def _gamma(n: int) -> float:
+    """Higham's γₙ = n·u / (1 − n·u): the relative error bound of an n-term float32 sum."""
+    nu = n * _U
+    return nu / (1.0 - nu) if nu < 0.5 else math.inf
+
+
+def _first_pass_carry(k_search: int, n_features: int, n_train: int) -> int:
+    """Candidates to carry on the first pass.
+
+    The certificate's noise band is proportional to ``γ_d``, and the number of
+    neighbors crowding into it near the k-th distance grows with ``d`` and ``k``: on
+    Gaussian data the rows that failed a first pass with a fixed margin of 4 went
+    from none at d ≤ 64 to 29 of 200 at d=768, k=100 and all 200 at k=1000, and the
+    margin that brought each back to zero tracked ``d²·u·k``. A second pass costs a
+    whole extra search, so erring wide here is the cheaper mistake; the carry never
+    more than doubles ``k``.
+    """
+    band = math.ceil(4.0 * n_features * n_features * _U * k_search)
+    margin = max(_OVERSELECT, min(k_search, band))
+    return min(n_train, k_search + margin)
+
+
+@dataclass(frozen=True, slots=True)
+class _DeviceState:
+    """Everything the device holds for one index. Built whole, published once.
+
+    Immutable, and assigned to the index only after every array in it has been
+    evaluated, so a thread that sees it can use it — see ``_ensure_device``.
+    """
+
+    raw: Any  # (n, d) float32, uncentered; the index's ``X`` is a view of it
+    raw_lo: Any  # (n, d) float32 residual of float64 input, or None
+    sel: Any  # (n, d) (X - center) * 2**-exponent: the Gram operand
+    sel_t: Any  # sel.T
+    sel_sq: Any  # (n,) squared row norms of sel
+    center: Any  # (d,) float32
+    scale: Any  # 0-d, 2**-exponent
+    zero: Any  # 0-d, 0.0
+    exponent: int
+    norms_sorted: np.ndarray  # ascending float64 row norms of sel, for the certificate
+    raw_norm_bound: float  # upper bound on any training row's ||x||, unscaled
+    int_limit: int  # > 0 when the rows are small integers and the Gram is exact
+    int_max: float  # largest |x| in the training rows, integer path only
+    raw_t: Any  # raw.T, integer path only
+    raw_sq: Any  # (n,) exact squared norms of raw, integer path only
+    index_dtype: Any
+
+
 @dataclass(slots=True)
+class _QueryBlock:
+    """One block of query rows, in every representation the search needs."""
+
+    hi: Any  # (B, d) float32 query rows
+    lo: Any  # (B, d) float32 residual of float64 queries, or None
+    sel: Any  # (B, d) translated and scaled like the training rows
+    sq: Any  # (B, 1) squared norms of sel
+    raw_norm: np.ndarray | None  # (B,) ||q||, only when a residual is in play
+    int_shift: int | None  # 2**shift makes both sides small integers; None if not
+
+    @property
+    def n(self) -> int:
+        return int(self.hi.shape[0])
+
+    def take(self, mx, rows: np.ndarray) -> _QueryBlock:
+        index = mx.array(rows.astype(np.int32))
+
+        def pick(a):
+            return None if a is None else mx.take(a, index, axis=0)
+
+        return _QueryBlock(
+            hi=pick(self.hi),
+            lo=pick(self.lo),
+            sel=pick(self.sel),
+            sq=pick(self.sq),
+            raw_norm=None if self.raw_norm is None else self.raw_norm[rows],
+            int_shift=self.int_shift,
+        )
+
+
+@dataclass(slots=True, eq=False)
 class NeighborIndex:
     """Device-resident training data for repeated neighbor queries.
 
@@ -134,46 +339,62 @@ class NeighborIndex:
     Attributes
     ----------
     X : ndarray of shape (n_samples, n_features)
-        A float32 C-ordered *copy* of the training data. A copy, not a view: an
-        estimator that aliases the caller's buffer changes its own predictions
-        when the caller mutates their array.
+        The training rows in float32, C-ordered, and never the caller's buffer: an
+        estimator that aliases the caller's array changes its own predictions when
+        the caller mutates it. Once the device copy exists this is a read-only,
+        zero-copy view of it, so on unified memory the host and the device share
+        one buffer instead of holding two.
     center : ndarray of shape (n_features,)
-        The training mean, subtracted from both sides before the Gram identity.
-        Exact — distances are translation-invariant — and it is what keeps float32
-        cancellation manageable.
+        The float32 translation applied before the Gram identity — the training
+        mean, rounded. Distances are translation-invariant, so any shift is exact
+        in real arithmetic; the mean is the one that keeps float32 cancellation
+        manageable.
     backend : {"mlx", "cpu"}
-        Which MLX device the tensors live on and queries run on.
+        Which MLX device the index was built for.
+    X_lo : ndarray of shape (n_samples, n_features) or None
+        For wider-than-float32 input, the float32 residual ``X64 − float32(X64)``.
+        Refinement and centering use ``X + X_lo``, so a float64 caller's precision
+        is not thrown away by the cast — a column of Unix timestamps keeps its
+        seconds. ``None`` when the input was float32 or exactly representable.
     """
 
     X: np.ndarray
     center: np.ndarray
     backend: str
-    _train: object = None  # mx.array, centered, (n, d)
-    _train_t: object = None  # mx.array, (d, n)
-    _train_sq: object = None  # mx.array, (n,)
+    X_lo: np.ndarray | None = None
+    _state: _DeviceState | None = field(default=None, repr=False)
+    _lock: Any = field(default_factory=threading.Lock, repr=False)
 
     # ------------------------------------------------------------------ build
 
     def __post_init__(self) -> None:
         self._ensure_device()
 
-    def _ensure_device(self) -> None:
-        """Upload the centered training matrix and its row norms.
+    def _ensure_device(self) -> _DeviceState:
+        """Build and publish the device state. Idempotent and thread-safe.
 
-        Idempotent, so it doubles as the rebuild path after unpickling.
+        It doubles as the rebuild path after unpickling, and there the first query
+        may well be a burst from a thread pool. This method used to publish the
+        device arrays one at a time, still unevaluated, so a second thread could pass
+        the "already built" check and read ``None`` — or evaluate a lazy graph
+        belonging to another thread's stream, which MLX answers with "There is no
+        Stream(gpu, N) in current thread" or a segfault. Here the state is built
+        into locals, evaluated, and published with one assignment, under
+        double-checked locking so that concurrent first queries also do not each
+        upload their own copy of the training set.
         """
-        if self._train is not None:
-            return
-
-        import mlx.core as mx
-
-        with use_device("gpu" if self.backend == "mlx" else "cpu"):
-            centered = np.ascontiguousarray(self.X - self.center, dtype=NUMPY_FLOAT)
-            train = mx.array(centered, dtype=mx.float32)
-            self._train = train
-            self._train_t = train.T
-            self._train_sq = mx.sum(train * train, axis=1)
-            mx.eval(self._train, self._train_t, self._train_sq)
+        state = self._state
+        if state is not None:
+            return state
+        with self._lock:
+            if self._state is None:
+                state, x_view, lo_view = _build_state(
+                    self.X, self.X_lo, self.center, self.backend
+                )
+                self.X = x_view
+                self.X_lo = lo_view
+                self._state = state  # published last: the unlocked check reads only this
+            return self._state
 
     @property
     def n_samples(self) -> int:
@@ -188,23 +409,27 @@ class NeighborIndex:
     def __getstate__(self) -> dict:
         """Pickle the host data only; the device tensors are derived.
 
-        Keeping them would roughly triple the pickle — the matrix, its transpose,
-        and its row norms are all recomputable from ``X`` and ``center`` — and
-        would embed device buffers in a file that may be loaded on a machine with
-        a different MLX build or no GPU at all.
+        Keeping them would multiply the pickle — the translated matrix, its row
+        norms and their sorted copy are all recomputable from ``X``, ``X_lo`` and
+        ``center`` — and would embed device buffers in a file that may be loaded on
+        a machine with a different MLX build or no GPU at all.
         """
-        return {"X": self.X, "center": self.center, "backend": self.backend}
+        state = {"X": self.X, "center": self.center, "backend": self.backend}
+        if self.X_lo is not None:
+            state["X_lo"] = self.X_lo
+        return state
 
     def __setstate__(self, state: dict) -> None:
         self.X = state["X"]
         self.center = state["center"]
         self.backend = state["backend"]
-        self._train = None
-        self._train_t = None
-        self._train_sq = None
+        self.X_lo = state.get("X_lo")
+        # A lock is process-local and never pickled; each unpickled index gets its own.
+        self._lock = threading.Lock()
+        self._state = None
         # Rebuilt lazily on the first query rather than here, so that unpickling
-        # on a machine without a GPU does not fail until something actually asks
-        # for a computation.
+        # never touches a device. On a machine without a GPU that query then runs
+        # on MLX's CPU; see _compute_device.
 
     # ------------------------------------------------------------------ query
 
@@ -217,27 +442,36 @@ class NeighborIndex:
         exclude_self: bool = False,
         query_block_size: int | None = None,
         train_block_size: int | None = None,
+        stats: dict | None = None,
     ) -> tuple[np.ndarray | None, np.ndarray]:
         """Return the ``k`` nearest training rows for each row of ``Q``.
 
         Parameters
         ----------
         Q : ndarray of shape (n_queries, n_features)
-            Query rows, float32.
+            Query rows, float32 or float64. float64 rows are split into a float32
+            value and residual exactly as the training rows are, so their precision
+            is used rather than discarded by a cast.
         k : int
             Neighbors to return, before ``exclude_self`` removes one.
         return_distance : bool, default=True
             Whether to compute and return Euclidean distances.
         exclude_self : bool, default=False
             Treat ``Q`` as the training matrix itself and drop each row's own
-            index. Requires ``len(Q) == n_samples``.
+            index. Requires ``len(Q) == n_samples``. Passing this index's own ``X``
+            queries with the device-resident training rows directly.
+        stats : dict, optional
+            If given, filled with how the rows were answered: ``"rows"``,
+            ``"widened_rows"`` (the first pass could not certify them) and
+            ``"exact_rows"`` (nor could a wider one, so they were searched exactly).
+            The kernel knows nothing of estimators, so it is the caller's to record.
 
         Returns
         -------
         distances : ndarray of shape (n_queries, k) or None
             Euclidean (not squared) distances, float64, ascending.
         indices : ndarray of shape (n_queries, k)
-            Training-row indices, int64, ordered by ``(distance, index)``.
+            Training-row indices, int64: the first ``k`` under ``(distance, index)``.
 
         Notes
         -----
@@ -248,7 +482,10 @@ class NeighborIndex:
         """
         import mlx.core as mx
 
-        self._ensure_device()
+        # Decided before the device build, which swaps ``X`` for a view of the
+        # device copy: the caller handed us the old object.
+        self_query = exclude_self and Q is self.X
+        state = self._ensure_device()
         n_query = int(Q.shape[0])
         n_train = self.n_samples
         k = int(k)
@@ -268,10 +505,15 @@ class NeighborIndex:
             empty_dist = np.empty((0, k), dtype=np.float64) if return_distance else None
             return empty_dist, empty_idx
 
-        # Carry extra candidates so residual Gram noise cannot push a true
-        # neighbor out of the set before refinement can rank it.
-        k_carry = min(n_train, k_search + _OVERSELECT)
+        if not self_query:
+            Q = np.asarray(Q)
+            if Q.ndim != 2 or Q.shape[1] != self.n_features:
+                raise ValueError(
+                    f"Q must have shape (n_queries, {self.n_features}); got {Q.shape}."
+                )
 
+        # Carry extra candidates so the certificate usually succeeds first time.
+        k_carry = _first_pass_carry(k_search, self.n_features, n_train)
         plan = resolve_blocks(
             n_query,
             n_train,
@@ -284,73 +526,167 @@ class NeighborIndex:
         out_idx = np.empty((n_query, k), dtype=INDEX_DTYPE)
         out_dist = np.empty((n_query, k), dtype=np.float64) if return_distance else None
 
-        with use_device("gpu" if self.backend == "mlx" else "cpu"):
-            Qc = mx.array(
-                np.ascontiguousarray(Q - self.center, dtype=NUMPY_FLOAT), dtype=mx.float32
-            )
-            q_sq_all = mx.sum(Qc * Qc, axis=1)
-
+        device = _compute_device(self.backend)
+        search = _Search(
+            index=self,
+            state=state,
+            mx=mx,
+            k_search=k_search,
+            k_carry=k_carry,
+            segmented=device == "gpu",
+            train_block_size=train_block_size,
+            counts={"rows": n_query, "widened_rows": 0, "exact_rows": 0},
+        )
+        with use_device(device):
             for start in range(0, n_query, plan.query_rows):
                 end = min(start + plan.query_rows, n_query)
-                block = Qc[start:end]
-                q_sq = q_sq_all[start:end, None]
-
-                cand_idx, _ = self._block_candidates(
-                    mx, block, q_sq, n_train, k_carry, plan.train_cols
-                )
-                refined = self._refine(mx, block, cand_idx)
-
-                # The final ordering is a lexicographic sort on (distance, index)
-                # over a (block, k_carry) array -- small enough that host-side
-                # np.lexsort is both simpler and faster than any device trick, and
-                # it is the one place a *stable, total* order is guaranteed.
-                mx.eval(cand_idx, refined)
-                idx_np = np.asarray(cand_idx, dtype=INDEX_DTYPE)
-                dist_np = np.asarray(refined, dtype=NUMPY_FLOAT)
-                order = np.lexsort((idx_np, dist_np), axis=-1)
-                rows = np.arange(idx_np.shape[0])[:, None]
-                idx_np = idx_np[rows, order]
-                dist_np = dist_np[rows, order]
+                block = search.query_block(Q, start, end, self_query=self_query)
+                idx_np, sq_np = search.block(block, plan.train_cols)
 
                 if exclude_self:
-                    idx_np, dist_np = _drop_self(idx_np, dist_np, offset=start)
+                    idx_np, sq_np = _drop_self(idx_np, sq_np, offset=start)
 
                 out_idx[start:end] = idx_np[:, :k]
                 if return_distance:
-                    out_dist[start:end] = np.sqrt(
-                        np.maximum(dist_np[:, :k].astype(np.float64), 0.0)
-                    )
+                    out_dist[start:end] = np.sqrt(sq_np[:, :k])
 
+        if stats is not None:
+            stats.update(search.counts)
         return out_dist, out_idx
 
-    # ----------------------------------------------------------------- internals
 
-    def _block_candidates(self, mx, block, q_sq, n_train: int, k_carry: int, train_cols: int):
-        """Running top-``k_carry`` over train tiles, entirely on device."""
+@dataclass(slots=True)
+class _Search:
+    """One ``query`` call's worth of search machinery over a built index."""
+
+    index: NeighborIndex
+    state: _DeviceState
+    mx: Any
+    k_search: int
+    k_carry: int
+    segmented: bool
+    train_block_size: int | None
+    counts: dict
+
+    # ------------------------------------------------------------- query rows
+
+    def query_block(self, Q, start: int, end: int, *, self_query: bool) -> _QueryBlock:
+        """Prepare rows ``start:end`` of the query in every representation needed."""
+        mx, state = self.mx, self.state
+        fns = _kernels()
+
+        if self_query:
+            # The training rows themselves: already on the device, already
+            # translated, and identical bit for bit to what they are compared with.
+            lo = None if state.raw_lo is None else state.raw_lo[start:end]
+            raw_norm = None
+            if lo is not None:
+                host = np.asarray(self.index.X[start:end], dtype=np.float64)
+                raw_norm = np.sqrt(np.einsum("ij,ij->i", host, host))
+            return _QueryBlock(
+                hi=state.raw[start:end],
+                lo=lo,
+                sel=state.sel[start:end],
+                sq=state.sel_sq[start:end, None],
+                raw_norm=raw_norm,
+                int_shift=0 if state.int_limit > 0 else None,
+            )
+
+        rows = Q[start:end]
+        hi_np = np.ascontiguousarray(rows, dtype=NUMPY_FLOAT)
+        wide = rows.dtype != NUMPY_FLOAT
+        rows64 = np.asarray(rows, dtype=np.float64)
+        lo_np = None
+        if wide:
+            lo_np = (rows64 - hi_np).astype(NUMPY_FLOAT)
+            if not lo_np.any():
+                lo_np = None
+
+        # A query far enough from the training data overflows float32 even after
+        # scaling. Inference cannot fall back — the backend is sticky — so this is
+        # an error rather than a row of infinities.
+        offset = float(np.max(np.abs(rows64 - self.index.center.astype(np.float64))))
+        scaled_limit = math.sqrt(_FLOAT32_MAX / (4.0 * self.index.n_features))
+        if not math.isfinite(offset) or offset > _SPAN_LIMIT or (
+            math.ldexp(offset, -state.exponent) > scaled_limit
+        ):
+            raise UnsupportedInputError(
+                f"A query row lies {offset:.3g} from the training data's mean, which "
+                "overflows float32 distance arithmetic at the training data's scale. "
+                "Rescale the queries, or compute these neighbors with scikit-learn.",
+                reason="float32-overflow",
+            )
+
+        hi = mx.array(hi_np)
+        lo = None if lo_np is None else mx.array(lo_np)
+        if lo is None:
+            sel = fns.center_scale(hi, state.center, state.scale)
+        else:
+            sel = fns.center_scale_lo(hi, lo, state.center, state.scale)
+        sq = mx.sum(sel * sel, axis=1, keepdims=True)
+
+        raw_norm = None
+        if lo is not None or state.raw_lo is not None:
+            raw_norm = np.sqrt(np.einsum("ij,ij->i", rows64, rows64))
+
+        int_shift = None
+        if state.int_limit > 0 and lo_np is None:
+            int_shift = _dyadic_shift(hi_np, state.int_max, state.int_limit)
+        return _QueryBlock(hi=hi, lo=lo, sel=sel, sq=sq, raw_norm=raw_norm, int_shift=int_shift)
+
+    # ------------------------------------------------------------------ search
+
+    def block(self, qb: _QueryBlock, train_cols: int) -> tuple[np.ndarray, np.ndarray]:
+        """The first ``k_search`` neighbors of each row of ``qb``.
+
+        Returns host arrays: indices, and float64 squared distances in the data's
+        own units, ordered by ``(distance, index)``.
+        """
+        mx, state = self.mx, self.state
+        n_train = self.index.n_samples
+
+        if qb.int_shift is not None:
+            # Small integers: the Gram identity on the raw rows is exact, so an
+            # exact search is one matmul pass with no certificate to fail.
+            idx, sq = self.exact(qb, integer=True)
+            return idx, np.ldexp(sq.astype(np.float64), -2 * qb.int_shift)
+
+        cand, gmax = self.candidates(qb, self.k_carry, train_cols)
+        refined = self.refine(qb, cand)
+        mx.eval(cand, refined, gmax, qb.sq)
+        idx, sq = _sort_candidates(np.asarray(cand), np.asarray(refined))
+        idx, sq = idx[:, : self.k_search], sq[:, : self.k_search]
+
+        if self.k_carry < n_train:
+            ok = self.certified(qb, np.asarray(gmax), sq[:, -1])
+            if not ok.all():
+                bad = np.flatnonzero(~ok)
+                idx[bad], sq[bad] = self.resolve(qb.take(mx, bad))
+
+        return idx, np.ldexp(sq.astype(np.float64), 2 * state.exponent)
+
+    def candidates(self, qb: _QueryBlock, k_carry: int, train_cols: int):
+        """Running top-``k_carry`` by Gram value over train tiles, entirely on device.
+
+        Returns the candidate indices and, per row, the largest Gram value kept.
+        Every training row left out has a Gram value at least that large — each
+        partition and merge keeps the smallest — which is what the certificate
+        builds on.
+        """
+        mx, state = self.mx, self.state
+        fns = _kernels()
+        n_train = self.index.n_samples
         best_idx = None
         best_val = None
 
         for t_start in range(0, n_train, train_cols):
             t_end = min(t_start + train_cols, n_train)
-            width = t_end - t_start
+            gram = qb.sel @ state.sel_t[:, t_start:t_end]
+            tile = fns.tile(qb.sq, state.sel_sq[None, t_start:t_end], gram)
 
-            tile = (
-                q_sq
-                + self._train_sq[t_start:t_end][None, :]
-                - 2.0 * (block @ self._train_t[:, t_start:t_end])
-            )
-            tile = mx.maximum(tile, 0.0)
-
-            take = min(k_carry, width)
-            # One partition pass, not `take` sequential argmin sweeps over the
-            # whole tile. The ancestor's iterated argmin also mutated its input in
-            # place, so a function that read as pure selection destroyed its
-            # argument -- harmless only for as long as the argument stayed a
-            # throwaway temporary.
-            local = mx.argpartition(tile, kth=take - 1, axis=1)[:, :take]
-            rows = mx.arange(tile.shape[0])[:, None]
-            vals = tile[rows, local]
-            idx = local.astype(mx.int64) + t_start
+            take = min(k_carry, t_end - t_start)
+            local, vals = _select_smallest(mx, tile, take, segmented=self.segmented)
+            idx = local.astype(state.index_dtype) + t_start
 
             if best_idx is None:
                 best_idx, best_val = idx, vals
@@ -359,24 +695,314 @@ class NeighborIndex:
                 merged_val = mx.concatenate([best_val, vals], axis=1)
                 keep = min(k_carry, merged_val.shape[1])
                 sel = mx.argpartition(merged_val, kth=keep - 1, axis=1)[:, :keep]
-                mrows = mx.arange(merged_val.shape[0])[:, None]
-                best_idx = merged_idx[mrows, sel]
-                best_val = merged_val[mrows, sel]
+                best_idx = mx.take_along_axis(merged_idx, sel, axis=1)
+                best_val = mx.take_along_axis(merged_val, sel, axis=1)
 
-        return best_idx, best_val
+        return best_idx, mx.max(best_val, axis=1)
 
-    def _refine(self, mx, block, cand_idx):
+    def refine(self, qb: _QueryBlock, cand_idx):
         """Recompute the candidates' squared distances directly.
 
-        ``Σ(t − q)²`` instead of the expanded identity. Subtracting nearby float32
-        values is exact or nearly so, so these values are accurate enough both to
-        rank the candidates the way scikit-learn does and to be reported.
-        Unlike the ancestor -- where the MLX version of this was written and then
-        never called -- this runs on device.
+        ``Σ(t − q)²`` from the *untranslated* coordinates, not the expanded
+        identity and not the translated copy: translation rounds every coordinate
+        to a precision set by its distance from the mean, which for data far from
+        its own mean — two clusters, a heavy-tailed column — is far coarser than the
+        input itself. Subtracting the raw values rounds once, relative to the
+        difference. float64 input also carries its residual, so the difference is
+        taken to nearly double precision before it is squared.
         """
-        cand = mx.take(self._train, cand_idx, axis=0)  # (B, k, d)
-        diff = cand - block[:, None, :]
-        return mx.sum(diff * diff, axis=2)
+        mx, state = self.mx, self.state
+        fns = _kernels()
+        n_rows, k_carry = (int(s) for s in cand_idx.shape)
+
+        # The gather is (rows, k_carry, n_features): with a large k on wide data it
+        # dwarfs the distance tile (7.4 GB at k=1000, d=768 before this was
+        # budgeted), so it runs in row chunks sized to the budget. Each chunk is
+        # evaluated before the next is built: MLX encodes lazily and runs ahead of
+        # the GPU, so unevaluated chunks all hold their temporaries at once — lazy
+        # chunking alone measured 3.2 GB against a 1 GiB budget.
+        gather = _REFINE_WORKSET_FACTOR * k_carry * self.index.n_features * 4
+        chunk = max(1, _distance_budget_bytes(self.index.backend) // max(gather, 1))
+        if chunk < n_rows:
+            # Finish selection first, so its temporaries are gone before the
+            # first chunk's gather is allocated.
+            mx.eval(cand_idx)
+
+        parts = []
+        for start in range(0, n_rows, chunk):
+            end = min(start + chunk, n_rows)
+            idx = cand_idx[start:end]
+            t = mx.take(state.raw, idx, axis=0)
+            q = qb.hi[start:end, None, :]
+            if state.raw_lo is None and qb.lo is None:
+                sq = fns.pair_sq(t, q, state.scale)
+            else:
+                t_lo = state.zero if state.raw_lo is None else mx.take(state.raw_lo, idx, axis=0)
+                q_lo = state.zero if qb.lo is None else qb.lo[start:end, None, :]
+                sq = fns.pair_sq_lo(t, t_lo, q, q_lo, state.scale)
+            parts.append(mx.sum(sq, axis=2))
+            if chunk < n_rows:
+                mx.eval(parts[-1])
+        return parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=0)
+
+    # ------------------------------------------------------------ certificate
+
+    def certified(self, qb: _QueryBlock, gmax: np.ndarray, r_k: np.ndarray) -> np.ndarray:
+        """Rows whose candidate set provably contains their first ``k_search``.
+
+        A training row left out of the candidates has Gram value ``G ≥ gmax``. The
+        float32 error of the identity is at most ``C·(‖q‖² + ‖t‖²)``, and the
+        reverse triangle inequality gives ``(‖t‖ − ‖q‖)²`` — which is what keeps a
+        single far-out training row from making every row uncertifiable. The lower
+        bound on its true distance, discounted by refinement's own rounding, must
+        exceed the k-th refined distance *strictly*: a row whose excluded
+        neighbors might merely tie is not certified, because which tied row makes
+        the cut is decided by index, and only an exact search knows the indices.
+        """
+        state = self.state
+        d = self.index.n_features
+        q_sq = np.asarray(qb.sq, dtype=np.float64).reshape(-1)
+        bound = _excluded_lower_bound(
+            q_sq,
+            gmax.astype(np.float64),
+            state.norms_sorted,
+            gram_err=2.0 * (2.0 * _gamma(d + 2) + 8.0 * _U),
+            norm_err=2.0 * _gamma(d + 2),
+        )
+        lower = bound * (1.0 - 2.0 * _gamma(d + 4))
+        if qb.raw_norm is not None:
+            # The float64 residual is itself rounded, at u² of the raw magnitude.
+            absolute = math.ldexp(12.0 * _U * _U, -state.exponent) * (
+                qb.raw_norm + state.raw_norm_bound
+            )
+            lower = lower - 2.0 * np.sqrt(np.maximum(bound, 0.0)) * absolute - absolute**2
+        return lower > r_k.astype(np.float64)
+
+    # --------------------------------------------------------------- fallback
+
+    def resolve(self, qb: _QueryBlock) -> tuple[np.ndarray, np.ndarray]:
+        """Search rows the first pass could not certify: wider, then exactly."""
+        mx = self.mx
+        n_train = self.index.n_samples
+        k_search = self.k_search
+        self.counts["widened_rows"] += qb.n
+        out_idx = np.empty((qb.n, k_search), dtype=INDEX_DTYPE)
+        out_sq = np.empty((qb.n, k_search), dtype=NUMPY_FLOAT)
+        pending = np.arange(qb.n)
+
+        k_wide = min(n_train, max(4 * self.k_carry, self.k_carry + _WIDEN_EXTRA))
+        if k_wide < n_train:
+            plan = resolve_blocks(
+                qb.n,
+                n_train,
+                backend=self.index.backend,
+                k_search=k_wide,
+                train_block_size=self.train_block_size,
+            )
+            still = []
+            for start in range(0, qb.n, plan.query_rows):
+                rows = np.arange(start, min(start + plan.query_rows, qb.n))
+                sub = qb.take(mx, rows)
+                cand, gmax = self.candidates(sub, k_wide, plan.train_cols)
+                refined = self.refine(sub, cand)
+                mx.eval(cand, refined, gmax, sub.sq)
+                idx, sq = _sort_candidates(np.asarray(cand), np.asarray(refined))
+                idx, sq = idx[:, :k_search], sq[:, :k_search]
+                ok = self.certified(sub, np.asarray(gmax), sq[:, -1])
+                out_idx[rows[ok]] = idx[ok]
+                out_sq[rows[ok]] = sq[ok]
+                still.append(rows[~ok])
+            pending = np.concatenate(still)
+
+        if pending.size:
+            self.counts["exact_rows"] += int(pending.size)
+            idx, sq = self.exact(qb.take(mx, pending), integer=False)
+            out_idx[pending] = idx
+            out_sq[pending] = sq
+        return out_idx, out_sq
+
+    def exact(self, qb: _QueryBlock, *, integer: bool) -> tuple[np.ndarray, np.ndarray]:
+        """Exact first ``k_search`` against every training row, by composite key.
+
+        Each value is packed with its index into one ``uint64`` —
+        ``bits(distance) << 32 | index`` — which orders exactly as ``(distance,
+        index)`` because non-negative float32 bit patterns order as their values.
+        Partitioning on the key therefore breaks every tie on the index, at every
+        tile and every merge, with nothing left to certify.
+
+        With ``integer=True`` the values come from the Gram identity on the raw
+        rows, both sides scaled by ``2**qb.int_shift``, which is exact for small
+        integers; otherwise from direct differences, exactly as :meth:`refine`
+        computes them, so an exact answer and a certified one never disagree about
+        a distance. Returns host indices and float32 squared distances — scaled like
+        :meth:`refine`'s, or by ``4**int_shift`` when ``integer``.
+        """
+        mx, state = self.mx, self.state
+        fns = _kernels()
+        n_train = self.index.n_samples
+        d = self.index.n_features
+        k_search = self.k_search
+        budget = _distance_budget_bytes(self.index.backend)
+
+        if integer:
+            plan = resolve_blocks(
+                qb.n, n_train, backend=self.index.backend, k_search=k_search,
+                train_block_size=self.train_block_size,
+            )
+            rows, cols = plan.query_rows, plan.train_cols
+            lift = float(2**qb.int_shift)
+            q_int = qb.hi * lift if qb.int_shift else qb.hi
+            q_sq = mx.sum(q_int * q_int, axis=1, keepdims=True)
+        else:
+            # A (rows, cols, d) difference per tile; cols wide enough to keep the
+            # number of launches down, rows as many as the budget then allows.
+            cols = self.train_block_size or 4096
+            cols = max(min(k_search, n_train), min(int(cols), n_train))
+            rows = max(1, min(qb.n, budget // max(3 * cols * d * 4, 1)))
+
+        keys = []
+        for r_start in range(0, qb.n, rows):
+            r_end = min(r_start + rows, qb.n)
+            best = None
+            for t_start in range(0, n_train, cols):
+                t_end = min(t_start + cols, n_train)
+                if integer:
+                    gram = q_int[r_start:r_end] @ state.raw_t[:, t_start:t_end]
+                    t_sq = state.raw_sq[None, t_start:t_end]
+                    if qb.int_shift:
+                        # Both sides lifted by 2**shift: products and sums stay
+                        # integers below 2**24, so this is still exact.
+                        gram = gram * lift
+                        t_sq = t_sq * (lift * lift)
+                    vals = fns.tile(q_sq[r_start:r_end], t_sq, gram)
+                else:
+                    t = state.raw[None, t_start:t_end]
+                    q = qb.hi[r_start:r_end, None, :]
+                    if state.raw_lo is None and qb.lo is None:
+                        sq = fns.pair_sq(t, q, state.scale)
+                    else:
+                        t_lo = (
+                            state.zero if state.raw_lo is None
+                            else state.raw_lo[None, t_start:t_end]
+                        )
+                        q_lo = state.zero if qb.lo is None else qb.lo[r_start:r_end, None, :]
+                        sq = fns.pair_sq_lo(t, t_lo, q, q_lo, state.scale)
+                    vals = mx.sum(sq, axis=2)
+
+                key = mx.left_shift(mx.view(vals, mx.uint32).astype(mx.uint64), 32) | mx.arange(
+                    t_start, t_end, dtype=mx.uint64
+                )[None, :]
+                take = min(k_search, t_end - t_start)
+                _, part = _select_smallest(mx, key, take, segmented=self.segmented)
+                if best is None:
+                    best = part
+                else:
+                    merged = mx.concatenate([best, part], axis=1)
+                    keep = min(k_search, merged.shape[1])
+                    sel = mx.argpartition(merged, kth=keep - 1, axis=1)[:, :keep]
+                    best = mx.take_along_axis(merged, sel, axis=1)
+                # One budget-sized tile in flight at a time; see ``refine``.
+                mx.eval(best)
+            keys.append(np.array(best))
+
+        packed = np.sort(np.concatenate(keys, axis=0), axis=1)
+        idx = (packed & np.uint64(0xFFFFFFFF)).astype(INDEX_DTYPE)
+        sq = (packed >> np.uint64(32)).astype(np.uint32).view(NUMPY_FLOAT)
+        return idx, sq
+
+
+def _select_smallest(mx, vals, take: int, *, segmented: bool):
+    """Indices and values of the ``take`` smallest entries of each row.
+
+    On the GPU a wide row is partitioned in two stages — each segment first, then
+    the survivors — because MLX's GPU ``argpartition`` costs a full sort of the row.
+    Exact: every row's global ``take`` smallest are among its segments' ``take``
+    smallest. The ragged tail is appended to the survivors whole rather than padded,
+    so no padding value can ever tie with, and displace, a real one.
+    """
+    n_rows, width = vals.shape
+    seg = max(_SELECT_SEGMENT, 1 << (4 * take - 1).bit_length())
+    if not segmented or seg > _SELECT_SEGMENT_MAX or width < 4 * seg:
+        local = mx.argpartition(vals, kth=take - 1, axis=1)[:, :take]
+        return local, mx.take_along_axis(vals, local, axis=1)
+
+    n_seg = width // seg
+    head = vals[:, : n_seg * seg].reshape(n_rows, n_seg, seg)
+    part = mx.argpartition(head, kth=take - 1, axis=2)[:, :, :take]
+    cand_val = mx.take_along_axis(head, part, axis=2).reshape(n_rows, n_seg * take)
+    offsets = (mx.arange(n_seg, dtype=mx.uint32) * seg)[None, :, None]
+    cand_idx = (part + offsets).reshape(n_rows, n_seg * take)
+
+    tail = width - n_seg * seg
+    if tail:
+        tail_idx = mx.arange(n_seg * seg, width, dtype=mx.uint32)[None, :]
+        cand_val = mx.concatenate([cand_val, vals[:, n_seg * seg :]], axis=1)
+        cand_idx = mx.concatenate(
+            [cand_idx, mx.broadcast_to(tail_idx, (n_rows, tail))], axis=1
+        )
+
+    sel = mx.argpartition(cand_val, kth=take - 1, axis=1)[:, :take]
+    return mx.take_along_axis(cand_idx, sel, axis=1), mx.take_along_axis(cand_val, sel, axis=1)
+
+
+def _sort_candidates(idx: np.ndarray, sq: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Order each row's candidates by ``(distance, index)``, on the host.
+
+    A lexicographic sort over a ``(block, k_carry)`` array — small enough that host
+    ``np.lexsort`` is both simpler and faster than any device trick, and it is the
+    one place a total order is imposed on the first pass.
+    """
+    idx = idx.astype(INDEX_DTYPE, copy=False)
+    order = np.lexsort((idx, sq), axis=-1)
+    rows = np.arange(idx.shape[0])[:, None]
+    return idx[rows, order], sq[rows, order]
+
+
+def _excluded_lower_bound(
+    q_sq: np.ndarray,
+    gmax: np.ndarray,
+    norms: np.ndarray,
+    *,
+    gram_err: float,
+    norm_err: float,
+) -> np.ndarray:
+    """Per row, a lower bound on the true distance of every excluded training row.
+
+    For an excluded row ``t`` with norm ``τ = ‖t‖`` two bounds hold:
+    ``f(τ) = gmax − C·(‖q‖² + τ²)`` from the Gram error, which falls with ``τ``, and
+    ``g(τ) = (τ(1 − η) − ‖q‖(1 + η))² − 16u·(‖q‖² + τ²)`` from the reverse triangle
+    inequality, which rises with ``τ`` beyond ``t₁ ≈ ‖q‖``. Splitting the sorted
+    training norms at any ``t* ≥ t₁``, rows at or below it are bounded by ``f`` at
+    the largest such norm and rows above it by ``g`` at the smallest, so the
+    minimum of those two values bounds them all. ``t*`` is placed where ``f`` and
+    ``g`` cross, which is the best split; correctness needs only ``t* ≥ t₁``.
+
+    Using the one largest training norm for every row instead would let a single
+    outlier make every row uncertifiable.
+    """
+    C, eta = gram_err, norm_err
+    denom = (1.0 - eta) ** 2 - 16.0 * _U
+    if not math.isfinite(C) or denom <= 0.0:
+        return np.full(q_sq.shape, -np.inf)
+
+    qn = np.sqrt(q_sq)
+    a = gmax - C * q_sq
+    disc = (1.0 + C) * a - C * q_sq
+    cross = (qn + np.sqrt(np.maximum(disc, 0.0))) / (1.0 + C)
+    t1 = qn * (1.0 - eta * eta) / denom
+    t_star = np.maximum(cross, t1)
+
+    n = norms.shape[0]
+    pos = np.searchsorted(norms, t_star, side="right")
+    left = norms[np.clip(pos - 1, 0, n - 1)]
+    right = norms[np.clip(pos, 0, n - 1)]
+    f_left = np.where(pos > 0, a - C * left * left, np.inf)
+    g_right = np.where(
+        pos < n,
+        (right * (1.0 - eta) - qn * (1.0 + eta)) ** 2 - 16.0 * _U * (q_sq + right * right),
+        np.inf,
+    )
+    return np.minimum(f_left, g_right)
 
 
 def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
@@ -405,13 +1031,193 @@ def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
     return out_idx, out_dist
 
 
+def _row_sq_norms(mx, a, block: int = 1 << 16):
+    """``Σ a²`` per row, in row blocks so no full-size squared temporary exists.
+
+    Each block is evaluated before the next is built; left lazy, MLX encodes them
+    all ahead of the GPU and every block's square is alive at once.
+    """
+    n = int(a.shape[0])
+    if n <= block:
+        return mx.sum(a * a, axis=1)
+    parts = []
+    for i in range(0, n, block):
+        part = a[i : i + block]
+        parts.append(mx.sum(part * part, axis=1))
+        mx.eval(parts[-1])
+    return mx.concatenate(parts)
+
+
+def _dyadic_shift(rows: np.ndarray, int_max: float, int_limit: int) -> int | None:
+    """The smallest ``s`` making ``rows * 2**s`` integers the exact path can take.
+
+    ``None`` when there is none: a non-dyadic value, or magnitudes that would push
+    a product past ``2**24`` once both sides are lifted.
+    """
+    largest = max(float(np.max(np.abs(rows))) if rows.size else 0.0, int_max)
+    for shift in range(_DYADIC_SHIFTS + 1):
+        if math.ldexp(largest, shift) > int_limit:
+            return None
+        lifted = np.ldexp(rows, shift)
+        if np.array_equal(lifted, np.rint(lifted)):
+            return shift
+    return None
+
+
+def _all_integral(mx, a, block: int = 1 << 16) -> bool:
+    """Whether every entry of ``a`` is an integer, a row block at a time.
+
+    Blocked so the rounded copy never exists at full size, and it stops at the first
+    block that fails, which for real-valued data is the first.
+    """
+    for i in range(0, int(a.shape[0]), block):
+        part = a[i : i + block]
+        if not bool(mx.all(part == mx.round(part)).item()):
+            return False
+    return True
+
+
+def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, backend: str):
+    """Upload and derive everything the device needs. Returns ``(state, X, X_lo)``.
+
+    The returned host arrays are read-only zero-copy views of the device arrays;
+    the caller swaps them in for the ones it had, which frees those.
+    """
+    import mlx.core as mx
+
+    fns = _kernels()
+    n, d = (int(s) for s in X.shape)
+    with use_device(_compute_device(backend)):
+        # mx.array copies. This is the index's one private copy of the training
+        # rows; nothing below allocates another.
+        raw = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT))
+        raw_lo = None if X_lo is None else mx.array(np.ascontiguousarray(X_lo, dtype=NUMPY_FLOAT))
+        col_max = mx.max(raw, axis=0)
+        col_min = mx.min(raw, axis=0)
+        mx.eval(raw, col_max, col_min, *([] if raw_lo is None else [raw_lo]))
+
+        c64 = np.asarray(center, dtype=np.float64)
+        hi_col = np.asarray(col_max, dtype=np.float64)
+        lo_col = np.asarray(col_min, dtype=np.float64)
+        spread = float(max(np.max(np.abs(hi_col - c64)), np.max(np.abs(lo_col - c64))))
+        if not math.isfinite(spread):
+            raise ValueError("The training data contains NaN or infinity.")
+        if spread > _SPAN_LIMIT:
+            raise UnsupportedInputError(
+                f"The training data spans {spread:.3g} from its mean, too wide for "
+                "float32 to subtract two of its coordinates. Rescale it, or compute "
+                "these neighbors with scikit-learn.",
+                reason="float32-overflow",
+            )
+        # Scale by an exact power of two so the largest translated coordinate lands
+        # in [0.5, 1). Scaling by 2**k is exact, so ordinary data is unchanged bit
+        # for bit — but data around 1e19, whose squares overflow float32, and data
+        # around 1e-20, whose squares underflow it (and which the GPU flushes to
+        # zero), are both brought back to where float32 squares them faithfully.
+        exponent = min(max(math.frexp(spread)[1], -126), 126) if spread > 0 else 0
+        scale = mx.array(math.ldexp(1.0, -exponent), dtype=mx.float32)
+        center_dev = mx.array(np.asarray(center, dtype=NUMPY_FLOAT))
+
+        if raw_lo is None:
+            sel = fns.center_scale(raw, center_dev, scale)
+        else:
+            sel = fns.center_scale_lo(raw, raw_lo, center_dev, scale)
+        sel_sq = _row_sq_norms(mx, sel)
+        norms = mx.sort(mx.sqrt(sel_sq))
+        # Everything that goes into the state is evaluated here, the transposes
+        # included: an unevaluated node belongs to this thread's stream, and a query
+        # from another thread that forces it fails with "There is no Stream(gpu, N)
+        # in current thread".
+        sel_t = sel.T
+        pending = [sel, sel_t, sel_sq, norms]
+
+        # Small integers — binary, one-hot, counts — make the raw Gram identity
+        # exact in float32: every product and partial sum is an integer below 2**24.
+        # Such data is also where ties are heaviest, and an exact search needs no
+        # certificate, so it gets its own path.
+        max_abs = float(max(np.max(np.abs(hi_col)), np.max(np.abs(lo_col)))) if n else 0.0
+        int_limit = int(math.isqrt((1 << 24) // (4 * d))) if d else 0
+        raw_t = raw_sq = None
+        if raw_lo is None and 0 < int_limit and max_abs <= int_limit:
+            if _all_integral(mx, raw):
+                raw_t = raw.T
+                raw_sq = _row_sq_norms(mx, raw)
+                pending += [raw_t, raw_sq]
+            else:
+                int_limit = 0
+        else:
+            int_limit = 0
+        mx.eval(*pending)
+
+    state = _DeviceState(
+        raw=raw,
+        raw_lo=raw_lo,
+        sel=sel,
+        sel_t=sel_t,
+        sel_sq=sel_sq,
+        center=center_dev,
+        scale=scale,
+        zero=mx.array(0.0, dtype=mx.float32),
+        exponent=exponent,
+        norms_sorted=np.asarray(norms, dtype=np.float64),
+        raw_norm_bound=float(np.sqrt(np.sum(np.maximum(np.abs(hi_col), np.abs(lo_col)) ** 2))),
+        int_limit=int_limit,
+        int_max=max_abs,
+        raw_t=raw_t,
+        raw_sq=raw_sq,
+        index_dtype=mx.int32 if n < 2**31 else mx.int64,
+    )
+    x_view = _readonly_view(raw)
+    lo_view = None if raw_lo is None else _readonly_view(raw_lo)
+    return state, x_view, lo_view
+
+
+def _readonly_view(array) -> np.ndarray:
+    """A zero-copy NumPy view of an evaluated MLX array, write-protected.
+
+    MLX arrays are immutable, and the device state assumes it; a writeable view
+    would let a caller change the index underneath its own derived arrays.
+    """
+    view = np.asarray(array)
+    view.flags.writeable = False
+    return view
+
+
+def _split_float64(X: np.ndarray, block: int = 1 << 16) -> tuple[np.ndarray, np.ndarray | None]:
+    """``X`` as a float32 value plus a float32 residual, ``hi + lo ≈ X`` to ~u².
+
+    Row-blocked, so the float64 difference never exists at full size. The residual
+    is ``None`` when ``X`` is exactly representable in float32 — integers, binary
+    features, data that was float32 all along.
+    """
+    hi = np.asarray(X, dtype=NUMPY_FLOAT, order="C")
+    lo = np.empty_like(hi)
+    for start in range(0, X.shape[0], block):
+        stop = start + block
+        lo[start:stop] = X[start:stop] - hi[start:stop]
+    return hi, (lo if lo.any() else None)
+
+
 def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
     """Build a :class:`NeighborIndex` from a training matrix.
 
-    ``X`` is copied to float32 C order. The copy is deliberate: an index that
-    aliases the caller's array silently changes its own answers when that array is
-    mutated.
+    float32 input is uploaded as given. The upload is the copy — the index then
+    keeps a read-only view of its own device buffer, never the caller's array —
+    because an index that aliases the caller's array silently changes its own
+    answers when that array is mutated. Wider input (float64, integers) is split
+    into a float32 value and a float32 residual, and translated by its float64
+    mean, so the float32 cast does not quantize away what the caller supplied:
+    Unix timestamps collapse to 128-second steps in float32, but not here.
     """
-    Xf = np.array(X, dtype=NUMPY_FLOAT, order="C", copy=True)
-    center = Xf.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT)
-    return NeighborIndex(X=Xf, center=center, backend=backend)
+    X = np.asarray(X)
+    if X.ndim != 2:
+        raise ValueError(f"X must be 2-dimensional; got shape {X.shape}.")
+    if X.dtype == NUMPY_FLOAT:
+        hi = np.ascontiguousarray(X)
+        lo = None
+        center = hi.mean(axis=0, dtype=np.float64)
+    else:
+        X64 = np.asarray(X, dtype=np.float64)
+        hi, lo = _split_float64(X64)
+        center = X64.mean(axis=0)
+    return NeighborIndex(X=hi, center=center.astype(NUMPY_FLOAT), backend=backend, X_lo=lo)

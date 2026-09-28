@@ -36,26 +36,60 @@ ones, so the absolute error is on the order of `eps · ‖q‖²` ≈ `1.2e-7 ·
 centered far from the origin this swamps the true separation entirely — differences
 collapse to exactly equal, or to negative values that need clamping.
 
-mlxlearn applies three mitigations, in this order:
+The identity is one matmul, so mlxlearn still uses it — but only to *select* candidates,
+and then it proves the selection right:
 
-1. **Translation.** Distances are translation-invariant, so the training mean is subtracted
-   from both the training and the query matrices at fit time. This is exact mathematics, not
-   an approximation, and it moves ‖·‖² from "distance from the origin squared" down to
-   "variance scale", which is where the identity is well behaved. This alone removes the
-   common failure mode — data with a large constant offset.
-2. **Over-selection.** Each tile contributes `k + margin` candidates rather than exactly `k`,
-   so a candidate mis-ranked by residual Gram noise is still *retained* for the refinement
-   step to rank correctly.
-3. **Refinement.** The surviving candidates' distances are recomputed directly as
-   `Σ(t − q)²`. Subtracting nearby float32 values is exact or nearly so, so the refined
-   values are what get ranked and reported.
+1. **Translation and scaling.** Distances are translation-invariant, so the training mean
+   is subtracted from the training and the query rows before the identity is applied. That
+   moves ‖·‖² from "distance from the origin squared" down to "variance scale", where the
+   identity is far better behaved. float64 input is translated in float64, before anything
+   is rounded to float32, so a large constant offset — Unix timestamps, projected
+   coordinates — costs nothing. The translated rows are then scaled by a power of two, which
+   is exact, so that data around 1e19, whose squares overflow float32, and data around
+   1e-20, whose squares underflow it (the GPU flushes those to zero), both come back into
+   range.
+2. **Over-selection.** The identity selects `k + margin` candidates per query, the margin
+   growing with `k` and with the number of features.
+3. **Refinement.** The candidates' distances are recomputed directly as `Σ(t − q)²` from the
+   *untranslated* coordinates. Translation rounds every coordinate at the precision of its
+   distance from the mean, which for multi-modal or heavy-tailed data is far coarser than
+   the input itself; subtracting the raw values rounds once, relative to the difference.
+   float64 input keeps a float32 residual beside its float32 value, so the difference is
+   taken to about 2⁻⁴⁸ of the coordinate. The refined values are what get ranked and
+   reported.
+4. **Certification.** For every query, a rigorous bound on the identity's float32 error —
+   `γ_{d+2}·(‖q‖² + ‖t‖²)`, combined with the reverse triangle inequality so that one
+   far-out training row cannot spoil it for everyone — must prove that no training row left
+   out of the candidates can come within the k-th refined distance. The test is strict: a
+   row that might merely *tie* the k-th is uncertain too, because §3.1 decides ties by
+   index, and only a search that saw the tied rows knows their indices.
+5. **Fallback.** A query the certificate rejects is searched again with at least 256 more
+   candidates and, if that is rejected too, exactly: direct differences against every
+   training row, on the device, in budgeted chunks, ranked by a composite
+   `(distance, index)` key. Small-integer data — binary, one-hot, counts — makes the
+   identity exact outright, and takes that exact search directly.
 
-**The residual limitation, stated plainly:** selection still happens on identity-computed
-distances. Two points closer together than the post-centering Gram noise can, in principle,
-be selected in the wrong order beyond the over-selection margin. Refinement fixes ordering
-and reported values; it cannot recover a candidate that was never a candidate. The
-adversarial tests in `tests/parity/test_neighbors_fp32.py` bound this, and the CPU path is
-available for workloads where it matters.
+A fixed over-selection margin was not enough, and nothing checked it. Where the Gram noise
+exceeds the gaps between neighbors — tight clusters, near-duplicates, one unscaled column
+among unit-scale ones — it returned wrong neighbor sets without a word: 290 of 300 queries on
+1000 clusters with a spread of 1e-3, 12% of queries on data with a single column spanning
+0–1e4. The certificate turns each of those into a second pass rather than a wrong answer.
+
+**What it costs.** On ordinary data — Gaussian, uniform, standardized features, normalized
+embeddings, with or without a far-out training row — every query certifies on the first pass,
+and the certificate is host arithmetic on one number per query. Where the old margin failed,
+correctness costs the second pass. Measured on 50 000 training rows and 4096 queries (2048
+for the last case): 1.5× the old (wrong) query time for 1000 clusters of spread 1e-3, 1.7×
+for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for two clusters at 0
+and 1000, which needs the exact search for every query. Binary and small-integer data got
+*faster*, because it no longer goes through the identity at all.
+
+**What remains.** Exact means exact with respect to the refined float32 distances. Two
+training rows whose true distances from a query differ by less than float32 can resolve
+(about 1e-7 relative) are ranked by their refined values rather than their true ones — the
+storage limit of §3.4, not a selection error. `device="cpu"` runs this same float32
+algorithm on MLX's CPU, so it is not a float64 escape hatch; the float64 answer is stock
+scikit-learn's.
 
 ### 2.2 Accumulation length
 
@@ -90,7 +124,7 @@ no worse." Both are tested.
 
 | Quantity | Comparison against scikit-learn | Rationale |
 |---|---|---|
-| Neighbor **sets** (per row) | `assert_array_equal` on the sorted row — exact | Which points are nearest is not a matter of opinion |
+| Neighbor **sets** (per row) | `assert_array_equal` on the sorted row — exact, except which of several rows tied at the k-th distance is returned | Which points are nearest is not a matter of opinion; which of *equally* near points makes the cut is — see §3.1 |
 | Neighbor **index order** | exact where distances are strictly separated; set equality where they tie | See §3.1 — scikit-learn does not define an order for exact ties |
 | Neighbor **distances** | `atol=1e-6, rtol=1e-6` | Refined float32, relative to the data scale |
 | Classifier **predictions** | ≥ 99.5% label agreement | Labels are discrete; disagreements concentrate at the decision boundary. Measured: 0.9975 worst case over 40 randomized logistic configurations, 1.0 typical |
@@ -117,21 +151,34 @@ for being better, so those assertions are `j_mlxlearn ≤ j_sklearn · (1 + rtol
 
 ### 3.1 Neighbor ties: mlxlearn is stricter than scikit-learn
 
-mlxlearn orders neighbors by `(distance, training index)` — a *total* order, so the result
-does not depend on block sizes, device, or how many neighbors were requested.
+mlxlearn returns the first `k` training rows under `(distance, training index)` — a total
+order over the *whole* training set, not merely an ordering of whichever rows it returns.
+Rows tied at the k-th distance are decided by index too, so `kneighbors(k)` is always a
+prefix of `kneighbors(k + m)`, and no answer depends on block sizes. "Distance" is the
+refined float32 value of §2.1. Where that value is exact — integer, binary and one-hot
+features, halves and quarters — the answer is also identical on the GPU and the CPU;
+elsewhere the two devices may round a long sum differently, and so break a near-tie
+differently. (Until the certificate existed, none of this held on tie-heavy data: a tie
+group larger than the over-selection margin was cut arbitrarily, and the cut moved with
+the device, the block size and `k`.)
 
 scikit-learn's brute-force path partitions and then sorts the candidates with a
-non-stable sort, so it has **no defined order among exactly equal distances**. Measured on
-50 000 points at coordinate scale 10⁴ with 200 queries and k=7: neighbor sets agreed on
-every row, distances agreed exactly (`max |Δ| = 0`), and 26 of 1400 cells differed — every
-one of them a swap between two neighbors at an identical distance.
+non-stable sort, so it has **no defined order among exactly equal distances** — neither
+within a returned row nor at the k-th boundary. Measured on 50 000 points at coordinate
+scale 10⁴ with 200 queries and k=7: neighbor sets agreed on every row, distances agreed
+exactly (`max |Δ| = 0`), and 26 of 1400 cells differed — every one of them a swap between two
+neighbors at an identical distance.
 
-So the parity assertion is: **sets and distances are exact; index order is exact wherever
-distances are strictly separated.** Asserting elementwise index equality would demand that
-mlxlearn reproduce an ordering scikit-learn does not itself guarantee across releases.
+So the parity assertion is: **distances are exact; sets are exact except for which of
+several rows tied at the k-th distance is returned; index order is exact wherever distances
+are strictly separated.** Asserting elementwise index equality would demand that mlxlearn
+reproduce an ordering scikit-learn does not itself guarantee across releases.
 
-Downstream this is invisible: predictions and probabilities aggregate over the neighbor
-*set*, so they are unaffected, and the parity tests assert them elementwise.
+Ties *within* the returned set are invisible downstream: predictions and probabilities
+aggregate over the set. Ties *at the boundary* are not. scikit-learn keeps an arbitrary
+subset of the tied rows and mlxlearn the lowest-indexed ones, so on tie-heavy data a vote
+can legitimately differ between the two; mlxlearn's is the reproducible one. The parity
+tests assert predictions elementwise on continuous data, where boundary ties do not occur.
 
 ### 3.2 SVC: the dual is flat, so compare the primal
 

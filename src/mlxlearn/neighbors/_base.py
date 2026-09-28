@@ -22,7 +22,7 @@ from numbers import Integral
 import numpy as np
 from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
-from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
+from .._common.arrays import INDEX_DTYPE
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.validation import (
@@ -46,6 +46,11 @@ __all__ = ["MLXNeighborsMixin", "SUPPORTED_METRICS"]
 SUPPORTED_METRICS = ("euclidean", "l2", "minkowski")
 
 _SUPPORTED_ALGORITHMS = ("auto", "brute")
+
+#: Validation keeps float64 input as float64: the index translates it by its float64
+#: mean and keeps a float32 residual, so a cast here would throw away precision the
+#: caller supplied (Unix timestamps collapse to 128-second steps in float32).
+_INPUT_DTYPES = (np.float64, np.float32)
 
 
 class MLXNeighborsMixin(BackendMixin):
@@ -162,7 +167,7 @@ class MLXNeighborsMixin(BackendMixin):
 
         if target is None:
             X_checked = validate_data(
-                self, X, accept_sparse=False, dtype=NUMPY_FLOAT,
+                self, X, accept_sparse=False, dtype=_INPUT_DTYPES,
                 ensure_min_samples=1, reset=True,
             )
         else:
@@ -171,7 +176,7 @@ class MLXNeighborsMixin(BackendMixin):
                 X,
                 y,
                 accept_sparse=False,
-                dtype=NUMPY_FLOAT,
+                dtype=_INPUT_DTYPES,
                 ensure_min_samples=1,
                 multi_output=False,
                 y_numeric=target == "regression",
@@ -242,7 +247,7 @@ class MLXNeighborsMixin(BackendMixin):
             Q = self._index_.X
         else:
             require_dense(X, estimator=type(self).__name__, operation="kneighbors")
-            Q = validate_data(self, X, accept_sparse=False, dtype=NUMPY_FLOAT, reset=False)
+            Q = validate_data(self, X, accept_sparse=False, dtype=_INPUT_DTYPES, reset=False)
             check_finite_float32(Q)
 
         self._note_inference("kneighbors", shape=Q.shape)
