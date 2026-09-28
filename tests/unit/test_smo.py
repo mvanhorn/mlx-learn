@@ -205,6 +205,10 @@ def test_max_iter_zero_returns_the_initial_iterate(shrinking):
     np.testing.assert_array_equal(state.alpha, 0.0)
     assert np.isfinite(state.rho)
     assert source.single == 0 and source.batches == []
+    # The violation at α = 0, where yg = −y, as the one selection of max_iter=1
+    # measures it — not an unmeasured 0.0 beside stop_reason="max_iter".
+    one, _ = _solve(y, K32, np.ones(200), max_iter=1, shrinking=shrinking)
+    assert state.max_kkt_violation == one.max_kkt_violation == 2.0
 
 
 @pytest.mark.parametrize("shrinking", [False, True])

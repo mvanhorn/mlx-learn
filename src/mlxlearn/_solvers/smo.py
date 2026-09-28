@@ -148,7 +148,8 @@ class SMOState:
         Whether the loop ended on the KKT test, with every gradient finite.
     max_kkt_violation : float
         The violation measured at the final selection, i.e. what the stopping test
-        saw. Reported rather than discarded because it is the only honest evidence
+        saw — at the initial iterate when ``max_iter=0`` left no selection to run.
+        Reported rather than discarded because it is the only honest evidence
         of how well an unconverged fit did. With shrinking, a converged fit
         measured it over every sample; one that ran out of budget while samples
         were set aside measured it over the active ones. NaN when the gradient
@@ -653,7 +654,11 @@ def _solve(
     unshrunk = False
     n_iter = 0
     converged = False
+    # Measured at α = 0 too, so a zero budget reports the violation it stopped at
+    # rather than an unmeasured 0.0 that reads as optimal.
     violation = 0.0
+    if up_set.any() and low_set.any():
+        violation = float((-yg[up_set]).max() + yg[low_set].max())
 
     while True:
         # Compact working copies for this active set. With every sample active
