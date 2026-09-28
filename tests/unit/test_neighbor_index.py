@@ -7,6 +7,7 @@ aliasing rather than as a wrong distance.
 
 from __future__ import annotations
 
+import copy
 import pickle
 import sys
 import threading
@@ -21,6 +22,7 @@ from mlxlearn._common.device import gpu_available
 from mlxlearn._kernels import distance
 from mlxlearn._kernels.distance import NeighborIndex, build_index, resolve_blocks
 from mlxlearn.exceptions import DeviceError, UnsupportedInputError
+from mlxlearn.neighbors import KNeighborsRegressor, NearestNeighbors
 
 MiB = 1024 * 1024
 
@@ -237,6 +239,31 @@ def test_a_float64_index_round_trips_exactly(rng):
     restored = pickle.loads(pickle.dumps(index))
     for got, want in zip(restored.query(Q, 5), index.query(Q, 5), strict=True):
         np.testing.assert_array_equal(got, want)
+
+
+@pytest.mark.parametrize(
+    "reload",
+    [lambda model: pickle.loads(pickle.dumps(model)), copy.deepcopy],
+    ids=["pickle", "deepcopy"],
+)
+@pytest.mark.parametrize("estimator", [NearestNeighbors, KNeighborsRegressor])
+def test_a_reloaded_model_keeps_one_copy_of_its_training_rows(estimator, reload, rng):
+    """A fitted model's ``_fit_X`` is the index's own host view, and stays that way.
+
+    Reloaded, the index rebuilds its device copy on the first query and points its
+    ``X`` at it; ``_fit_X`` stayed on the loaded array, so the model held one more
+    full copy of the training set than a fresh fit, and saving it again doubled the
+    file.
+    """
+    X = rng.normal(size=(3000, 16)).astype(np.float32)
+    model = estimator(n_neighbors=3).fit(X, X[:, 0])
+    assert model.execution_backend_ == "mlx"
+    fresh = len(pickle.dumps(model))
+
+    loaded = reload(model)
+    loaded.kneighbors(X[:5])
+    assert loaded._fit_X is loaded._index_.X
+    assert len(pickle.dumps(loaded)) < 1.05 * fresh
 
 
 def test_a_pickle_from_before_the_residual_still_loads(rng):

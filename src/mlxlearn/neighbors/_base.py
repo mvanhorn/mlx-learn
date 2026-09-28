@@ -490,6 +490,11 @@ class MLXNeighborsMixin(BackendMixin):
             dist, idx = self._index_.query(
                 Q, k, return_distance=return_distance, exclude_self=query_is_train, stats=stats
             )
+        if self._fit_X is not self._index_.X:
+            # The first query after unpickling or deepcopy rebuilt the index's device
+            # copy and pointed its X at that; left on the loaded host array, _fit_X
+            # kept a second full copy of the training set alive, and pickled it too.
+            self._fit_X = self._index_.X
         # Recorded once the search has run, so the call's one event can also say how
         # it was served (_search_diagnostics). Nothing above makes a nested public
         # call, so there is nothing for the _inference guard to silence.
