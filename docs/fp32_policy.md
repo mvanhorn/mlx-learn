@@ -99,15 +99,14 @@ and then it proves the selection right:
    timestamps, projected coordinates — costs nothing: timestamps a few seconds apart
    certify on the first pass. (Rounding the mean to float32 first left up to 64 of offset
    near 1.7e9 in every row, and sent every such query to the second pass at 4–5× the
-   time.) The translated rows are then scaled by a power of two, which
-   is exact, so that data around 1e19, whose squares overflow float32, and data around
-   1e-20, whose squares underflow it (the GPU flushes those to zero), both come back into
-   range. Only as far as that: ordinary data is not scaled at all, and a large span is
-   scaled down just until its squares, with room for queries 2²⁰ times farther out, stop
-   overflowing. Scaling down shrinks the gaps between neighbors too. Normalizing every span
-   to 1, as mlxlearn once did, let a single unmasked fill value of 1e20 among unit-scale
-   rows push their squared gaps below float32's normal range, and the GPU answered every
-   query with zeros.
+   time.) The translated rows are then scaled by a power of two, which is exact, so that
+   data around 1e19, whose squares overflow float32, and data around 1e-20, whose squares
+   underflow it (the GPU flushes those to zero), both come back into range. Only as far as
+   that: ordinary data is not scaled at all, and a large span is scaled down just until its
+   squares, with room for queries 2²⁰ times farther out, stop overflowing. Scaling down
+   shrinks the gaps between neighbors too. Normalizing every span to 1, as mlxlearn once
+   did, let a single unmasked fill value of 1e20 among unit-scale rows push their squared
+   gaps below float32's normal range, and the GPU answered every query with zeros.
 2. **Over-selection.** The identity selects `k + margin` candidates per query, the margin
    growing with `k` and with the number of features.
 3. **Refinement.** The candidates' distances are recomputed directly as `Σ(t − q)²` from the
@@ -139,9 +138,16 @@ among unit-scale ones — it returned wrong neighbor sets without a word: 290 of
 embeddings, with or without a far-out training row — every query certifies on the first pass,
 and the certificate is host arithmetic on one number per query. Where the old margin failed,
 correctness costs the second pass. Measured on 50 000 training rows and 4096 queries (2048
-for the last case): 1.5× the old (wrong) query time for 1000 clusters of spread 1e-3, 1.7×
-for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for two clusters at 0
-and 1000, which needs the exact search for every query. Binary and small-integer data got
+for the last case), against the old (wrong) query time: 1.5× for 1000 clusters of spread
+1e-3 at 32 features, 1.7× for `make_blobs(cluster_std=0.01)` at 16, 1.6× for the 0–1e4
+column at 16, and 2.2× for two clusters at 0 and 1000 at 4 features. That last case needs
+the exact search for every query — direct differences against every training row — so its
+cost grows with the number of features: 2.8× at 16, 5× at 64. So does a tie at the k-th
+distance, which the test above counts as uncertain: a training row repeated more than
+about `k + 4` times sends every query whose k-th neighbor is one of its copies to the
+wider pass, 1.5× the old time for 20 copies of each row at 16 features. The old answer
+there was right on the GPU only because MLX's GPU partition happens to keep the lowest
+indices among equal values; on the CPU it was not. Binary and small-integer data got
 *faster*, because it no longer goes through the identity at all. A far-out row is not
 ordinary once it moves the mean itself — a fill value of 1e10 among a few thousand
 unit-scale rows does: every translated norm then carries the shift, the noise band
@@ -155,8 +161,8 @@ directly imported, a fallback to scikit-learn under `patch_sklearn()` — and a 
 from the training data for the scale chosen at `fit` is an error at inference. So is
 training data whose span dwarfs the gaps between its rows — a fill value of 1e30, or the
 NetCDF default of 9.97e36, left among unit-scale rows: no power of two keeps the span's
-squares finite and the gaps' squares out of the underflow range (below 2⁻⁹⁶, on the scaled
-axis) at once. When the span has to be scaled down, a sample of 64 training rows is
+squares finite and the gaps' squares out of the underflow range (a scaled squared distance
+below 2⁻⁹⁶) at once. When the span has to be scaled down, a sample of 64 training rows is
 searched at `fit`, and if their own nearest neighbors come within 2¹⁰ of that limit, the
 fit is refused the same way. A query that still lands nearer a training row than the limit
 is an error at inference, never a distance of zero; an exact duplicate of a training row
