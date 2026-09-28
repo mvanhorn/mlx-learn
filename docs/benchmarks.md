@@ -1,10 +1,24 @@
 # Benchmarks
 
-Every number here was measured. Reproduce with:
+Every number here was measured. Reproduce the tables with:
 
 ```bash
-python -m benchmarks.run --profile smoke --report bench/report.md
+python -m benchmarks.run --profile published --report bench/published.md
 ```
+
+The `published` profile holds exactly these cases, with the settings they were measured
+under (Layer 1 classes forced onto the MLX device, 25 iterations). `--profile smoke` is the
+quick check and `--profile full` the regression grid; see
+[`development.md`](development.md#benchmarks).
+
+**These numbers were measured on 0.1.0a2.** Several changes since then — listed under
+Unreleased in `CHANGELOG.md` — move them: neighbor queries and index builds, the
+logistic solver's per-iteration cost, SVC fits past the kernel cache, and the patched
+handoff overhead of all three. They are re-measured on fixed hardware before the next
+release, and the thresholds with them.
+
+<!-- perf-phase: re-measure every table and crossover; knn_tree_density, knn_min_work and
+the logreg thresholds were flagged for re-measurement by the groups that changed them. -->
 
 ## Method
 
@@ -23,14 +37,26 @@ several times the median. Measured on a 500 × 8 neighbor query, scikit-learn's 
 minima. Both are true; publishing only the first would not be. A crossover requires a win
 on **both**.
 
-**Significance.** A difference counts only when it exceeds the uncertainty *of the median*,
-roughly `IQR / √n` — not the raw IQR, which for a heavy-tailed distribution declared a
-measured 10× "within noise".
+**Significance.** A difference counts only when the two medians are three standard errors
+apart, each standard error being that *of the median* — estimated from the interquartile
+range as `1.2533 · (IQR / 1.349) / √n` — and combined in quadrature. Not the raw spread,
+which for a heavy-tailed distribution declared a measured 10× "within noise"; and a real
+interquartile range, not the full min–max range, so one outlier cannot hide a regression.
+Fewer than five samples on either side is never significant. The `z = 3` rather than 1.96
+is deliberate: the standard errors come from a handful of samples, and a nightly run gates
+well over a hundred cases.
 
-**Patched dispatch is what is measured.** The performance claim is about the classes
+**Patched dispatch is what is gated.** The performance claim is about the classes
 `patch_sklearn()` installs, and those hand sub-crossover problems to scikit-learn outright.
-`--layer direct` measures the Layer 1 classes, which never dispatch to scikit-learn and use
-their own CPU path instead — useful for development, misleading as a headline.
+The `smoke` and `full` profiles measure them by default, record which backend each case
+actually ran on, and the gate judges those decisions against the configured `Tuning`
+rather than a crossover inferred from the run it is judging. `--layer direct` measures the
+Layer 1 classes, which never dispatch to scikit-learn and use their own CPU path instead —
+useful for development, misleading as a headline. The tables below are the exception, and
+say so: they force the Layer 1 classes onto the MLX device to isolate the kernels from the
+dispatch decision. In the `full` profile the stock neighbors baseline is scikit-learn's
+default `algorithm="auto"`, which builds a KD-tree at up to 15 features; the neighbor
+table below compares against its brute-force path.
 
 **Fixed hardware.** Absolute timings only compare across runs on the same machine. Shared
 CI runners do correctness only; the nightly job pins itself to fixed self-hosted Apple
@@ -47,6 +73,8 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 | `knn/fit` | never | — | accepted regression, see below |
 | `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
+| `knn`, patched, `algorithm="auto"`, ≤ 15 features | stock's KD-tree wins once `n ≳ 512 · 2^d` | — | `knn_tree_density = 512` |
+| `svc/fit`, more than two classes | the mean one-vs-one pair, `(2n/K) · d`, must clear its own floor | — | `svc_min_pair_work = 250_000` |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
 published crossover the dispatcher ignores is a claim, not a mechanism.
@@ -75,6 +103,14 @@ it is now 256.
 0.17×–0.36×. mlxlearn's `fit` uploads the training matrix, its transpose, and its row norms
 to the device; scikit-learn's brute-force `fit` stores a reference and does no work at all.
 
+<!-- perf-phase: stale cause. The index layout changed: the raw training rows are uploaded
+once and the host's _fit_X is a read-only view of that device copy, beside the translated,
+scaled copy the search runs on (plus a float32 residual for float64 input); no full-size host
+copies or temporaries are allocated, and the float32 range check no longer allocates.
+Measured fit peak was ~2.1x the float32 data on the device (was ~2.0x on device plus ~3x on
+host). Re-measure and rewrite this section and benchmarks/gate.py's ACCEPTED_REGRESSIONS
+text. -->
+
 It is listed in `benchmarks/gate.py::ACCEPTED_REGRESSIONS` rather than left to slip through
 the "no crossover measured, so not gated" branch — which is the most comfortable place for
 a real regression to hide. The gate fails on any *unlisted* operation that regresses
@@ -85,7 +121,8 @@ The trade is worth taking whenever the model is queried at all. At 50 000 × 32:
 
 ## SVC — width decides, not sample count
 
-The first grid was damning. Over 64 configurations — n ∈ {1 000, 2 500}, d ∈ {10, 20}, 2 and
+The first grid was damning. (It is historical: the `published` profile reproduces the slice
+below, not the whole grid.) Over 64 configurations — n ∈ {1 000, 2 500}, d ∈ {10, 20}, 2 and
 4 classes, four kernels, C ∈ {1, 10} — **mlxlearn was slower in 58 of 64, worst 0.013×**. A
 representative slice at 2 500 × 20, four classes:
 
@@ -134,10 +171,19 @@ Consequences, applied rather than merely noted:
   4 000 × 32 (1.3·10⁵) and 1 000 × 20 (2·10⁴) all fall below and go to scikit-learn;
   4 000 × 256 (1.0·10⁶) clears it and keeps the 2.93×.
 - **`kernel="linear"` never takes the MLX path**, at any size.
+- **Many classes are a pile of small problems.** One-vs-one solves `K(K−1)/2` subproblems
+  of about `2n/K` rows each, and each pays its own Gram and its own loop, so a problem whose
+  total clears both floors can still be slow. The mean pair's work, `(2n/K) · d`, must also
+  clear `svc_min_pair_work`; for two classes that is the whole problem, so binary routing
+  is unchanged.
 - Under `patch_sklearn()` this is invisible: those problems go to scikit-learn. A directly
   imported `mlxlearn.svm.SVC` is Layer 1 and by design never dispatches to scikit-learn, so
   it will use its own CPU path and be slower. That is the documented Layer 1 contract, and
   it is a real reason to prefer the patched entry point for SVC in 0.1.0a2.
+
+<!-- perf-phase: partly stale. Past the kernel-cache Gram cutoff (~7 240 rows per pair at
+cache_size=200) SVC now prefetches kernel rows in batches and implements LIBSVM's
+shrinking; re-measure at 8 000-32 000 rows and revisit the plan below. -->
 
 The useful region is narrower than the plan assumed: wide data on a non-linear kernel. The
 fix that would widen it is not a threshold — it is making an iteration cheap enough to be
@@ -158,6 +204,12 @@ the MLX device, `fit` with `max_iter=200`:
 | 60 000 × 128 | 148.0 | 109.6 | 0.74× |
 | 20 000 × 1 024 | 245.8 | 309.0 | 1.26× |
 | 60 000 × 1 024 | 497.1 | 665.8 | 1.34× |
+
+<!-- perf-phase: misdiagnosed; rewrite. The per-iteration cost came from 12-33 blocking
+host synchronizations per iteration in the L-BFGS bookkeeping (inner products, curvature
+test, max|g|), not from line-search evaluations, which averaged about 1.1 per iteration.
+That bookkeeping is now host NumPy float64 with one synchronization per evaluation; drop the
+"on-device Wolfe / batched candidates" plan and re-measure the table and the crossover. -->
 
 The solver is not doing extra work — its iteration counts match scikit-learn's almost
 exactly (17 against 17, 20 against 19). It pays **per-iteration overhead**: at 20 000 × 16 an

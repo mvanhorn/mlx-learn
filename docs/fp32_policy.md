@@ -12,9 +12,10 @@ that "we xfail that one" is a policy and not a reaction to a red test.
 | Boundary | dtype |
 |---|---|
 | Input `X`, `y` | anything scikit-learn accepts; float64/int/bool are converted |
-| Internal computation | **float32**, always |
-| Returned distances, probabilities, decision values | **float64**, upcast from the float32 computation |
-| Fitted attributes (`coef_`, `dual_coef_`, `intercept_`, `centroids`) | **float64**, upcast |
+| Computation on the MLX device, GPU or CPU | **float32**, always |
+| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the SMO dual variables and gradients, the contraction of SVC decision values, neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_` |
+| Returned distances, probabilities, decision values | **float64** |
+| Fitted attributes (`coef_`, `intercept_`, `dual_coef_`, `support_vectors_`) | **float64** |
 | Returned indices, labels | `int64` / the input label dtype, matching scikit-learn |
 
 Returning float64 from a float32 computation is not a claim of float64 accuracy. It is
@@ -23,8 +24,55 @@ for float64, and handing it float32 causes dtype churn far from mlxlearn. The an
 leaked float32 out of `kneighbors` and every downstream tolerance had to absorb it. The
 accuracy actually available is described below, not by the output dtype.
 
-Values that are finite in float64 but overflow float32 (`|x| > ~3.4e38`) are **rejected**
-with `UnsupportedInputError`, not silently converted to infinity.
+**Values float32 cannot hold are rejected, not converted.** A value that is finite in
+float64 but overflows float32 (`|x| > ~3.4e38`) raises `UnsupportedInputError` with
+reason `"float32-overflow"`; it is never silently turned into infinity. The check reads
+the input the way scikit-learn is about to: float64 arrays, object arrays, and pandas
+frames that mix float64 with bool or nullable columns (which NumPy would turn into object
+arrays) are all range-checked. float32, integer and boolean data cannot reach the limit
+and are not scanned.
+
+What happens next depends on when it is found:
+
+- **At `fit`** it is a capability mismatch. A directly imported estimator raises;
+  under `patch_sklearn()` the fit falls back to scikit-learn's float64 path, subject to
+  `fallback_policy`. A patched fit small enough to go to scikit-learn on size alone is
+  decided from the input's shape, where it has one, before any scan — so it never
+  reaches the check, and `fallback_policy="raise"` does not trip on it.
+- **At inference** it is raised, in both layers. The backend is sticky: a model fitted on
+  MLX has no scikit-learn state to hand the call to. The neighbor estimators and `SVC`
+  raise for a query float32 cannot represent, and also for a query so far from the
+  training data that the scale chosen at `fit` cannot hold it. `LogisticRegression`
+  predicts with scikit-learn's float64 code and has no such limit.
+
+**Values whose squares leave float32.** A value can fit in float32 while its square does
+not: `|x| ≈ 1e19` squares to `1e38`, and a sum of a few of those is past float32's range;
+`|x| ≈ 1e-20` squares into the subnormal range, which the GPU flushes to zero. A distance
+or a Gram-form kernel on such data comes out infinite or zero, silently. mlxlearn scales
+the data by an exact power of two before anything is squared — the neighbor index by the
+training data's span around its mean, `SVC` by its kernel frame (§2.4), with the scale
+folded back into `gamma`. Scaling by a power of two is exact, so data already in range is
+unchanged bit for bit, and data around `1e19` and `1e-20` is served (both are tested).
+What still does not fit raises `"float32-overflow"`: neighbor training data spanning more
+than `FLOAT32_MAX / 8` from its mean, and a linear-kernel `SVC` row whose squared norm
+exceeds float32 — the linear kernel has no `gamma` to absorb a scale. mlxlearn also
+defines a squared-range guard with a second reason slug, `"float32-underflow"`, for a
+path that cannot rescale; every 0.1.x estimator rescales, so none of them raises it.
+
+**Sparse pandas frames are sparse input.** A `DataFrame` whose *every* column has a
+`SparseDtype` counts as sparse, by scikit-learn's own rule (`check_array` converts such
+a frame to a sparse matrix): Layer 1 raises `SparseInputError`, and patched mode falls
+back. A frame with only some sparse columns is dense input, as it is to scikit-learn.
+
+**Devices.** `device` chooses where the work that dispatch sends to MLX runs: the GPU, or
+MLX's CPU backend. Both run the same float32 code, so `device="cpu"` is not a route to
+float64 — the float64 answer is stock scikit-learn's (§3.4). The two devices can round a
+long sum in a different order, so results can differ in their last bits; for the neighbor
+estimators that is visible only where a near-tie is decided (§3.1). A
+model is served on the device it was fitted on, with one exception that re-decides
+nothing: a GPU-fitted model loaded in a process with no usable GPU runs the same code on
+MLX's CPU under `device="auto"` or `"cpu"`, recorded in diagnostics as
+`"gpu-unavailable"`; under `device="gpu"` it raises `DeviceError`.
 
 ## 2. Where float32 actually costs accuracy
 
@@ -82,7 +130,8 @@ correctness costs the second pass. Measured on 50 000 training rows and 4096 que
 for the last case): 1.5× the old (wrong) query time for 1000 clusters of spread 1e-3, 1.7×
 for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for two clusters at 0
 and 1000, which needs the exact search for every query. Binary and small-integer data got
-*faster*, because it no longer goes through the identity at all.
+*faster*, because it no longer goes through the identity at all. When a call needed the
+wider pass or the exact search, its diagnostics event says for how many rows.
 
 **What remains.** Exact means exact with respect to the refined float32 distances. Two
 training rows whose true distances from a query differ by less than float32 can resolve
@@ -90,6 +139,9 @@ training rows whose true distances from a query differ by less than float32 can 
 storage limit of §3.4, not a selection error. `device="cpu"` runs this same float32
 algorithm on MLX's CPU, so it is not a float64 escape hatch; the float64 answer is stock
 scikit-learn's.
+
+None of this applies to `radius_neighbors` and `radius_neighbors_graph`, which are
+scikit-learn's own code run on the fitted state (§3.4).
 
 ### 2.2 Accumulation length
 
@@ -99,10 +151,65 @@ mlxlearn does not claim `rtol=1e-7` parity on large reductions.
 
 ### 2.3 Iterative solvers
 
-Gradient norms below ~`1e-6 · ‖initial gradient‖` are not resolvable in float32.
-`tol` values smaller than that are honored as "run to the float32 floor" rather than
-rejected, and `n_iter_` reports what actually happened. An estimator that stops early
-because the objective stopped moving records it in diagnostics.
+A float32-accumulated objective cannot resolve gradients much below `1e-6 · max|g₀|` — a
+millionth of the largest gradient component at the starting point. `LogisticRegression`'s
+L-BFGS evaluates the objective and its gradient in float32 on the device, and makes every
+decision about steps and stopping in float64 on the host, so a rounding wobble in one inner
+product cannot pass for convergence. Near the floor it does two things:
+
+- **Approximate Wolfe acceptance** (Hager & Zhang, 2005). When a step's decrease is smaller
+  than the objective's own resolution (`1e-7` relative), the value cannot certify it, but
+  the slope still can: a step that meets the strong-Wolfe curvature condition is accepted
+  as a descent step.
+- **A floor stop.** When the objective can no longer resolve the progress the gradient
+  predicts, the run stops with the stop reason `"float32-floor"` instead of wandering at
+  noise level until `max_iter`.
+
+So a `tol` below what float32 can resolve — `tol=0`, say — is honored as "run to the
+float32 floor" rather than rejected, and `n_iter_` reports the steps actually accepted. A
+floor stop with `max|g| ≤ 1e-6 · max|g₀|` has done everything float32 allows: it emits no
+`ConvergenceWarning`, and is recorded as a diagnostics event with operation `"lbfgs"`,
+reason `"float32-floor"`, and `n_iter`, `n_fev`, `grad_max_abs`, `tol` and
+`at_resolution_floor` in its `extra`. A floor stop above that level is a stall. It warns,
+as a `max_iter` or line-search-failure stop does, and those are recorded the same way.
+
+### 2.4 Kernel evaluation (`SVC`)
+
+LIBSVM caches kernel rows as C `float`. mlxlearn evaluates them in float32 too, and keeps
+the dual variables, gradients and working-set arithmetic in float64, as LIBSVM does — on
+NumPy 1.x as well as 2.x. Decision values contract the float32 kernel entries against
+float64 coefficients in float64, so the only float32 error that reaches the output is the
+kernel's own rounding.
+
+Before anything is rounded, the data is mapped exactly, in float64, into a *compute
+frame*. For the rbf kernel it is translated by the training mean first, so a large offset
+never reaches float32. For every kernel but the linear one it is then scaled by the power
+of two that puts the largest mapped entry in `[0.5, 1)`, and the scale is folded back into
+`gamma` (`γ′ = γ / s²`), so the kernel is unchanged. For data already in range the result
+is bit-identical, not merely close; data around `1e±19` is served, and so is a `gamma`
+outside float32's own range (`gamma="scale"` on data around `1e-20` resolves past
+float32's largest value, and folds back to order one). What the frame cannot represent is a capability
+limit at `fit` — a `gamma` or `coef0` not finite in float32 once folded
+(`UnsupportedParameterError`), a linear-kernel row whose squared norm exceeds float32
+(`UnsupportedInputError`) — and an error at inference, for a query so far outside the
+training extent that the frame cannot hold it. A non-finite decision value is an error,
+never a label.
+
+**Shrinking.** `shrinking=True`, scikit-learn's default, runs LIBSVM's shrinking
+heuristic: samples pinned at a bound are set aside between gradient reconstructions. The
+optimum and the stopping test are unchanged — the test is evaluated over every sample
+before the solver may stop — but, as in LIBSVM, the path to the optimum can change, and
+with it where inside `tol` the solver stops. Measured: decisions and iteration counts
+bit-identical with and without it on eleven benchmarked rbf fits, and on the linear kernel
+a largest `|Δα|` of 7e-4 with the objective identical to 1e-6. The tolerances in §3 hold
+either way.
+
+**`cache_size`.** When the row cache can hold a whole one-vs-one subproblem, its Gram is
+built in one blocked matmul; otherwise rows are evaluated on demand. On the GPU the two
+produce bit-identical rows, so crossing that boundary does not change the fit there
+(measured, a property of MLX's matmul rather than a promise). On MLX's CPU device they
+accumulate in different orders and the decision values differ by about 1e-3, inside the
+§3 tolerance; scikit-learn is bit-identical across `cache_size`.
 
 ## 3. Tolerances the test suite uses
 
@@ -179,6 +286,8 @@ aggregate over the set. Ties *at the boundary* are not. scikit-learn keeps an ar
 subset of the tied rows and mlxlearn the lowest-indexed ones, so on tie-heavy data a vote
 can legitimately differ between the two; mlxlearn's is the reproducible one. The parity
 tests assert predictions elementwise on continuous data, where boundary ties do not occur.
+A vote tied between classes goes to the class that sorts first in `classes_`, as it does
+in scikit-learn.
 
 ### 3.2 SVC: the dual is flat, so compare the primal
 
@@ -239,15 +348,38 @@ solvers must terminate and produce finite coefficients — that part is never re
 
 Some adversarial cases cannot be rescued by any kernel. Take 120 000 points spaced `1e-8`
 apart and shift them to coordinate `1e4`: float32 has a spacing of about `1e-3` there, so
-the *input* collapses to three distinct values before a single distance is computed.
-mlxlearn returns the correct answer for the data it was actually given — verified against a
-float64 reference computed on the float32-rounded data — but it cannot return the answer
-for the float64 data it never saw.
+handed over as float32 the *input* has collapsed to three distinct values before a single
+distance is computed. mlxlearn returns the correct answer for the data it was actually
+given — verified against a float64 reference computed on the float32-rounded data — but it
+cannot return the answer for values the input never held.
 
-The rule this yields: mlxlearn's accuracy claims are always relative to the float32
-representation of the input. When the input's own dynamic range exceeds float32, the answer
-is scikit-learn itself — stock, unpatched scikit-learn (import it before `patch_sklearn()`,
-or call `unpatch_sklearn()`). `device="cpu"` is not a way to get it: it runs the same float32
+Handed over as float64, a constant offset like that one is no longer thrown away first.
+Wherever the model is invariant to it, it is removed in float64, before anything is
+rounded to float32:
+
+- The **neighbor estimators** translate by the float64 training mean and keep a float32
+  residual beside each float32 value, so refined differences are taken to about 2⁻⁴⁸ of
+  the coordinate (§2.1). 5 000 Unix timestamps within one hour, which collapse to 29
+  distinct values when cast first, return their exact neighbors.
+- **`LogisticRegression`** centers float64 input in float64 when it fits an intercept, and
+  rounds only the centered values; the intercept is un-centered with exactly the mean that
+  was subtracted. Without an intercept there is nothing to absorb the shift, so the design
+  is used as given.
+- **`SVC`** translates rbf input by the float64 training mean and scales every non-linear
+  kernel's input by a power of two (§2.4).
+
+What stays bounded by float32 is the *spread* of the data around that offset — 24 bits of
+it — and any input that arrives as float32. `radius_neighbors` and
+`radius_neighbors_graph` on an MLX-fitted `NearestNeighbors` are scikit-learn's own code
+run on the fitted state: they compute against the index's float32 training copy, without
+its residual, with the query cast to float32 to match. That is what keeps them at stock
+speed, and it gives them the float32 rounding of the training data described here.
+
+The rule this yields: mlxlearn's accuracy claims are relative to the float32 representation
+of the input after its exact float64 translation and scaling — for float32 input, the input
+itself. When the data's own dynamic range exceeds that, the answer is scikit-learn itself —
+stock, unpatched scikit-learn (import it before `patch_sklearn()`, or call
+`unpatch_sklearn()`). `device="cpu"` is not a way to get it: it runs the same float32
 algorithm on MLX's CPU backend, with the same rounding. Under `patch_sklearn()`, problems
 below the measured crossover are handed to scikit-learn automatically, on either device.
 
@@ -257,7 +389,12 @@ mlxlearn runs scikit-learn's full estimator check suite against **both** layers 
 strict Layer 1 classes and the patched Layer 2 classes — because the two advertise
 different tags and a tag that lies is worse than a missing feature.
 
-**As of 0.1.0a2 the mlxlearn-specific xfail list is empty.** All ten suites pass.
+**The mlxlearn-specific xfail list is empty.** Every suite passes: five estimators in each
+of the two layers, each run twice — at the default configuration, and again with the MLX
+GPU path forced, because the check data is smaller than every crossover and would
+otherwise never meet MLX-fitted state behind the wide Layer 2 tags.
+`check_param_validation`, which `check_estimator` does not run, is run separately in both
+layers with mlxlearn's own `fit` path forced.
 
 Two kinds of exemption exist and are kept strictly apart in
 `tests/test_sklearn_compliance.py`:
@@ -305,6 +442,9 @@ is to keep it that way.
 
 - **Silently downcast and claim parity.** Every deviation in this document is tested, not
   assumed.
+- **Turn a value into infinity and carry on.** Values, squares and queries float32 cannot
+  hold are rescaled exactly or refused (§1). A non-finite result is an error, never an
+  answer.
 - **Loosen a tolerance to make a test pass.** Tolerances come from this document. A failure
   at these tolerances is a bug in mlxlearn.
 - **Offer a float64 GPU path.** MLX does not have one, and mlxlearn's CPU path is the same
