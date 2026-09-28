@@ -34,14 +34,20 @@ only at the public boundary — one place to be right instead of several.
 **``dual_coef_``'s block layout.** Pair ``(i, j)``'s weights are split across two
 different *rows* of ``dual_coef_``: the class-i half lands in row ``j-1`` and the
 class-j half in row ``i``. Every other entry of those two column ranges stays
-exactly zero. The layout is not verifiable by looking at the array — it is
-verifiable by checking that the decision function it produces matches
-scikit-learn's, which is how it was checked.
+exactly zero. The layout is not verifiable by looking at the array, and it is not
+verified by mlxlearn's own ``decision_function`` either, which reads
+``_pair_weights_`` and never ``dual_coef_`` — a scrambled layout would leave it
+untouched. What checks it is evaluating the *public* state: stock LIBSVM's decision
+function run on mlxlearn's fitted attributes, a decision function rebuilt from
+``dual_coef_`` and ``support_vectors_`` alone, and the multiclass linear ``coef_``
+scikit-learn derives from them. ``tests/parity/test_svc.py`` does all three.
 """
 
 from __future__ import annotations
 
+import inspect
 import warnings
+from typing import ClassVar, NamedTuple
 
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
@@ -49,36 +55,51 @@ from sklearn.svm import SVC as _SkSVC
 from sklearn.utils.multiclass import check_classification_targets
 from sklearn.utils.validation import column_or_1d
 
-from .._common.arrays import NUMPY_FLOAT, as_float32
+from .._common import device as _device_state
 from .._common.base import BackendMixin, mlx_guard
-from .._common.config import get_tuning
+from .._common.config import get_config, get_tuning
 from .._common.device import physical_memory_bytes
 from .._common.validation import (
+    FLOAT32_MAX,
     check_consistent_length,
-    check_finite_float32,
     check_float32_range,
     check_is_fitted,
     check_sample_weight,
     compute_class_weight,
+    is_sparse,
     require_dense,
     require_supported_params,
     validate_data,
 )
 from .._kernels.kernels import (
     SUPPORTED_KERNELS,
+    KernelBasis,
     KernelSpec,
     build_kernel_rows,
-    kernel_combine,
+    frame_spec,
     kernel_diagonal,
+    kernel_frame,
     kernel_matrix,
     resolve_gamma,
 )
 from .._solvers.smo import SMOConfig, solve_c_svc
-from ..exceptions import UnsupportedParameterError
+from ..exceptions import (
+    CapabilityError,
+    DeviceError,
+    UnsupportedInputError,
+    UnsupportedParameterError,
+)
 
 __all__ = ["SVC", "MLXSVCMixin"]
 
 _SUPPORTED_SHAPES = ("ovo", "ovr")
+
+#: Whether the installed scikit-learn deprecates ``probability`` (1.9+), read off the
+#: inherited signature rather than a version string: the sentinel is the fact that
+#: matters, and it is what scikit-learn's own fit tests.
+_PROBABILITY_DEPRECATED = (
+    inspect.signature(_SkSVC.__init__).parameters["probability"].default == "deprecated"
+)
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:
@@ -86,6 +107,36 @@ def _safe_shape(X) -> tuple[int, ...] | None:
     if shape is None or len(shape) != 2:
         return None
     return (int(shape[0]), int(shape[1]))
+
+
+def _check_validated_range(X: np.ndarray) -> None:
+    """:func:`check_float32_range` on a validated (finite) array, cheaply.
+
+    Two reductions rule out the common case; the full scan, and its error, run only
+    when a value actually exceeds float32. Inference pays this on every call.
+    """
+    if X.dtype.itemsize > 4 and X.size and not max(X.max(), -X.min()) <= FLOAT32_MAX:
+        check_float32_range(X)
+
+
+def _libsvm_sample_weight(sample_weight, X: np.ndarray) -> np.ndarray | None:
+    """Validate ``sample_weight`` with LIBSVM's meaning for a negative weight.
+
+    scikit-learn's LIBSVM keeps only the rows with ``W > 0`` (``remove_zero_weight``
+    in ``svm.cpp``), so a negative weight is *exactly* a zero weight: stock
+    scikit-learn fitted with one and with the other returns bit-identical models.
+    The shared validator rejects negatives because a negative weight makes a loss
+    such as the logistic one non-convex; that rationale does not reach an SVC box
+    constraint, and rejecting them here broke ``patch_sklearn()`` for code stock
+    scikit-learn runs. So they are clipped to zero, and ``_fit_ovo`` drops them with
+    every other empty box.
+    """
+    if sample_weight is not None:
+        raw = np.asarray(sample_weight, dtype=np.float64)
+        if np.any(raw < 0.0):
+            # NaN compares false and survives, for the validator to reject.
+            sample_weight = np.where(raw < 0.0, 0.0, raw)
+    return check_sample_weight(sample_weight, X, dtype=np.float64)
 
 
 def ovr_decision_function(
@@ -146,19 +197,47 @@ def ovo_vote(decision: np.ndarray, n_classes: int) -> np.ndarray:
     return votes.argmax(axis=1)
 
 
+class _KernelProblem(NamedTuple):
+    """The kernel side of a fit, resolved and range-checked before anything is solved."""
+
+    spec: KernelSpec  # as the user asked for it; ``gamma`` is scikit-learn's ``_gamma``
+    basis: KernelBasis  # the float32 compute frame, with the frame's scale in its spec
+    X32: np.ndarray  # the training matrix, mapped into that frame
+
+
 class MLXSVCMixin(BackendMixin):
     """Backend selection, the one-vs-one fit, and inference for :class:`SVC`."""
+
+    #: Fitted state only the MLX path creates. A refit that ends on scikit-learn
+    #: never overwrites it, so without clearing it the previous fit's pair weights
+    #: and device-resident support vectors would stay in memory and in every pickle.
+    _mlxlearn_mlx_attrs: ClassVar[tuple[str, ...]] = (
+        "_pair_weights_",
+        "_pair_rho_",
+        "_pair_kkt_violation_",
+        "_kernel_spec_",
+        "_kernel_center_",
+        "_kernel_scale_",
+        "_kernel_basis_",
+    )
+
+    def _clear_mlx_state(self) -> None:
+        for attribute in self._mlxlearn_mlx_attrs:
+            self.__dict__.pop(attribute, None)
 
     # --------------------------------------------------------------- capability
 
     def _check_svc_capability(self, X) -> None:
-        """Raise :class:`CapabilityError` for anything the MLX path cannot serve."""
+        """Raise :class:`CapabilityError` for anything the MLX path cannot serve.
+
+        Only what is visible without scanning the data: sparsity and parameters.
+        The data-dependent limits — float32 range, a ``gamma`` the compute frame
+        cannot represent — are checked after validation, by :meth:`fit`, and only
+        once the problem is known to be headed for MLX. Scanning an array that
+        patched mode is about to hand to scikit-learn anyway is pure overhead.
+        """
         name = type(self).__name__
         require_dense(X, estimator=name)
-        # Before validate_data, so a float64 value that overflows float32 is a
-        # capability limit patched mode can fall back on rather than scikit-learn's
-        # generic post-conversion "contains infinity" ValueError.
-        check_float32_range(X)
 
         if callable(self.kernel):
             raise UnsupportedParameterError(
@@ -205,7 +284,8 @@ class MLXSVCMixin(BackendMixin):
         # mlxlearn cannot serve propagated straight out of Layer 2 as well, even
         # though scikit-learn accepts gamma=0.0 and would have produced a model.
         # A capability limit has to be discovered while there is still somewhere
-        # to fall back to.
+        # to fall back to. The linear kernel never reads gamma, so any legal value
+        # — scikit-learn's constraint admits only >= 0 — is served there.
         #
         # Only the numeric case is checked, and deliberately without touching X:
         # "scale" and "auto" always resolve to something positive, and reaching
@@ -218,37 +298,59 @@ class MLXSVCMixin(BackendMixin):
                 gamma_value = None
             if gamma_value is not None and gamma_value <= 0.0 and self.kernel != "linear":
                 raise UnsupportedParameterError(
-                    f"{name} does not implement gamma={gamma_value!r}; the MLX kernels "
-                    "require a strictly positive gamma. scikit-learn accepts it, so "
-                    "under patch_sklearn() this falls back rather than failing.",
+                    f"{name} does not implement gamma={gamma_value!r} with "
+                    f"kernel={self.kernel!r}; the MLX kernels require a strictly "
+                    "positive gamma. scikit-learn accepts it, so under patch_sklearn() "
+                    "this falls back rather than failing.",
                     parameter="gamma",
                     value=gamma_value,
                 )
 
-    def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
+    def _below_crossover(
+        self, n_samples: int, n_features: int, n_classes: int | None = None
+    ) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
         The thresholds here are **high**, and the linear kernel is excluded
         outright, because the measurements are unflattering and pretending
         otherwise would put the slower path in front of users.
 
-        SMO is sequential: each iteration picks a working pair from the current
-        gradient, so it cannot start before the previous one finished. The device
-        can accelerate the kernel *rows* an iteration needs, but not the
-        iterations, and LIBSVM's inner loop over a cache-resident row is hard to
-        beat per iteration. So what decides the outcome is whether a kernel row is
-        expensive enough to be worth dispatching — which is about **width**, not
-        the number of samples.
+        Where the time goes, measured. Up to the row cache's capacity — about
+        7 240 rows per one-vs-one subproblem at the default ``cache_size=200`` — a
+        subproblem's whole Gram is built by **one** blocked MLX matmul, and the SMO
+        loop then runs over it in NumPy without touching the device again. MLX's
+        entire contribution is that matmul; what it loses is the loop, about
+        20–40 µs of NumPy overhead per iteration against well under 1 µs for
+        LIBSVM, which also shrinks its working set. Iteration counts match, so the
+        loss scales with the count.
 
-        Measured: over a 64-configuration grid at ``d ∈ {10, 20}`` mlxlearn was
-        slower in **58 of 64**, worst 0.013×. But rbf at 4 000 × 32 is 0.47× and
-        the *same sample count* at 4 000 × 256 is **2.93×**. Hence both a sample
-        floor and a work floor, with work the one that actually discriminates.
+        That is why **width** decides and height does not: LIBSVM pays ``O(n·d)``
+        for every kernel row it misses, and the one matmul is cheap next to that
+        only when ``d`` is large, while mlxlearn's per-iteration cost does not
+        depend on ``d`` at all. rbf at 4 000 × 32 measured 0.47× and the *same
+        sample count* at 4 000 × 256 **2.93×**; over a 64-configuration grid at
+        ``d ∈ {10, 20}`` mlxlearn was slower in 58 of 64, worst 0.013×. Hence
+        both a sample floor and a work floor, with work the one that actually
+        discriminates.
 
         The linear kernel is excluded at every size — 0.01×–0.06× throughout, and
-        it degrades with C. Its iterations are the cheapest of any kernel, so
-        per-iteration dispatch is almost the whole cost, and no threshold fixes
-        that.
+        it degrades with C. Its many cheap iterations are exactly the case where
+        per-iteration overhead is the whole cost, and no threshold fixes that.
+
+        **Many classes.** One-vs-one solves ``K(K−1)/2`` subproblems of ``2n/K``
+        rows on average, each paying its own Gram and its own loop, so a problem
+        whose total clears both floors can still be a pile of tiny losses — at
+        2 048 × 512, ``K=16`` measured 0.89× and ``K=128`` 0.10×. When
+        ``n_classes`` is given, the *mean* pair's work ``(2n/K)·d`` must also
+        clear ``svc_min_pair_work``. The mean, not the largest pair: with
+        imbalanced classes one big pair can hide thousands of tiny ones, and it
+        is their count that costs. For two classes the mean pair is the whole
+        problem, so binary routing is unchanged.
+
+        Above the cache's capacity the picture changes: rows are evaluated on
+        demand, one device round trip per cache miss, and those round trips —
+        not the NumPy loop — dominate. Nothing in the benchmark grid reaches that
+        regime; it is stated so that nobody tunes this gate on the wrong cause.
 
         None of this is a property of the objective, which is solved correctly:
         the primal agrees with LIBSVM to 5.2e-07 relative and the KKT conditions
@@ -270,6 +372,16 @@ class MLXSVCMixin(BackendMixin):
                 f"SVC crossover ({tuning.svc_min_samples} samples and "
                 f"{tuning.svc_min_work} element-ops, both required)"
             )
+        if n_classes is not None and n_classes > 2:
+            pair_rows = 2.0 * n_samples / n_classes
+            if pair_rows * n_features < tuning.svc_min_pair_work:
+                return True, (
+                    f"{n_classes} classes split {n_samples} samples into "
+                    f"{n_classes * (n_classes - 1) // 2} one-vs-one subproblems of "
+                    f"{pair_rows:.0f} rows on average, and {pair_rows:.0f} x "
+                    f"{n_features} is below the measured per-pair crossover "
+                    f"({tuning.svc_min_pair_work} element-ops)"
+                )
         return False, ""
 
     # ------------------------------------------------------------------ targets
@@ -329,6 +441,12 @@ class MLXSVCMixin(BackendMixin):
     def _resolve_max_iter(self, n_samples: int) -> int:
         """Turn ``max_iter=-1`` into the concrete budget the solver needs.
 
+        ``-1`` becomes upstream LIBSVM's ``max(10⁷, 100 · n_samples)``. That is a
+        deliberate deviation from scikit-learn, whose bundled LIBSVM treats ``-1``
+        as unlimited: mlxlearn's SMO iterates in Python at roughly 20 µs a step,
+        and a problem scikit-learn needs 7·10⁸ iterations for would run for hours
+        rather than stop with a warning. The ConvergenceWarning names the budget.
+
         ``max_iter=0`` is a legal scikit-learn value — its constraint is
         ``Interval(Integral, -1, None, closed="left")`` — and LIBSVM honors it,
         returning an unfitted-looking model with no support vectors. Only ``-1``
@@ -345,6 +463,25 @@ class MLXSVCMixin(BackendMixin):
         tuning = get_tuning()
         return max(tuning.smo_min_iter_budget, tuning.smo_max_iter_factor * n_samples)
 
+    def _prepare_kernel_problem(self, X64: np.ndarray) -> _KernelProblem:
+        """Resolve the kernel and map the training data into its float32 frame.
+
+        Everything that can make this data unservable in float32 surfaces here, as
+        a :class:`CapabilityError`, before a single subproblem is solved — which is
+        what lets :meth:`fit` still hand the problem to scikit-learn in patched
+        mode. See :func:`~mlxlearn._kernels.kernels.kernel_frame` for the frame.
+        """
+        gamma = resolve_gamma(self.gamma, X64, kernel=self.kernel)
+        spec = KernelSpec(
+            kernel=self.kernel,
+            gamma=gamma,
+            degree=int(self.degree),
+            coef0=float(self.coef0),
+        )
+        center, scale = kernel_frame(spec, X64)
+        basis = KernelBasis(frame_spec(spec, scale), center=center, scale=scale)
+        return _KernelProblem(spec=spec, basis=basis, X32=basis.prepare(X64))
+
     def _solve_pair(self, X_pair, y_pair, C_pair, spec, center, backend):
         """Solve one one-vs-one subproblem.
 
@@ -353,6 +490,10 @@ class MLXSVCMixin(BackendMixin):
         blocked matmul beats ``n`` separate row evaluations. Otherwise rows are
         evaluated on demand and the LRU bounds what is resident, so a subproblem
         larger than the cache never needs an ``n × n`` matrix to exist.
+
+        ``_fit_ovo`` passes rows already mapped into the compute frame, with the
+        frame folded into ``spec`` and no ``center``; the diagonal is then the
+        closed form on exactly the float32 values the rows are built from.
         """
         n_pair = int(X_pair.shape[0])
         cache_rows = self._kernel_cache_rows(n_pair)
@@ -373,28 +514,14 @@ class MLXSVCMixin(BackendMixin):
         )
         return solve_c_svc(y_pair, C_pair, k_diag, fetch, config)
 
-    def _fit_ovo(self, X64, y_encoded, sample_weight, backend) -> None:
+    def _fit_ovo(self, X64, y_encoded, sample_weight, backend, problem=None) -> None:
         """Fit every one-vs-one subproblem and assemble LIBSVM's model layout."""
         n_samples, n_features = X64.shape
         n_classes = int(len(self.classes_))
-
-        gamma = resolve_gamma(self.gamma, X64)
-        spec = KernelSpec(
-            kernel=self.kernel,
-            gamma=gamma,
-            degree=int(self.degree),
-            coef0=float(self.coef0),
-        )
-        X32 = as_float32(X64)
-        check_finite_float32(X32)
-        # Translating both sides of the RBF squared distance is exact and is what
-        # keeps float32 cancellation at the variance scale rather than the
-        # coordinate scale; see docs/fp32_policy.md §2.1.
-        center = (
-            X32.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT)
-            if spec.uses_center
-            else None
-        )
+        if problem is None:
+            problem = self._prepare_kernel_problem(X64)
+        X32 = problem.X32
+        compute_spec = problem.basis.spec
 
         # C_t = C * class_weight[class(t)] * sample_weight[t], which is exactly
         # how scikit-learn's LIBSVM builds its per-sample box.
@@ -406,10 +533,10 @@ class MLXSVCMixin(BackendMixin):
         # still a member of I_low, so its gradient keeps feeding the stopping
         # criterion and the solver runs to max_iter without ever being able to fix
         # the violation it is reporting -- measured: 10^7 iterations and a model
-        # 16% worse than scikit-learn's. scikit-learn's LIBSVM drops zero-weight
-        # rows from the problem before solving, so mlxlearn drops them too, on the
-        # effective box rather than on the raw weight so that class_weight={c: 0}
-        # is handled the same way.
+        # 16% worse than scikit-learn's. scikit-learn's LIBSVM drops rows whose
+        # weight is not positive before solving, so mlxlearn drops them too, on
+        # the effective box rather than on the raw weight so that
+        # class_weight={c: 0} is handled the same way.
         active = C_all > 0.0
         if not active.all():
             empty = [
@@ -421,7 +548,7 @@ class MLXSVCMixin(BackendMixin):
                 raise ValueError(
                     "Every sample of class "
                     f"{empty[0]!r} has an effective weight of zero, so that class "
-                    "cannot be fitted. Remove it from y or give it a nonzero "
+                    "cannot be fitted. Remove it from y or give it a positive "
                     "sample_weight or class_weight."
                 )
 
@@ -435,6 +562,7 @@ class MLXSVCMixin(BackendMixin):
         n_iter = np.empty(n_pairs, dtype=np.int32)
         violation = np.empty(n_pairs, dtype=np.float64)
         fit_status = 0
+        exhausted_budget = 0
 
         for k, (i, j) in enumerate(pairs):
             rows_i = class_rows[i]
@@ -447,8 +575,8 @@ class MLXSVCMixin(BackendMixin):
                 np.ascontiguousarray(X32[index]),
                 y_pair,
                 C_all[index],
-                spec,
-                center,
+                compute_spec,
+                None,
                 backend,
             )
             pair_rows.append(index)
@@ -459,6 +587,7 @@ class MLXSVCMixin(BackendMixin):
             violation[k] = state.max_kkt_violation
             if not state.converged:
                 fit_status = 1
+                exhausted_budget = max(exhausted_budget, self._resolve_max_iter(index.shape[0]))
 
         # A row is a support vector if ANY pair gave it a nonzero coefficient, and
         # LIBSVM's test is exactly alpha != 0 -- not a threshold. The box branches
@@ -497,6 +626,21 @@ class MLXSVCMixin(BackendMixin):
                 offsets[j] : offsets[j + 1], k
             ]
 
+        # scikit-learn's own post-fit check, with its message verbatim so code that
+        # matches on it keeps working. Without it a kernel that overflowed float32
+        # produced NaN gradients, the solver found no eligible working pair and
+        # reported convergence after one iteration, and the fit returned a NaN
+        # intercept with fit_status_=0 -- a model predicting one class for
+        # everything, silently. Checked before any attribute is assigned, so a
+        # failed fit leaves no half-populated estimator behind.
+        if not (np.isfinite(rho).all() and np.isfinite(dual_coef).all()):
+            raise ValueError(
+                "The dual coefficients or intercepts are not finite. The input data "
+                "may contain large values and need to be preprocessed. (mlxlearn "
+                "evaluates the kernel in float32, where these kernel values "
+                "overflowed.)"
+            )
+
         self.support_ = support
         self.support_vectors_ = X64[support] if n_sv else np.empty((0, n_features))
         self._n_support = n_support
@@ -504,7 +648,7 @@ class MLXSVCMixin(BackendMixin):
         self.fit_status_ = fit_status
         self.n_iter_ = n_iter
         self._num_iter = n_iter
-        self._gamma = gamma
+        self._gamma = problem.spec.gamma
         self._sparse = False
         self._probA = np.empty(0)
         self._probB = np.empty(0)
@@ -513,8 +657,13 @@ class MLXSVCMixin(BackendMixin):
         self._pair_weights_ = pair_weights
         self._pair_rho_ = rho
         self._pair_kkt_violation_ = violation
-        self._kernel_spec_ = spec
-        self._kernel_center_ = center
+        self._kernel_spec_ = problem.spec
+        self._kernel_center_ = problem.basis.center
+        self._kernel_scale_ = problem.basis.scale
+        # Owns the support vectors' device copy for inference. Created here, not on
+        # the first predict, so predict never changes the estimator's __dict__; the
+        # device tensors inside it are built lazily and never pickled.
+        self._kernel_basis_ = problem.basis
 
         self._dual_coef_ = dual_coef
         self._intercept_ = -rho
@@ -526,14 +675,74 @@ class MLXSVCMixin(BackendMixin):
             self.intercept_ = -rho
 
         if fit_status:
+            if self.max_iter == -1:
+                limit = (
+                    f"max_iter=-1, which mlxlearn resolves to a hard budget of "
+                    f"{exhausted_budget} iterations per one-vs-one subproblem; unlike "
+                    "scikit-learn's bundled LIBSVM it does not treat -1 as unlimited"
+                )
+                advice = "Pass a larger explicit max_iter to keep iterating, or consider"
+            else:
+                limit = f"max_iter={self.max_iter}"
+                advice = "Consider"
             warnings.warn(
-                f"Solver terminated early (max_iter={self.max_iter}). Consider "
-                "pre-processing your data with StandardScaler or MinMaxScaler.",
+                f"Solver terminated early ({limit}). {advice} pre-processing your "
+                "data with StandardScaler or MinMaxScaler.",
                 ConvergenceWarning,
                 stacklevel=2,
             )
 
+    def _warn_sklearn_deprecations(self) -> None:
+        """Emit the FutureWarnings scikit-learn's own ``fit`` emits for these params.
+
+        Called only on the MLX path — scikit-learn's fallback warns for itself —
+        so a user gets the same advance notice of a removal whichever path ran.
+        Layer 1 otherwise never showed it at all.
+        """
+        if _PROBABILITY_DEPRECATED and self.probability != "deprecated":
+            warnings.warn(
+                "The `probability` parameter was deprecated in 1.9 and will be removed "
+                "in version 1.11. Use `CalibratedClassifierCV(SVC(), ensemble=False)` "
+                "instead of `SVC(probability=True)`",
+                FutureWarning,
+                stacklevel=3,
+            )
+
     # --------------------------------------------------------------- inference
+
+    def _inference_backend(self, operation: str, shape: tuple[int, ...] | None) -> str:
+        """The fitted backend, or the MLX CPU device when the fitted GPU is gone.
+
+        Inference stays on the backend ``fit`` chose, with one exception that does
+        not re-decide anything: a model fitted on the MLX GPU and loaded where no
+        GPU is usable runs the *same* MLX code on the MLX CPU device. Its state is
+        backend-independent, so this is not the scikit-learn hop stickiness exists
+        to prevent. It happens under ``device="auto"`` and ``"cpu"`` only; an
+        explicit ``device="gpu"`` still raises, because a user who named a device
+        wants that device.
+        """
+        backend = self._fitted_backend(operation)
+        if backend == "mlx" and not _device_state.gpu_available():
+            if get_config().device == "gpu":
+                raise DeviceError(
+                    f"{type(self).__name__} was fitted on the MLX GPU backend and no "
+                    "usable MLX GPU exists in this process. device='gpu' names that "
+                    "device explicitly, so mlxlearn will not compute elsewhere; set "
+                    "device='auto' or 'cpu' to evaluate this model on the MLX CPU "
+                    "device instead."
+                )
+            self._backend_event(operation, "cpu", reason="gpu-unavailable", shape=shape)
+            return "cpu"
+        self._note_inference(operation, shape=shape)
+        return backend
+
+    def _kernel_basis(self) -> KernelBasis:
+        basis = getattr(self, "_kernel_basis_", None)
+        if basis is not None:
+            return basis
+        # A model pickled by mlxlearn 0.1.0a2, which predates the compute frame. Its
+        # centre and unscaled spec still describe a valid frame exactly.
+        return KernelBasis(self._kernel_spec_, center=self._kernel_center_, scale=1.0)
 
     def _pairwise_decision(self, X, operation: str = "decision_function") -> np.ndarray:
         """One-vs-one decision values in LIBSVM's convention, ``(n, n_pairs)``.
@@ -542,24 +751,47 @@ class MLXSVCMixin(BackendMixin):
         public inference method is derived from, so ``predict`` and
         ``decision_function`` cannot disagree about which side of a boundary a
         sample is on.
+
+        Queries are range-checked before they reach float32, as ``fit`` checks its
+        input. Unchecked, a 1e39 query became ``inf``, the decision values NaN,
+        and ``ovo_vote`` — for which ``NaN > 0`` is false — silently flipped the
+        label. Inference cannot fall back (the backend is sticky), so this raises
+        :class:`~mlxlearn.exceptions.UnsupportedInputError` in both layers.
         """
+        if is_sparse(X):
+            # scikit-learn's own error for a dense-fitted model, class and message.
+            raise ValueError(
+                f"cannot use sparse input in {type(self).__name__!r} trained on dense data"
+            )
+        # float32 queries are kept as float32: the frame is applied in float64 block
+        # by block anyway, and float32 -> float64 -> float32 is exact.
         Xv = validate_data(
-            self, X, accept_sparse=False, dtype=np.float64, order="C", reset=False
+            self,
+            X,
+            accept_sparse=False,
+            dtype=(np.float64, np.float32),
+            order="C",
+            reset=False,
         )
-        backend = self._note_inference(operation, shape=_safe_shape(Xv))
+        backend = self._inference_backend(operation, _safe_shape(Xv))
         n_pairs = self._pair_weights_.shape[1]
         if Xv.shape[0] == 0:
             return np.empty((0, n_pairs), dtype=np.float64)
+        _check_validated_range(Xv)
         with mlx_guard(type(self).__name__, operation):
-            decision = kernel_combine(
-                self._kernel_spec_,
-                Xv,
-                self.support_vectors_,
-                self._pair_weights_,
-                backend=backend,
-                center=self._kernel_center_,
+            decision = self._kernel_basis().combine(
+                Xv, self.support_vectors_, self._pair_weights_, backend=backend
             )
-        return decision - self._pair_rho_
+        decision -= self._pair_rho_
+        if not np.isfinite(decision).all():
+            raise UnsupportedInputError(
+                "The decision values for these queries are not finite: the "
+                f"{self.kernel!r} kernel overflowed float32, where mlxlearn evaluates "
+                "it. Rescale the queries (or the training data) so the kernel values "
+                "stay below ~3.4e38.",
+                reason="float32-overflow",
+            )
+        return decision
 
 
 class SVC(MLXSVCMixin, _SkSVC):
@@ -584,7 +816,9 @@ class SVC(MLXSVCMixin, _SkSVC):
         NaN.
     gamma : {"scale", "auto"} or float, default="scale"
         ``"scale"`` is ``1 / (n_features * X.var())``, ``"auto"`` is
-        ``1 / n_features``, both resolved exactly as scikit-learn resolves them.
+        ``1 / n_features``, both resolved exactly as scikit-learn resolves them —
+        including its fallback to ``1.0`` only for an exactly-zero variance. The
+        linear kernel does not read it, so ``gamma=0.0`` is accepted there.
     coef0 : float, default=0.0
     shrinking : bool, default=True
         **Accepted and ignored.** Shrinking is a pure speed heuristic that
@@ -592,7 +826,10 @@ class SVC(MLXSVCMixin, _SkSVC):
         it, and passing ``shrinking=False`` therefore also changes nothing. It is
         not raised on because doing so would reject the scikit-learn default.
     probability : bool, default=False
-        ``True`` is not implemented; see Notes.
+        ``True`` is not implemented; see Notes. On scikit-learn 1.9, where the
+        parameter is deprecated and defaults to the ``"deprecated"`` sentinel,
+        passing it explicitly emits scikit-learn's FutureWarning on the MLX path
+        too.
     tol : float, default=1e-3
         Stopping tolerance on the maximal KKT violation.
     cache_size : float, default=200
@@ -612,7 +849,13 @@ class SVC(MLXSVCMixin, _SkSVC):
     verbose : bool, default=False
         Accepted and ignored.
     max_iter : int, default=-1
-        ``-1`` resolves to LIBSVM's budget, ``max(10⁷, 100 · n_samples)``.
+        ``-1`` resolves to upstream LIBSVM's budget, ``max(10⁷, 100 · n)`` per
+        one-vs-one subproblem of ``n`` rows. **This deviates from scikit-learn**,
+        whose bundled LIBSVM treats ``-1`` as unlimited: mlxlearn's SMO iterates in
+        Python, and uncapped it would turn a fit scikit-learn finishes in a minute
+        into hours. A fit that stops on the budget sets ``fit_status_=1`` and names
+        the budget in its ConvergenceWarning; pass a larger explicit ``max_iter``
+        to keep going.
     decision_function_shape : {"ovo", "ovr"}, default="ovr"
         Read at call time, not frozen at fit time, matching scikit-learn. Ignored
         for two classes, which always return a 1-D decision function.
@@ -636,9 +879,9 @@ class SVC(MLXSVCMixin, _SkSVC):
     n_iter_ : ndarray of shape (n_pairs,), int32
         SMO updates performed per one-vs-one subproblem.
     fit_status_ : int
-        ``1`` when any subproblem hit ``max_iter``. Unlike the estimator this
-        replaces, that also raises a :class:`~sklearn.exceptions.ConvergenceWarning`
-        instead of reporting success.
+        ``0`` if every one-vs-one subproblem converged, ``1`` if any hit
+        ``max_iter`` — which, as in scikit-learn, also raises a
+        :class:`~sklearn.exceptions.ConvergenceWarning`.
     shape_fit_ : tuple of int
     n_features_in_ : int
     execution_backend_ : {"mlx", "cpu"}
@@ -657,18 +900,30 @@ class SVC(MLXSVCMixin, _SkSVC):
     and working-set arithmetic are float64 — the same split LIBSVM uses, which
     caches kernel rows as C ``float``. Decision values contract the float32 kernel
     against float64 coefficients in float64, so the only float32 error that
-    reaches the output is the kernel's own rounding. See ``docs/fp32_policy.md``.
+    reaches the output is the kernel's own rounding. Before anything is cast, the
+    data is mapped exactly in float64: translated by the training mean (rbf only)
+    and scaled by a power of two that is folded back into ``gamma``. A large
+    offset — timestamps, projected coordinates — or a magnitude around 1e±19
+    therefore never reaches float32 at all. See ``docs/fp32_policy.md``.
 
-    **Zero-weight samples, and where ``support_`` then differs.** A sample whose
-    effective ``C`` is zero — from ``sample_weight=0`` or a zero ``class_weight``
-    — is dropped from the optimization, which is what scikit-learn's LIBSVM does
-    and produces the same model. scikit-learn then reports ``support_`` as indices
-    into the *filtered* problem, so ``support_vectors_ != X[support_]`` and the
-    indices point at unrelated rows; mlxlearn reports indices into the training
-    data the caller passed, so ``support_vectors_ == X[support_]`` always holds.
-    This is the one fitted attribute where mlxlearn deliberately does not
-    reproduce scikit-learn's value, and it is deliberate because the alternative
-    is returning indices that mean nothing.
+    What float32 cannot represent even so — a value past ``3.4e38``, a
+    linear-kernel inner product that large, a ``gamma`` that cannot be folded
+    into range — raises :class:`~mlxlearn.exceptions.UnsupportedInputError` or
+    :class:`~mlxlearn.exceptions.UnsupportedParameterError` at ``fit``, which
+    patched mode hands to scikit-learn, and at ``predict``, which it cannot: the
+    fitted backend is sticky, and a NaN decision would silently flip the label.
+
+    **Zero and negative weights, and where ``support_`` then differs.** A sample
+    whose effective ``C`` is not positive — from a zero or negative
+    ``sample_weight``, or a zero ``class_weight`` — is dropped from the
+    optimization, which is what scikit-learn's LIBSVM does and produces the same
+    model. scikit-learn then reports ``support_`` as indices into the *filtered*
+    problem, so ``support_vectors_ != X[support_]`` and the indices point at
+    unrelated rows; mlxlearn reports indices into the training data the caller
+    passed, so ``support_vectors_ == X[support_]`` always holds. This is the one
+    fitted attribute where mlxlearn deliberately does not reproduce
+    scikit-learn's value, and it is deliberate because the alternative is
+    returning indices that mean nothing.
 
     Examples
     --------
@@ -693,7 +948,8 @@ class SVC(MLXSVCMixin, _SkSVC):
         X : array-like of shape (n_samples, n_features)
         y : array-like of shape (n_samples,)
         sample_weight : array-like of shape (n_samples,), default=None
-            Per-sample multipliers on ``C``. Non-negative and finite.
+            Per-sample multipliers on ``C``. Must be finite. A zero or negative
+            weight drops the sample, exactly as scikit-learn's LIBSVM does.
 
         Returns
         -------
@@ -704,16 +960,36 @@ class SVC(MLXSVCMixin, _SkSVC):
         # or C=-1 would reach the solver instead of raising InvalidParameterError.
         self._validate_params()
         self._clear_backend()
+        self._clear_mlx_state()
+        shape = _safe_shape(X)
+
+        # Patched mode decides from the raw shape first. Most of what it sees is
+        # below the crossover, and everything below would otherwise be validated,
+        # range-scanned and target-checked here only for scikit-learn to do it all
+        # again: measured 1.4x-1.6x stock at 200 x 5. Only the parameter and
+        # sparsity checks run first, so a capability mismatch is still reported as
+        # one. With MLXLEARN_FORCE_BACKEND set the crossover does not apply, and a
+        # below-crossover selection in Layer 2 always resolves to scikit-learn.
+        forced = bool(get_tuning().force_backend)
+        if self._mlxlearn_allow_fallback and shape is not None and not forced:
+            below, detail = self._below_crossover(*shape)
+            if below:
+                self._select_backend(
+                    "fit",
+                    capability_check=lambda: self._check_svc_capability(X),
+                    below_crossover=True,
+                    crossover_detail=detail,
+                    shape=shape,
+                )
+                return self._fit_with_sklearn(X, y, sample_weight)
 
         backend = self._select_backend(
             "fit",
             capability_check=lambda: self._check_svc_capability(X),
-            shape=_safe_shape(X),
+            shape=shape,
         )
         if backend == "sklearn":
-            super().fit(X, y, sample_weight)
-            self._set_backend("sklearn")
-            return self
+            return self._fit_with_sklearn(X, y, sample_weight)
 
         X64 = validate_data(
             self,
@@ -726,10 +1002,14 @@ class SVC(MLXSVCMixin, _SkSVC):
         )
         y_encoded = self._validate_svc_targets(y)
         check_consistent_length(X64, y_encoded)
-        weights = check_sample_weight(sample_weight, X64, dtype=np.float64)
+        weights = _libsvm_sample_weight(sample_weight, X64)
 
-        below, detail = self._below_crossover(*X64.shape)
-        if below and backend != "cpu":
+        below, detail = self._below_crossover(*X64.shape, n_classes=len(self.classes_))
+        # Layer 1 below the crossover runs on the MLX CPU device, and needs no second
+        # selection when it is already there. Layer 2 hands it to scikit-learn
+        # whatever device is configured: device="cpu" selects MLX's CPU, which is
+        # the same float32 path and no faster, not scikit-learn's.
+        if below and not forced and (self._mlxlearn_allow_fallback or backend != "cpu"):
             backend = self._select_backend(
                 "fit",
                 below_crossover=True,
@@ -737,13 +1017,29 @@ class SVC(MLXSVCMixin, _SkSVC):
                 shape=X64.shape,
             )
             if backend == "sklearn":
-                super().fit(X, y, sample_weight)
-                self._set_backend("sklearn")
-                return self
+                return self._fit_with_sklearn(X, y, sample_weight)
 
+        # The data-dependent capability limits, checked only now that MLX will run.
+        # Raised this late they bypass _select_backend, so they are routed through
+        # the same policy by hand: Layer 1 raises, Layer 2 falls back or raises
+        # under fallback_policy="raise". The float32 range check runs on the validated
+        # float64 array, which also covers object-dtype input the raw scan skipped.
+        try:
+            _check_validated_range(X64)
+            problem = self._prepare_kernel_problem(X64)
+        except CapabilityError as exc:
+            self._handle_capability_error(exc, "fit", shape=X64.shape)
+            return self._fit_with_sklearn(X, y, sample_weight)
+
+        self._warn_sklearn_deprecations()
         with mlx_guard(type(self).__name__, "fit"):
-            self._fit_ovo(X64, y_encoded, weights, backend)
+            self._fit_ovo(X64, y_encoded, weights, backend, problem=problem)
         self._set_backend(backend)
+        return self
+
+    def _fit_with_sklearn(self, X, y, sample_weight):
+        super().fit(X, y, sample_weight)
+        self._set_backend("sklearn")
         return self
 
     def decision_function(self, X):
