@@ -313,8 +313,17 @@ def test_gpu_fitted_inference_without_a_gpu_is_one_event(monkeypatch, data, name
         events = _events(lambda call=call: call(model))
         assert [(e.operation, e.backend) for e in events] == [(method, "mlx")], events
         host_side = name == "LogisticRegression" or method.startswith("radius")
-        if not host_side:
-            assert events[0].reason == "gpu-unavailable", events[0]
+        expected = "sticky" if host_side else "gpu-unavailable"
+        assert events[0].reason == expected, events[0]
+
+        # An explicit device="gpu" is refused where MLX would have to run, and has
+        # nothing to refuse where the call is host code on the fitted state.
+        with mlxlearn.config_context(device="gpu"):
+            if host_side:
+                call(model)
+            else:
+                with pytest.raises(mlxlearn.DeviceError):
+                    call(model)
 
 
 # ======================================================================================

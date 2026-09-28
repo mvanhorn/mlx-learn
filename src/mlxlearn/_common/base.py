@@ -649,6 +649,7 @@ class BackendMixin:
         *,
         shape: tuple[int, ...] | None = None,
         detail: str = "",
+        host: bool = False,
         **extra: Any,
     ) -> Backend:
         """Record that an inference call reused the fitted backend, and return it.
@@ -666,6 +667,11 @@ class BackendMixin:
         ``kneighbors``) returns the backend without recording again. ``detail``
         and ``extra`` describe how the call was served — a neighbor search that
         needed its exact fallback, say — and go on that one event.
+
+        ``host=True`` says the call computes on the host from the fitted state
+        (scikit-learn's own ``radius_neighbors`` on an MLX-fitted index): no MLX
+        device is used, so none is resolved, none can be missing, and an
+        explicit ``device="gpu"`` has nothing to refuse.
         """
         backend = self._fitted_backend(operation)
         claimed = self._claim_call_event(operation)
@@ -674,7 +680,7 @@ class BackendMixin:
         operation = claimed
 
         reason = "sticky"
-        if backend == "mlx" and inference_device(backend) == "cpu":
+        if backend == "mlx" and not host and inference_device(backend) == "cpu":
             reason = "gpu-unavailable"
         fit_event = self.__dict__.get("_fit_event_")
         if fit_event is not None:

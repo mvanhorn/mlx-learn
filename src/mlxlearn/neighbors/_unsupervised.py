@@ -122,5 +122,9 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
                 self, X, operation="radius_neighbors", dtype=NUMPY_FLOAT, order="C"
             )
         shape = self._fit_X.shape if X is None else _safe_shape(X)
-        with self._inference("radius_neighbors", shape=shape):
+        # scikit-learn's host code on the fitted state: no MLX device is involved,
+        # so a GPU-fitted model needs none to answer this.
+        with self._inference(
+            "radius_neighbors", shape=shape, host=True, compute="scikit-learn"
+        ):
             return super().radius_neighbors(X, radius, return_distance, sort_results)

@@ -827,15 +827,17 @@ class SVC(MLXSVCMixin, _SkSVC):
         Kernel cache in MiB. Mapped onto the solver's LRU row cache:
         ``rows = cache_size · 2²⁰ / (4 · n_samples)``, clamped by installed memory.
 
-        **Unlike scikit-learn, this is not purely a performance knob.** When the
-        budget is large enough to hold every row, mlxlearn materializes the whole
-        Gram in one blocked matmul instead of evaluating rows on demand, and the
-        two accumulate in different orders. Measured on 2 000 × 10: decision
-        values shift by 4.5e-04 and the iteration count changes from 801 to 794
-        as the budget crosses that boundary. Both results are KKT-optimal and the
-        shift is well inside the tolerance in ``docs/fp32_policy.md``, but
-        scikit-learn is bit-identical across ``cache_size`` and mlxlearn is not.
-        Pin ``cache_size`` explicitly if you need bit-reproducible fits.
+        **Unlike scikit-learn, this is not guaranteed to be purely a performance
+        knob.** When the budget is large enough to hold every row, mlxlearn
+        materializes the whole Gram in one blocked matmul instead of evaluating
+        rows on demand. On the MLX GPU the two have agreed bit for bit in every
+        case measured (rbf, poly, linear and sigmoid at 2 000 × 10, ``cache_size``
+        0.5 against 2000) — a property of MLX's matrix multiply, not a promise. On
+        MLX's CPU device, which Layer 1 uses below the crossover, they accumulate
+        in different orders: the same comparison moved decision values by up to
+        2.2e-03 and changed the iteration count. Both results are KKT-optimal and
+        within the tolerance in ``docs/fp32_policy.md``. Pin ``cache_size``
+        explicitly if you need bit-reproducible fits.
     class_weight : dict or "balanced", default=None
     verbose : bool, default=False
         Accepted and ignored.

@@ -548,6 +548,7 @@ class MLXNeighborsMixin(BackendMixin):
         *,
         shape: tuple[int, ...] | None = None,
         record: bool = True,
+        **note,
     ) -> Iterator[None]:
         """Record one sticky event for a public inference call, and no nested ones.
 
@@ -556,10 +557,11 @@ class MLXNeighborsMixin(BackendMixin):
         and again as ``kneighbors``, while the MLX path recorded it only as
         ``kneighbors``. The same call is now one event named after it, whichever
         backend fitted the model. ``record=False`` only silences nested calls, for
-        a caller that has already recorded the decision itself.
+        a caller that has already recorded the decision itself. ``note`` goes to
+        :meth:`BackendMixin._note_inference`.
         """
         if record:
-            self._record_inference(operation, shape=shape)
+            self._record_inference(operation, shape=shape, **note)
         token = _EVENT_RECORDED.set(True)
         try:
             yield
