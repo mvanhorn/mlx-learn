@@ -35,6 +35,7 @@ INSTANCES = {
         "too large", reason="float32-overflow"
     ),
     "SparseInputError": lambda: exceptions.SparseInputError("sparse input"),
+    "InvalidInputError": lambda: exceptions.InvalidInputError("class 3 has zero weight"),
     "UnsupportedEstimatorStateError": lambda: exceptions.UnsupportedEstimatorStateError(
         "state", reason="custom-state"
     ),

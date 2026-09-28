@@ -40,6 +40,7 @@ __all__ = [
     "UnsupportedParameterError",
     "UnsupportedInputError",
     "SparseInputError",
+    "InvalidInputError",
     "UnsupportedEstimatorStateError",
     "DeviceError",
     "BackendExecutionError",
@@ -223,5 +224,3 @@ class InvalidInputError(MLXLearnError, ValueError):
     against scikit-learn's error contract keeps working.
     """
 
-
-__all__ += ["InvalidInputError"]

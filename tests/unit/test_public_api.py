@@ -61,6 +61,7 @@ EXPECTED_EXCEPTIONS = sorted(
         "UnsupportedParameterError",
         "UnsupportedInputError",
         "SparseInputError",
+        "InvalidInputError",
         "UnsupportedEstimatorStateError",
         "DeviceError",
         "BackendExecutionError",
