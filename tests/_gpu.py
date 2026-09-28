@@ -6,10 +6,15 @@ cause buried in every traceback. Two kinds of test count as needing it:
 
 * tests marked ``@pytest.mark.gpu``, which say so up front;
 * tests that fail with :class:`~mlxlearn.exceptions.DeviceError`, which is exactly
-  mlxlearn's statement that the GPU they asked for is not there. Many tests reach
-  the GPU implicitly — forcing ``backend="mlx"``, or asserting the MLX path ran —
-  and this catches them without a marker on each. Any *other* failure on such a
-  host still fails.
+  mlxlearn's statement that the GPU they asked for is not there. It catches a test
+  whose forced MLX fit names the GPU device, without a marker on each — but only
+  when the error reaches pytest unwrapped, not inside GridSearchCV's "all fits
+  failed". Any *other* failure on such a host still fails.
+
+A test that asserts the MLX path ran needs the marker: without a GPU nothing raises,
+because auto-selection picks the CPU and a forced MLX fit of most estimators runs on
+MLX's CPU device. ``tests/tooling/test_gpu_policy.py`` runs the suite on a simulated
+GPU-less host to hold every test to this.
 
 A skip is the wrong answer where the GPU is the point, as on CI. There,
 ``MLXLEARN_REQUIRE_GPU=1`` turns a missing GPU into an immediate, single, loud

@@ -18,14 +18,20 @@ The other rules, each of which exists because averaging hides something:
   what tells you whether a difference is real, and it has to be a real IQR: the
   full min-max range lets one garbage-collection pause hide a 2x regression.
 
-Comparisons against scikit-learn are paired and interleaved — A, B, A, B — rather
-than "all of A then all of B", so that a thermal ramp or a background process
-during the run degrades both sides equally instead of whichever went second.
+Comparisons against scikit-learn are paired and interleaved rather than "all of A
+then all of B", so that a thermal ramp or a background process during the run
+degrades both sides equally instead of whichever went second. Within a pair the
+two sides take turns going first — A B, B A, A B — and every timed call gets the
+same preparation, a garbage collection before it and a synchronization inside its
+window: a call made straight after ``gc.collect()`` runs on cold caches, and when
+that was always the mlxlearn side, identical work on both sides read as a 10-25%
+loss and failed the gate.
 """
 
 from __future__ import annotations
 
 import gc
+import os
 import platform
 import statistics
 import subprocess
@@ -58,10 +64,14 @@ MIN_SIGNIFICANCE_SAMPLES = 5
 
 #: How many standard errors apart two medians must be to count as different. 3.0
 #: rather than the textbook 1.96 because the standard errors are themselves
-#: estimated from a handful of samples, and because a nightly run gates well over a
-#: hundred cases: at 7 iterations this keeps the false-alarm rate per case near or
-#: below 1% under Gaussian, log-normal and outlier-contaminated noise (simulated),
-#: while still catching a 1.3x regression that carries a 3x outlier.
+#: estimated from a handful of samples: at 7 iterations this keeps the false-alarm
+#: rate per case near or below 1% under Gaussian, log-normal and outlier-contaminated
+#: noise (simulated), while still catching a 1.3x regression that carries a 3x
+#: outlier. That rate is per case, and a nightly run gates well over a hundred: with
+#: 137 cases of identical work (simulated, Gaussian and log-normal noise) 73-79% of
+#: nights failed on one measurement each. So the runner re-measures any case the gate
+#: would fail, and the gate fails it only if the loss reproduces there
+#: (``CONFIRMATION_FACTOR`` in ``benchmarks/run.py``): 0.4-0.7% of nights.
 SIGNIFICANCE_Z = 3.0
 
 
@@ -110,6 +120,19 @@ def _summarize(samples: list[float], label: str) -> Measurement:
     )
 
 
+def _timed(fn: Callable[[], object]) -> float:
+    """One synchronized call, after a collection and with the collector off."""
+    gc.collect()
+    gc.disable()
+    try:
+        start = time.perf_counter()
+        fn()
+        _sync()
+        return time.perf_counter() - start
+    finally:
+        gc.enable()
+
+
 def measure(
     fn: Callable[[], object],
     *,
@@ -121,19 +144,7 @@ def measure(
     for _ in range(warmup):
         fn()
     _sync()
-
-    samples: list[float] = []
-    for _ in range(iterations):
-        gc.collect()
-        gc.disable()
-        try:
-            start = time.perf_counter()
-            fn()
-            _sync()
-            samples.append(time.perf_counter() - start)
-        finally:
-            gc.enable()
-    return _summarize(samples, label)
+    return _summarize([_timed(fn) for _ in range(iterations)], label)
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,11 +222,13 @@ def compare(
     iterations: int = 7,
     **extra,
 ) -> Comparison:
-    """Time both implementations, interleaved.
+    """Time both implementations, interleaved, each side going first in turn.
 
     Interleaving matters more than it sounds: a run that measures all of A and
     then all of B attributes any thermal ramp or background load entirely to
-    whichever ran second.
+    whichever ran second. The order within a pair matters too, which is why it
+    alternates and why each call is timed exactly as :func:`measure` times one —
+    collected before, synchronized inside — whichever backend it ran on.
     """
     for _ in range(warmup):
         mlx_fn()
@@ -224,20 +237,13 @@ def compare(
 
     mlx_samples: list[float] = []
     sk_samples: list[float] = []
-    for _ in range(iterations):
-        gc.collect()
-        gc.disable()
-        try:
-            start = time.perf_counter()
-            mlx_fn()
-            _sync()
-            mlx_samples.append(time.perf_counter() - start)
-
-            start = time.perf_counter()
-            sk_fn()
-            sk_samples.append(time.perf_counter() - start)
-        finally:
-            gc.enable()
+    for i in range(iterations):
+        if i % 2 == 0:
+            mlx_samples.append(_timed(mlx_fn))
+            sk_samples.append(_timed(sk_fn))
+        else:
+            sk_samples.append(_timed(sk_fn))
+            mlx_samples.append(_timed(mlx_fn))
 
     return Comparison(
         label=label,
@@ -296,6 +302,13 @@ def environment() -> dict:
         pass
 
     import mlxlearn
+    from mlxlearn._common.config import get_tuning
 
     info["mlxlearn"] = mlxlearn.__version__
+    # The thresholds dispatch ran with, and any MLXLEARN_* variable behind them: a
+    # result the gate judges against Tuning has to say which Tuning that was.
+    info["tuning"] = asdict(get_tuning())
+    info["mlxlearn_environment"] = {
+        name: value for name, value in sorted(os.environ.items()) if name.startswith("MLXLEARN_")
+    }
     return info

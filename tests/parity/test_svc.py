@@ -1056,6 +1056,7 @@ def test_cache_size_shift_is_bounded_and_documented():
     assert np.mean(small.predict(X) == large.predict(X)) >= 0.99
 
 
+@pytest.mark.gpu
 def test_linear_kernel_never_takes_the_mlx_path():
     """Measured 0.01×–0.06× at every size, so it is excluded outright.
 
@@ -1117,6 +1118,7 @@ def test_the_svc_crossover_accounts_for_the_number_of_classes():
     assert model._below_crossover(8000, 256, n_classes=50)[0]
 
 
+@pytest.mark.gpu
 def test_patched_dispatch_uses_the_class_count():
     X, y2 = _data(n_samples=400, n_features=8, seed=2)
     y8 = np.arange(len(X)) % 8

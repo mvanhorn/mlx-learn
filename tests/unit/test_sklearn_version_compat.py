@@ -37,8 +37,20 @@ def data():
 
 
 def test_declared_range_is_what_is_installed():
-    assert Version("1.7") <= SKLEARN < Version("1.10"), (
-        f"scikit-learn {SKLEARN} is outside the range pyproject.toml declares"
+    # Read from the installed metadata, not restated here: CI's unpinned cell runs a
+    # PR that widens the range on the release it newly admits, and a copy of the old
+    # cap would fail there for no reason.
+    from importlib import metadata
+
+    from packaging.requirements import Requirement
+
+    try:
+        requires = metadata.requires("mlx-learn") or []
+    except metadata.PackageNotFoundError:
+        pytest.skip("mlx-learn is not installed, so no declared range is available")
+    (declared,) = [r for r in map(Requirement, requires) if r.name == "scikit-learn"]
+    assert declared.specifier.contains(SKLEARN, prereleases=True), (
+        f"scikit-learn {SKLEARN} is outside the range pyproject.toml declares ({declared})"
     )
 
 

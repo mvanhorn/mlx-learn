@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from benchmarks import gate, run
-from benchmarks._harness import Comparison, _summarize, interquartile_range, measure
+from benchmarks import _harness, gate, run
+from benchmarks._harness import Comparison, _summarize, compare, interquartile_range, measure
+
+from mlxlearn._common.config import reset_config
 
 # --------------------------------------------------------------------- statistics
 
@@ -57,6 +60,61 @@ def test_equal_distributions_are_within_noise():
 
 def test_too_few_samples_never_claim_significance():
     assert not _comparison([2.0, 2.01, 2.02, 2.03], [1.0, 1.01, 1.02, 1.03]).significant
+
+
+class _Host:
+    """A fake clock and collector where a call made straight after a collection is
+    slower — the cold caches that made compare() read identical work as a loss."""
+
+    def __init__(self):
+        self.now, self.cold, self.enabled, self.log = 0.0, False, True, []
+        self.gc = SimpleNamespace(collect=self._collect, disable=self._disable, enable=self._enable)
+        self.time = SimpleNamespace(perf_counter=lambda: self.now)
+
+    def _collect(self):
+        self.log.append("collect")
+        self.cold = True
+
+    def _disable(self):
+        self.enabled = False
+
+    def _enable(self):
+        self.enabled = True
+
+    def work(self, side):
+        def call():
+            self.log.append(f"{side}{'' if self.enabled else ' (gc off)'}")
+            self.now += 1.25 if self.cold else 1.0
+            self.cold = False
+
+        return call
+
+    def sync(self):
+        self.log.append("sync")
+
+
+@pytest.fixture
+def host(monkeypatch):
+    fake = _Host()
+    monkeypatch.setattr(_harness, "gc", fake.gc)
+    monkeypatch.setattr(_harness, "time", fake.time)
+    monkeypatch.setattr(_harness, "_sync", fake.sync)
+    return fake
+
+
+def test_compare_alternates_the_first_side_and_times_both_alike(host):
+    compare(host.work("mlx"), host.work("sk"), label="c", shape=(1, 1), warmup=0, iterations=4)
+    mlx = ["collect", "mlx (gc off)", "sync"]
+    sk = ["collect", "sk (gc off)", "sync"]
+    warmup = ["sync"]
+    assert host.log == [*warmup, *mlx, *sk, *sk, *mlx, *mlx, *sk, *sk, *mlx]
+
+
+def test_identical_work_compares_as_identical(host):
+    work = host.work("same")
+    comparison = compare(work, work, label="c", shape=(1, 1), warmup=0, iterations=7)
+    assert comparison.speedup == 1.0
+    assert not comparison.significant
 
 
 # --------------------------------------------------------------------------- gate
@@ -149,6 +207,29 @@ def test_accepted_regressions_and_noise_pass():
 def test_a_schema_1_payload_without_backends_is_gated():
     payload = {"results": [_result(speedup=0.5)], "crossovers": {}}
     assert len(gate.evaluate(payload)[0]) == 1
+
+
+def _rechecked(speedup, significant):
+    return {"speedup": speedup, "significant": significant, "mlxlearn": {"iterations": 21}}
+
+
+def test_a_loss_that_does_not_reproduce_is_not_a_failure():
+    # About one case in a hundred clears z=3 on noise alone; a nightly run gates more
+    # than a hundred, so without a re-measurement most nights failed.
+    flaky = _result(
+        "logreg/fit/5000x32", speedup=0.8, backend="sklearn", confirmation=_rechecked(1.01, False)
+    )
+    failures, notes = gate.evaluate({"results": [flaky]})
+    assert failures == []
+    assert any("did not reproduce (1.01x over 21 iterations)" in note for note in notes)
+
+
+def test_a_loss_that_reproduces_fails():
+    real = _result(
+        "logreg/fit/5000x32", speedup=0.8, backend="sklearn", confirmation=_rechecked(0.82, True)
+    )
+    (failure,) = gate.evaluate({"results": [real]})[0]
+    assert "0.80x (reproduced at 0.82x over 21 iterations)" in failure
 
 
 # ----------------------------------------------------------------------- profiles
@@ -249,3 +330,80 @@ def test_a_forced_run_records_what_dispatch_would_have_done(tmp_path, monkeypatc
     (result,) = json.loads(output.read_text())["results"]
     assert result["backend"] == "mlx" and result["force_backend"] == "mlx"
     assert result["dispatch"] == "sklearn"
+
+
+@pytest.mark.gpu
+def test_a_backend_forced_through_the_environment_is_recorded_as_forced(tmp_path, monkeypatch):
+    # The same kernel run as the flag's above, which the gate once judged as Tuning's
+    # own decision and failed with "the threshold in Tuning is too low".
+    monkeypatch.setenv("MLXLEARN_FORCE_BACKEND", "mlx")
+    reset_config()
+    monkeypatch.setitem(run.PROFILES, "tiny", _TINY[:1])
+    output = tmp_path / "results.json"
+    assert run.main(["--profile", "tiny", "--iterations", "1", "--output", str(output)]) == 0
+    payload = json.loads(output.read_text())
+    (result,) = payload["results"]
+    assert payload["force_backend"] == result["force_backend"] == "mlx"
+    assert result["backend"] == "mlx" and result["dispatch"] == "sklearn"
+    environment = payload["environment"]
+    assert environment["mlxlearn_environment"]["MLXLEARN_FORCE_BACKEND"] == "mlx"
+    assert environment["tuning"]["force_backend"] == "mlx"
+    assert environment["tuning"]["logreg_min_samples"] > 0
+
+
+def _fake_compare(calls, slower_first=False):
+    """compare() with scripted timings: a 0.5x loss the first time if asked, then even."""
+
+    def fake(mlx_fn, sk_fn, *, label, shape, iterations, **extra):
+        mlx_fn()  # the runner reads the backend off the model this fits
+        sk_fn()
+        calls.append(iterations)
+        mlx_time = 2.0 if slower_first and len(calls) == 1 else 1.0
+        return Comparison(
+            label=label,
+            shape=shape,
+            mlxlearn=_summarize([mlx_time] * iterations, "m"),
+            sklearn=_summarize([1.0] * iterations, "s"),
+            extra=extra,
+        )
+
+    return fake
+
+
+def test_a_case_the_gate_would_fail_is_re_measured_before_it_fails(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(run, "compare", _fake_compare(calls, slower_first=True))
+    monkeypatch.setitem(run.PROFILES, "tiny", [_TINY[1]])
+    output = tmp_path / "results.json"
+    assert run.main(["--profile", "tiny", "--iterations", "7", "--output", str(output)]) == 0
+
+    assert calls == [7, 7 * run.CONFIRMATION_FACTOR]
+    payload = json.loads(output.read_text())
+    (result,) = payload["results"]
+    assert result["speedup"] == 0.5 and result["significant"]
+    assert result["confirmation"]["speedup"] == 1.0
+    assert result["confirmation"]["mlxlearn"]["iterations"] == 21
+    assert gate.evaluate(payload)[0] == []
+
+
+def test_a_case_that_passes_is_measured_once(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(run, "compare", _fake_compare(calls))
+    monkeypatch.setitem(run.PROFILES, "tiny", [_TINY[1]])
+    output = tmp_path / "results.json"
+    assert run.main(["--profile", "tiny", "--iterations", "7", "--output", str(output)]) == 0
+    assert calls == [7]
+    assert "confirmation" not in json.loads(output.read_text())["results"][0]
+
+
+@pytest.mark.parametrize("requested, ran", [(1, 1), (9, 5)])
+def test_a_case_count_caps_the_iterations_and_never_raises_them(
+    requested, ran, tmp_path, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(run, "compare", _fake_compare(calls))
+    monkeypatch.setitem(run.PROFILES, "tiny", [run.Case("logreg", "fit", 300, 4, iterations=5)])
+    output = tmp_path / "results.json"
+    argv = ["--profile", "tiny", "--iterations", str(requested), "--output", str(output)]
+    assert run.main(argv) == 0
+    assert calls == [ran]

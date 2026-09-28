@@ -34,6 +34,13 @@ measured noise passes. Requiring a win on every case would make the gate a
 lottery on a shared machine; requiring no *loss* is the claim mlxlearn actually
 makes.
 
+**A loss has to reproduce.** The significance test bounds the false-alarm rate per
+case, near 1%, and a nightly run gates over a hundred cases, which on noise alone
+would fail most nights. So the runner times any case that would fail again, over
+more iterations, and records that as the result's ``confirmation``; a case whose
+loss does not reproduce there passes, with a note. A result without a confirmation
+(an older payload) is judged on its one measurement.
+
 A structural regression is **not** silently exempt. If mlxlearn is significantly
 slower somewhere by design, it gets an explicit entry in ``ACCEPTED_REGRESSIONS``
 with a reason — because "we never measured a win here" is the most comfortable
@@ -83,6 +90,10 @@ def _is_win(result: dict) -> bool:
     )
 
 
+def _regressing(result: dict) -> bool:
+    return result.get("significant", False) and result["speedup"] < 1.0 - TOLERANCE
+
+
 def evaluate(payload: dict) -> tuple[list[str], list[str]]:
     """Return ``(failures, notes)`` for a results payload.
 
@@ -98,7 +109,7 @@ def evaluate(payload: dict) -> tuple[list[str], list[str]]:
         label = result["label"]
         speedup = result["speedup"]
         significant = result.get("significant", False)
-        regressing = significant and speedup < 1.0 - TOLERANCE
+        regressing = _regressing(result)
         layer = result.get("layer", payload_layer)
         backend = result.get("backend")
         forced = result.get("force_backend") or payload.get("force_backend")
@@ -142,22 +153,33 @@ def evaluate(payload: dict) -> tuple[list[str], list[str]]:
             continue
         if not regressing:
             continue
+        shown = f"{speedup:.2f}x"
+        confirmation = result.get("confirmation")
+        if confirmation is not None:
+            again = (
+                f"{confirmation['speedup']:.2f}x over "
+                f"{confirmation.get('mlxlearn', {}).get('iterations', '?')} iterations"
+            )
+            if not _regressing(confirmation):
+                notes.append(f"{label}: {shown} did not reproduce ({again}); not gated")
+                continue
+            shown = f"{shown} (reproduced at {again})"
 
         if backend == "sklearn":
             failures.append(
-                f"{label}: {speedup:.2f}x. The configured Tuning hands this to scikit-learn, so "
+                f"{label}: {shown}. The configured Tuning hands this to scikit-learn, so "
                 "the loss is patched dispatch's own overhead. Fix it, or add it to "
                 "ACCEPTED_REGRESSIONS with a reason and record it in docs/benchmarks.md."
             )
         elif backend == "mlx":
             failures.append(
-                f"{label}: {speedup:.2f}x is a significant regression on the MLX path, which "
+                f"{label}: {shown} is a significant regression on the MLX path, which "
                 f"the configured Tuning selects for this size. Either the MLX path regressed or "
                 f"the {key} threshold in Tuning is too low; re-measure it."
             )
         else:
             failures.append(
-                f"{label}: {speedup:.2f}x is a significant regression against scikit-learn "
+                f"{label}: {shown} is a significant regression against scikit-learn "
                 f"(backend {backend or 'not recorded'})."
             )
 
