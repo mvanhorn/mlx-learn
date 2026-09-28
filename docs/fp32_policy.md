@@ -93,9 +93,13 @@ and then it proves the selection right:
 1. **Translation and scaling.** Distances are translation-invariant, so the training mean
    is subtracted from the training and the query rows before the identity is applied. That
    moves ‖·‖² from "distance from the origin squared" down to "variance scale", where the
-   identity is far better behaved. float64 input is translated in float64, before anything
-   is rounded to float32, so a large constant offset — Unix timestamps, projected
-   coordinates — costs nothing. The translated rows are then scaled by a power of two, which
+   identity is far better behaved. float64 input is translated by its float64 mean, with
+   the rows and the mean each carried as a float32 value plus a float32 residual, so the
+   translation is good to about 2⁻⁴⁸ of the coordinate and a large constant offset — Unix
+   timestamps, projected coordinates — costs nothing: timestamps a few seconds apart
+   certify on the first pass. (Rounding the mean to float32 first left up to 64 of offset
+   near 1.7e9 in every row, and sent every such query to the second pass at 4–5× the
+   time.) The translated rows are then scaled by a power of two, which
    is exact, so that data around 1e19, whose squares overflow float32, and data around
    1e-20, whose squares underflow it (the GPU flushes those to zero), both come back into
    range. Only as far as that: ordinary data is not scaled at all, and a large span is
@@ -391,8 +395,8 @@ Wherever the model is invariant to it, it is removed in float64, before anything
 rounded to float32:
 
 - The **neighbor estimators** translate by the float64 training mean and keep a float32
-  residual beside each float32 value, so refined differences are taken to about 2⁻⁴⁸ of
-  the coordinate (§2.1). 5 000 Unix timestamps within one hour, which collapse to 29
+  residual beside each float32 value, the mean's included, so the translation and the
+  refined differences are taken to about 2⁻⁴⁸ of the coordinate (§2.1). 5 000 Unix timestamps within one hour, which collapse to 29
   distinct values when cast first, return their exact neighbors.
 - **`LogisticRegression`** centers float64 input in float64 when it fits an intercept, and
   rounds only the centered values; the intercept is un-centered with exactly the mean that

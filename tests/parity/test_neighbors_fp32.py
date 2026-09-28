@@ -541,6 +541,34 @@ def test_float64_offsets_survive_the_float32_cast(backend, rng):
     np.testing.assert_allclose(dist, ref_dist, rtol=0, atol=2e-5)
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_float64_offset_does_not_cost_the_first_pass(backend, rng):
+    """Timestamps a few seconds apart.
+
+    The float64 mean, rounded to float32, is up to 64 from the true one near 1.7e9,
+    and that constant offset in every translated row swamped the certificate's
+    noise band: every query took the wider search, at 4-5x the time. The center is
+    now carried as a float32 pair, like the rows. Queries with no residual — float32
+    ones — have to be translated into the same frame; certified against a
+    different one, they come back with wrong neighbors and nothing raised.
+    """
+
+    def window(m):
+        return np.column_stack([1.7e9 + 61.3 + rng.uniform(0, 5, m), rng.uniform(0, 5, m)])
+
+    X, Q = window(20_000), window(200)
+    index = build_index(X, backend=backend)
+
+    stats = {}
+    dist, _ = index.query(Q, 5, stats=stats)
+    assert stats["widened_rows"] == 0
+    np.testing.assert_allclose(dist, _exact_neighbors(X, Q, 5)[0], rtol=0, atol=2e-5)
+
+    Q32 = Q.astype(np.float32)
+    dist, _ = index.query(Q32, 5)
+    np.testing.assert_allclose(dist, _exact_neighbors(X, Q32, 5)[0], rtol=0, atol=2e-5)
+
+
 def test_the_estimator_passes_float64_through(rng):
     """The same data through the public estimator, which must not cast it first."""
     X = _timestamps(rng, 5000)

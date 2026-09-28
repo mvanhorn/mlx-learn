@@ -244,11 +244,13 @@ def _kernels(device: str) -> SimpleNamespace:
     """
     import mlx.core as mx
 
-    def center_scale(hi, center, scale):
-        return (hi - center) * scale
+    # The center is a float32 pair too, center + center_lo: every row, training or
+    # query, residual or not, has to be translated into the same frame.
+    def center_scale(hi, center, center_lo, scale):
+        return ((hi - center) - center_lo) * scale
 
-    def center_scale_lo(hi, lo, center, scale):
-        return ((hi - center) + lo) * scale
+    def center_scale_lo(hi, lo, center, center_lo, scale):
+        return ((hi - center) + (lo - center_lo)) * scale
 
     def tile(q_sq, t_sq, gram):
         # The clamp only ever moves a value toward the truth: distances are >= 0.
@@ -338,6 +340,7 @@ class _DeviceState:
     sel_t: Any  # sel.T
     sel_sq: Any  # (n,) squared row norms of sel
     center: Any  # (d,) float32
+    center_lo: Any  # (d,) float32 residual of a float64 center; zeros for a float32 one
     scale: Any  # 0-d, 2**-exponent
     zero: Any  # 0-d, 0.0
     exponent: int
@@ -402,10 +405,14 @@ class NeighborIndex:
         zero-copy view of it, so on unified memory the host and the device share
         one buffer instead of holding two.
     center : ndarray of shape (n_features,)
-        The float32 translation applied before the Gram identity — the training
-        mean, rounded. Distances are translation-invariant, so any shift is exact
-        in real arithmetic; the mean is the one that keeps float32 cancellation
-        manageable.
+        The translation applied before the Gram identity: the training mean.
+        Distances are translation-invariant, so any shift is exact in real
+        arithmetic; the mean is the one that keeps float32 cancellation manageable.
+        float64 for wider-than-float32 input, and applied as a float32 value and
+        residual, like ``X``: rounded to float32, a mean near 1.7e9 is up to 64 away
+        from the true one, and that offset alone swamped the certificate for
+        timestamps a few seconds apart. float32 — the mean, rounded — for float32
+        input.
     backend : {"mlx", "cpu"}
         Which MLX device the index was built for.
     X_lo : ndarray of shape (n_samples, n_features) or None
@@ -683,9 +690,9 @@ class _Search:
         hi = mx.array(hi_np)
         lo = None if lo_np is None else mx.array(lo_np)
         if lo is None:
-            sel = fns.center_scale(hi, state.center, state.scale)
+            sel = fns.center_scale(hi, state.center, state.center_lo, state.scale)
         else:
-            sel = fns.center_scale_lo(hi, lo, state.center, state.scale)
+            sel = fns.center_scale_lo(hi, lo, state.center, state.center_lo, state.scale)
         sq = mx.sum(sel * sel, axis=1, keepdims=True)
 
         raw_norm = None
@@ -864,7 +871,9 @@ class _Search:
         )
         lower = bound * (1.0 - 2.0 * _gamma(d + 4))
         if qb.raw_norm is not None:
-            # The float64 residual is itself rounded, at u² of the raw magnitude.
+            # The float64 residuals — the rows' and the center's — are themselves
+            # rounded, at u² of the raw magnitudes. The center is the training mean,
+            # inside the rows' bounding box, so raw_norm_bound covers it as well.
             absolute = math.ldexp(12.0 * _U * _U, -state.exponent) * (
                 qb.raw_norm + state.raw_norm_bound
             )
@@ -1224,12 +1233,14 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         # and ordinary data is not scaled at all.
         exponent = _span_exponent(spread, d)
         scale = mx.array(math.ldexp(1.0, -exponent), dtype=mx.float32)
-        center_dev = mx.array(np.asarray(center, dtype=NUMPY_FLOAT))
+        c_hi = c64.astype(NUMPY_FLOAT)
+        center_dev = mx.array(c_hi)
+        center_lo = mx.array((c64 - c_hi).astype(NUMPY_FLOAT))
 
         if raw_lo is None:
-            sel = fns.center_scale(raw, center_dev, scale)
+            sel = fns.center_scale(raw, center_dev, center_lo, scale)
         else:
-            sel = fns.center_scale_lo(raw, raw_lo, center_dev, scale)
+            sel = fns.center_scale_lo(raw, raw_lo, center_dev, center_lo, scale)
         sel_sq = _row_sq_norms(mx, sel)
         norms = mx.sort(mx.sqrt(sel_sq))
         # Everything that goes into the state is evaluated here, the transposes
@@ -1264,6 +1275,7 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         sel_t=sel_t,
         sel_sq=sel_sq,
         center=center_dev,
+        center_lo=center_lo,
         scale=scale,
         zero=mx.array(0.0, dtype=mx.float32),
         exponent=exponent,
@@ -1315,8 +1327,9 @@ def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
     because an index that aliases the caller's array silently changes its own
     answers when that array is mutated. Wider input (float64, integers) is split
     into a float32 value and a float32 residual, and translated by its float64
-    mean, so the float32 cast does not quantize away what the caller supplied:
-    Unix timestamps collapse to 128-second steps in float32, but not here.
+    mean, carried as a float32 pair the same way, so the float32 cast does not
+    quantize away what the caller supplied: Unix timestamps collapse to 128-second
+    steps in float32, but not here.
     """
     X = np.asarray(X)
     if X.ndim != 2:
@@ -1330,12 +1343,12 @@ def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
     if X.dtype == NUMPY_FLOAT:
         hi = np.ascontiguousarray(X)
         lo = None
-        center = hi.mean(axis=0, dtype=np.float64)
+        center = hi.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT)
     else:
         X64 = np.asarray(X, dtype=np.float64)
         hi, lo = _split_float64(X64)
         center = X64.mean(axis=0)
-    index = NeighborIndex(X=hi, center=center.astype(NUMPY_FLOAT), backend=backend, X_lo=lo)
+    index = NeighborIndex(X=hi, center=center, backend=backend, X_lo=lo)
     _require_resolvable(index)
     return index
 
