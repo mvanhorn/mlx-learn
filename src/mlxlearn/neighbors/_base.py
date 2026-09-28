@@ -486,7 +486,7 @@ class MLXNeighborsMixin(BackendMixin):
         # it was served (_search_diagnostics). Nothing above makes a nested public
         # call, so there is nothing for the _inference guard to silence.
         detail, extra = _search_diagnostics(stats)
-        self._record_inference(operation, shape=Q.shape, detail=detail, **extra)
+        self._record_call(operation, shape=Q.shape, detail=detail, **extra)
         if not return_distance:
             return idx
         if self.effective_metric_ == "sqeuclidean":
@@ -529,7 +529,7 @@ class MLXNeighborsMixin(BackendMixin):
 
     # ------------------------------------------------------------------ helpers
 
-    def _record_inference(
+    def _record_call(
         self,
         operation: str,
         *,
@@ -561,7 +561,7 @@ class MLXNeighborsMixin(BackendMixin):
         :meth:`BackendMixin._note_inference`.
         """
         if record:
-            self._record_inference(operation, shape=shape, **note)
+            self._record_call(operation, shape=shape, **note)
         token = _EVENT_RECORDED.set(True)
         try:
             yield
