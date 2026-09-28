@@ -32,8 +32,10 @@ The layering is enforced, not merely described:
   dataclass and return a frozen state dataclass, so the numerics can be tested without
   constructing an estimator. `_kernels` may read `get_tuning()` for block sizes, which are
   private typed knobs, not user configuration. The gate is static, so an indirect read —
-  `use_device(None)` resolving the configured device — is still on the reviewer: solvers
-  pass their config's device explicitly.
+  `inference_device(backend)` or `use_device(None)` resolving the configured device — is
+  still on the reviewer. Neither layer makes one: solvers pass their config's device
+  explicitly, and an estimator resolves its device with `inference_device()` and passes it
+  to the kernels and the neighbor index as `device=`.
 - A `sklearn._*` import outside `patching/` fails CI. Inside `patching/` it must be on an
   explicit allowlist in `tools/compliance.py`, which is currently empty.
 - Layer 1 raises on a capability mismatch. Layer 2 falls back. The whole difference is
@@ -62,7 +64,7 @@ def fit(self, X, y):
     self._clear_backend()     # forget the last fit; the estimator is unfitted until _set_backend
     backend = self._select_backend(
         "fit",
-        shape=_safe_shape(X),                          # the raw shape, before any conversion
+        shape=_safe_shape(X),                          # _common.validation: the raw shape
         crossover=self._below_crossover,               # (n_samples, n_features) -> (below, detail)
         capability_check=lambda: self._check_params(X),   # parameters and sparsity: cheap
         data_check=lambda: check_float32_range(X),        # O(n·d) scans: skipped on a handoff
@@ -75,7 +77,7 @@ def fit(self, X, y):
     with mlx_guard(type(self).__name__, "fit"):
         state = solve(X, y, ...)                       # locals only, evaluated before return
     self.coef_ = state.coef                            # publish
-    self._set_backend(backend)                         # the commit point: the one fit event
+    self._set_backend(backend)                         # the commit point: fitted from here
     return self
 ```
 
@@ -83,18 +85,25 @@ def fit(self, X, y):
 `MLXLEARN_FORCE_BACKEND`, then size, then the data checks, then the device. The order is
 the point. "We cannot do this at all" outranks "this is small", so a capability mismatch
 is always reported as one. And when patched mode is about to hand a fit to scikit-learn
-by size, the decision comes from `X.shape` alone, before any validation, scan or copy —
+by size, or by a rule of its own passed as `handoff=` (the neighbor estimators' KD-tree
+rule), the decision comes from `X.shape` alone, before any validation, scan or copy —
 scikit-learn validates the data itself, and scanning it first made patched fits slower
-than the stock ones they replaced. Input with no shape before validation (a list) needs
-the size decision made again once it has one. The three 0.1.0 estimators implement this
-ordering in their own `fit` rather than through the `crossover=`/`data_check=` keywords,
-which a new estimator should use.
+than the stock ones they replaced. Input with no shape before validation (a list)
+gets a provisional `"cpu"`, with nothing recorded and no device resolved, and the fit
+decides again once validation has given it a shape. The three 0.1.0 estimators all
+decide through these keywords. `SVC`'s data-dependent limits need the validated array
+and labels, so it checks them after its second decision rather than in `data_check`, and
+routes a refusal through `_handle_capability_error` by hand.
 
-`_select_backend` may run several times in one fit; it only *stages* its decision.
-`_set_backend(backend)`, called exactly once at the end of every successful fit, is the
-single commit point: it records the one fit event, with its warning if it is a fallback,
-and keeps it on the estimator as `fit_event_`. A fit that raises before it leaves the
-estimator unfitted, and inference then raises `NotFittedError`.
+Each decision is recorded when it is made, and a capability fallback warns there, before
+scikit-learn does any of the work, so an `"error"` warnings filter fails fast.
+`_select_backend` may run more than once in one fit: a later decision takes the earlier
+one's place in the record, and so does what the work found (`_amend_fit_event`, how a
+solver stopped), so one fit is still one event. `_set_backend(backend)`, called exactly
+once at the end of every successful fit, is the commit point: it sets
+`execution_backend_` and keeps the fit's event on the estimator as `fit_event_`. A fit
+that raises after deciding leaves its decision on the record, once, and the estimator
+unfitted; inference then raises `NotFittedError`.
 
 And the shape of every inference method:
 

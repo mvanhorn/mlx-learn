@@ -78,7 +78,10 @@ SVC()                           # still the stock class
 
 That is Python name binding, not a bug in mlxlearn. **The supported pattern is patch-first.**
 `patch_sklearn()` is idempotent, and `unpatch_sklearn()` restores every scikit-learn module
-attribute mlxlearn changed.
+attribute mlxlearn changed. It does not rewrite containers that a scikit-learn module
+first imported while patched filled with classes, such as the tables of scikit-learn's
+test instance generator: import `sklearn.utils.estimator_checks` before patching if you
+will run scikit-learn's estimator checks after unpatching.
 
 Only the public names are patched. scikit-learn's own users of them — `DBSCAN`, `OPTICS`,
 `TSNE`, `Isomap`, `mutual_info_classif`, `StackingClassifier` and the like — keep the stock
@@ -98,7 +101,7 @@ parameter, a value float32 cannot hold), never to hide a bug:
 | Capability mismatch | `CapabilityError`: `UnsupportedParameterError`, `UnsupportedInputError` or `SparseInputError` | falls back, warns once per class and reason, records diagnostics |
 | Problem below the measured crossover | runs on MLX's CPU device | dispatches to scikit-learn |
 | Invalid user input | scikit-learn's validation error, or `InvalidInputError` where mlxlearn detects it itself | the same, unmasked |
-| `device="gpu"` with no usable GPU | `DeviceError` | `DeviceError` |
+| `device="gpu"` with no usable GPU, on a problem above the crossover | `DeviceError` | `DeviceError` |
 | Unexpected MLX runtime failure | `BackendExecutionError` | **`BackendExecutionError`** — never silently rerun on scikit-learn |
 
 Every capability, device and backend error mlxlearn raises is an `MLXLearnError`, and the
@@ -180,7 +183,8 @@ option. Nothing a parent sets at runtime reaches a worker that is already runnin
 those before the workers start. To assert that nothing falls back under `n_jobs`,
 `warnings.filterwarnings("error", category=MLXLearnFallbackWarning)` with
 `error_score="raise"` also works, because scikit-learn forwards warning filters to its
-workers. Diagnostics are per process too: events recorded in a worker stay there, while a
+workers; the warning comes with the decision, so it raises before scikit-learn runs the
+fit. Diagnostics are per process too: events recorded in a worker stay there, while a
 model fitted in one carries its `fit_event_` back.
 
 **What `device` means.** It picks the MLX device for work that dispatch sends to MLX, and

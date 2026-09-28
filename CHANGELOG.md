@@ -110,7 +110,8 @@ come first under **Changed**.
   N iteration(s)"`, so message filters and `pytest.warns(match=...)` written for
   scikit-learn match on the MLX path too.
 - A `ConvergenceWarning` that a warnings filter escalates to an error leaves the estimator
-  unfitted. Before, it stayed fitted and was recorded as a completed fit.
+  unfitted, with no `fit_event_`; the diagnostics record keeps that fit's decision and
+  its stop. Before, it stayed fitted and was recorded as a completed fit.
 - `MLXLEARN_FORCE_BACKEND=mlx` on a host without a usable GPU fits on MLX's CPU, as the
   neighbor estimators and `SVC` do. Before, it raised a `DeviceError` claiming
   `device="gpu"` had been requested. An explicit `device="gpu"` still raises.
@@ -203,15 +204,21 @@ come first under **Changed**.
 - Diagnostics record exactly one event per fit, matching `execution_backend_`: the
   phantom `fit -> mlx` event on below-crossover fits is gone, and patched sub-crossover
   and `tree-wins` fits record one event instead of two; a `LogisticRegression` fit that
-  stops without converging records its stop on that event (see **Added**). One public
-  inference call records one event, named after the method called — `predict`,
-  `predict_proba`, `predict_log_proba`, and scikit-learn's inherited `score`,
+  stops without converging records its stop on that event (see **Added**). The event is
+  recorded when the fit decides, and a later decision in the same fit takes its place: a
+  fit that fails after deciding is on the record once — `get_last_backend_event()`
+  describes it, not an older call — and leaves the estimator unfitted. A patched
+  estimator's fallback warning comes with the decision, before scikit-learn does the
+  work. One public inference call records one event, named after the method called —
+  `predict`, `predict_proba`, `predict_log_proba`, and scikit-learn's inherited `score`,
   `kneighbors_graph` and `radius_neighbors_graph` included, which were recorded under the
-  inner method's name — whichever backend fitted the model; a patched
-  `SVC(probability=True)`, always fitted by scikit-learn, used to record none for
-  `predict_proba` and `predict_log_proba`. A patched neighbor estimator's sparse-query
-  fallback is that call's one event. A fit forced to scikit-learn with
-  `MLXLEARN_FORCE_BACKEND=sklearn` is recorded with `fallback=True`.
+  inner method's name — whichever backend fitted the model, through one mechanism shared
+  by every estimator; a patched `SVC(probability=True)`, always fitted by scikit-learn,
+  used to record none for `predict_proba` and `predict_log_proba`. A call on one
+  estimator made from inside another's, such as a `weights=` callable that queries a
+  second model, records its own. A patched neighbor estimator's sparse-query fallback is
+  that call's one event. A fit forced to scikit-learn with `MLXLEARN_FORCE_BACKEND=sklearn`
+  is recorded with `fallback=True`.
 - A refit that falls back to scikit-learn, or fails, no longer keeps the previous fit's
   MLX state — the neighbor index and its training copy, `SVC`'s pair weights and
   device-resident support vectors — alive in memory and in pickles.
@@ -233,9 +240,8 @@ come first under **Changed**.
 - Layer 1 estimators no longer advertise `array_api_support`. Under
   `array_api_dispatch=True`, patched `LogisticRegression` hands the fit to scikit-learn on
   scikit-learn 1.9, where the stock class advertises array-API support.
-- Two internal helpers: `as_float32(copy=True)` returned an alias for `np.matrix`,
-  `np.memmap`, pandas and `__array__` inputs, and `class_weight_vector` treated weights
-  merely close to 1 as unweighted.
+- An internal helper, `as_float32(copy=True)`, returned an alias for `np.matrix`,
+  `np.memmap`, pandas and `__array__` inputs.
 
 #### Runtime: configuration, devices, diagnostics
 
@@ -252,9 +258,15 @@ come first under **Changed**.
 - In a process forked after MLX or scikit-learn was loaded, mlxlearn raises `DeviceError`
   (Layer 2 falls back, reason `"forked-process"`) instead of the child crashing with
   SIGSEGV.
-- Fallback warnings point at the caller's line, so module-based warning filters match. A
-  warning hidden by an `"ignore"` filter no longer uses up its once-per-reason slot, and an
-  `"error"` filter raises on every fallback.
+- Fallback warnings point at the caller's line, so module-based warning filters match —
+  on scikit-learn 1.9 a patched `LogisticRegression`'s too, rather than scikit-learn's
+  callback decorator. A warning hidden by an `"ignore"` filter no longer uses up its
+  once-per-reason slot, and an `"error"` filter raises on every fallback.
+- With `device="gpu"` on a host with no usable GPU, a directly imported `SVC` raised
+  `DeviceError` on problems below its crossover, and on every `kernel="linear"` fit, even
+  though it runs those on MLX's CPU. Every estimator did the same for input with no shape
+  before validation, such as a list. The configured device no longer overrides size
+  dispatch anywhere, as documented.
 - `mlx_guard` reports MLX's own `ValueError`/`TypeError` as `BackendExecutionError`, and
   describes Metal allocation failures as memory limits. The doubled period in its message
   is gone.
@@ -281,7 +293,11 @@ come first under **Changed**.
   needs float64-exact k-th distances. `patch_sklearn()` now imports those modules before
   rebinding.
 - `unpatch_sklearn()` also restores any `sklearn.*` module attribute still bound to an
-  mlxlearn class, so scikit-learn modules first imported while patched are restored too.
+  mlxlearn class, so the module attributes of scikit-learn modules first imported while
+  patched are restored too. Containers such a module filled with classes as it was
+  imported are not, such as the tables of scikit-learn's test instance generator: import
+  `sklearn.utils.estimator_checks` before patching to run the estimator checks after
+  unpatching.
 - `patch_sklearn()` and `unpatch_sklearn()` complete under warnings-as-errors. The tamper
   warning is issued after every estimator has been handled, and it no longer leaves later
   estimators patched, or a stale entry behind that makes every retry fail.
@@ -293,6 +309,9 @@ come first under **Changed**.
   longer records its own class as the "original"; unpatching restores the stock class.
 - `help()` and IDE documentation for patched classes show the full parameter
   documentation again, with the patched-variant note. Before, only the note was shown.
+  The note no longer calls a problem below the crossover a capability mismatch: the
+  patched class hands it to scikit-learn by design, and the directly imported class runs
+  it on MLX.
 
 #### Tooling, CI and benchmarks
 
@@ -364,6 +383,9 @@ come first under **Changed**.
   sub-crossover fit whose only mismatch is data-dependent — values past 3.4e38, or for
   `LogisticRegression` a multi-label `y` or negative weights — is recorded as
   `"below-crossover"` and no longer raises under `fallback_policy="raise"`.
+  `MLXLEARN_FORCE_BACKEND=sklearn` outranks those checks too, in every estimator: a forced
+  patched fit is recorded as `"forced"`. The three estimators decide through one shared
+  dispatch rather than their own copies of its order.
 - **`set_config` is process-wide** and `config_context` is context-local (see **Fixed**).
 - Patched `SVC` routes one-vs-one problems with many small classes to scikit-learn: the
   mean pair's work, `(2n/K) · n_features`, must also clear a new private
@@ -401,8 +423,7 @@ come first under **Changed**.
   behavior is unchanged.
 - `import mlxlearn; mlxlearn.svm.SVC` works: the estimator subpackages load lazily on first
   access, and `import mlxlearn` still imports neither scikit-learn nor MLX.
-- An `mx.array` converted to NumPy through mlxlearn's array helpers is a read-only view,
-  and `check_finite_float32` now actually checks float32 data after a cast.
+- An `mx.array` converted to NumPy through mlxlearn's array helpers is a read-only view.
 
 #### Memory
 
@@ -467,9 +488,9 @@ come first under **Changed**.
 - [`docs/support_matrix.md`](docs/support_matrix.md) lists what each estimator falls back
   for, which problems patched dispatch hands to scikit-learn by size, and the deliberate
   differences from scikit-learn.
-- [`docs/development.md`](docs/development.md) documents the fit pattern, the staged fit
-  event, and the rules against unevaluated `mx.array` state and plain `ValueError`s inside
-  `mlx_guard`.
+- [`docs/development.md`](docs/development.md) documents the fit pattern, how a fit's
+  decisions become its one event, and the rules against unevaluated `mx.array` state and
+  plain `ValueError`s inside `mlx_guard`.
 
 ### Added
 
@@ -515,10 +536,9 @@ come first under **Changed**.
 - Private tuning knobs `knn_tree_density`, `svc_min_pair_work` and
   `mlx_cache_release_fraction`, each with its `MLXLEARN_*` variable.
 - Internal validation and array helpers: `validate_float32_input`,
-  `require_nonnegative_weights`, `check_sample_weight(allow_negative=...)`,
-  `finite_range` and `ValueRange`, and `check_squared_float32_range`, a guard for data
-  whose squares overflow or underflow float32 (reasons `"float32-overflow"` and
-  `"float32-underflow"`).
+  `require_nonnegative_weights`, `finite_range` and `ValueRange`, and
+  `check_squared_float32_range`, a guard for data whose squares overflow or underflow
+  float32 (reasons `"float32-overflow"` and `"float32-underflow"`).
 - Tests:
   - direct unit tests for L-BFGS, the SVM kernels (against `sklearn.metrics.pairwise`) and
     the SMO solver (against LIBSVM's dual objective and an independent KKT check);
@@ -542,7 +562,10 @@ come first under **Changed**.
 - A minimum-versions CI leg that installs every declared floor exactly, a weekly job
   against upstream pre-releases, and Dependabot configuration.
 - The `layering` compliance gate: no scikit-learn, user-configuration or estimator imports
-  in `_solvers`/`_kernels`, and no global RNG seeding anywhere.
+  in `_solvers`/`_kernels`, and no global RNG seeding anywhere. The kernels and the
+  neighbor index read no configuration indirectly either: the estimator resolves the MLX
+  device, a GPU-fitted model's on a GPU-less host included, and passes it in (an internal
+  `device=` keyword).
 - `tools/check_environment.py`, which fails a CI job whose versions or device are not what
   it claims.
 - The sdist carries the test suite, `docs/`, `CHANGELOG.md` and `ACKNOWLEDGMENTS.md`.
@@ -561,6 +584,8 @@ come first under **Changed**.
 - The unused `NotSupportedByBackend` alias in `mlxlearn.exceptions`.
   `MLXLearnPerformanceWarning` and `UnsupportedEstimatorStateError` stay, documented as
   reserved: nothing in 0.1.x emits or raises them.
+- The internal helpers `check_finite_float32` and `class_weight_vector`, which nothing
+  called any more.
 - The benchmark harness's cold-start measurement, which 0.1.0a1 documented
   ("cold-start / fit / predict reported separately") but never implemented.
 - `wheel` from the build-system requirements, and the `MLXLEARN_CI` variable from CI,
