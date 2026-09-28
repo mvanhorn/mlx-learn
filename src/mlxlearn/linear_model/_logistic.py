@@ -749,40 +749,40 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         """
         if solution.converged:
             return
-        name = type(self).__name__
         floor = solution.stop_reason == "float32-floor" and solution.at_resolution_floor
         state = (
-            f"after {solution.n_iter} iterations; max|gradient| is "
-            f"{solution.grad_max_abs:.3g} against tol={self.tol:g}"
+            f"after {solution.n_iter} iteration(s) ({solution.stop_reason}): max|gradient| "
+            f"is {solution.grad_max_abs:.3g} against tol={self.tol:g}"
         )
+        # Every warning starts the way scikit-learn's lbfgs warning does, so a filter
+        # or a pytest.warns(match=...) written against "lbfgs failed to converge"
+        # still matches when patch_sklearn() sends the fit to MLX.
         if floor:
             detail = (
-                f"{name} ran to the float32 floor {state}, below the ~1e-6 x "
+                f"lbfgs ran to the float32 floor {state}, below the ~1e-6 x "
                 f"{solution.initial_grad_max_abs:.3g} that float32 resolves "
                 "(docs/fp32_policy.md §2.3)."
             )
         elif solution.stop_reason == "max_iter":
             detail = (
-                f"{name} failed to converge (max_iter) {state}. Increase max_iter, "
-                "scale the data, or relax tol."
+                f"lbfgs failed to converge {state}. Increase max_iter, scale the data, "
+                "or relax tol."
             )
         elif solution.stop_reason == "float32-floor":
             detail = (
-                f"{name} failed to converge (float32-floor) {state}: the objective "
-                "stopped resolving progress in float32 before the gradient reached "
-                "tol. Scale the data, or relax tol."
+                f"lbfgs failed to converge {state}; the objective stopped resolving "
+                "progress in float32 before the gradient reached tol. Scale the data, "
+                "or relax tol."
             )
         elif solution.stop_reason == "line-search-failure":
             detail = (
-                f"{name} failed to converge (line-search-failure) {state}: no step "
-                "along the search direction decreased the objective. Scale the data, "
-                "or relax tol."
+                f"lbfgs failed to converge {state}; no step along the search direction "
+                "decreased the objective. Scale the data, or relax tol."
             )
         else:
             detail = (
-                f"{name} failed to converge ({solution.stop_reason}) {state}. The "
-                "objective is not finite at the starting point; check the data for "
-                "extreme values, or scale it."
+                f"lbfgs failed to converge {state}. The objective is not finite at the "
+                "starting point; check the data for extreme values, or scale it."
             )
 
         self._backend_event(

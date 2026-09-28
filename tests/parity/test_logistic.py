@@ -541,6 +541,26 @@ def test_non_convergence_warns_and_is_recorded():
     assert events[0].extra["n_iter"] == 1
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_the_convergence_warning_starts_as_scikit_learns_does(backend):
+    """Filters on "lbfgs failed to converge" — scikit-learn's own tests use them —
+    must match wherever the fit ran. The message began "LogisticRegression failed
+    to converge", so under patch_sklearn() such a filter silenced the small fits it
+    handed to scikit-learn and none of the large ones it sent to MLX.
+    """
+    X, y = _data()
+    prefix = r"^lbfgs failed to converge after 1 iteration\(s\) \("
+    with pytest.warns(ConvergenceWarning, match=prefix):
+        SkLogisticRegression(max_iter=1).fit(X, y)
+    with pytest.warns(ConvergenceWarning, match=prefix):
+        _fit(backend, LogisticRegression(max_iter=1), X, y)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        warnings.filterwarnings("ignore", message="lbfgs failed to converge")
+        _fit(backend, LogisticRegression(max_iter=1), X, y)
+
+
 def test_objective_is_no_worse_at_an_equal_truncated_budget():
     """The fair comparison when neither solver has converged.
 
