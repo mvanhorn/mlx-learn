@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import numpy as np
 from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
 from .._common.arrays import NUMPY_FLOAT
-from .._common.validation import check_is_fitted, is_sparse, validate_float32_input
-from ._base import MLXNeighborsMixin, _reject_string_data, _safe_shape
+from .._common.validation import _is_pandas, check_float32_range, check_is_fitted, is_sparse
+from ._base import (
+    MLXNeighborsMixin,
+    _reject_string_data,
+    _safe_shape,
+    _sparse_query_for_sklearn,
+)
 
 __all__ = ["NearestNeighbors"]
 
@@ -57,11 +63,17 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
     accelerated. mlxlearn keeps the fitted state scikit-learn's brute-force
     implementation reads, so they run scikit-learn's own code on the CPU — at
     stock speed, because the query is handed over in float32 to match the float32
-    training copy. Distances are computed against that copy, so they carry the
-    float32 rounding of the training data that ``docs/fp32_policy.md`` §3.4
-    describes, exactly as :meth:`kneighbors` does. Stated rather than left for a
-    user to discover from a profiler; the ancestor inherited the same method and
-    never mentioned it.
+    training copy. That copy is the training data rounded to float32 as given:
+    unlike :meth:`kneighbors`, these methods neither translate float64 input by
+    its mean nor keep its float32 residual, so their distances are rounded at the
+    data's own magnitude (``docs/fp32_policy.md`` §3.4). On data with a large
+    constant offset — Unix timestamps round to 128-second steps, UTM northings to
+    half-metre ones — that can change which points fall inside the radius;
+    subtract the offset before fitting, or use stock scikit-learn. Being
+    scikit-learn's code, they also take a sparse query in both layers, as
+    scikit-learn does, recorded as an ordinary inference call rather than a
+    fallback. Stated rather than left for a user to discover from a profiler; the
+    ancestor inherited the same methods and never mentioned it.
 
     On low-dimensional data scikit-learn's ``algorithm="auto"`` builds a KD-tree,
     which beats any brute-force scan once the training set is large for its
@@ -109,18 +121,22 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
             with self._inference("radius_neighbors"):
                 return super().radius_neighbors(X, radius, return_distance, sort_results)
 
-        if X is not None and not is_sparse(X):
+        if X is not None and is_sparse(X):
+            X = _sparse_query_for_sklearn(X, self._fit_X.dtype)
+        elif X is not None:
             # The training copy is float32. scikit-learn validates the query
             # without a dtype, so a float64 query stayed float64, its Cython
             # radius search requires both sides to share a dtype, and it fell to
             # a chunked pairwise-distance path about 4.5x slower than stock. The
             # range check runs before that cast, so a float64 value float32 cannot
             # hold is an UnsupportedInputError rather than scikit-learn's generic
-            # "contains infinity" about a value the caller never wrote.
-            _reject_string_data(X)
-            X = validate_float32_input(
-                self, X, operation="radius_neighbors", dtype=NUMPY_FLOAT, order="C"
-            )
+            # "contains infinity" about a value the caller never wrote. The cast
+            # keeps a DataFrame a DataFrame: scikit-learn validates the query
+            # itself, and a bare array made it warn that a correctly named query
+            # had no feature names.
+            X = _reject_string_data(X)
+            check_float32_range(X, fallback_advice=False)
+            X = _as_float32_query(X)
         shape = self._fit_X.shape if X is None else _safe_shape(X)
         # scikit-learn's host code on the fitted state: no MLX device is involved,
         # so a GPU-fitted model needs none to answer this.
@@ -128,3 +144,28 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
             "radius_neighbors", shape=shape, host=True, compute="scikit-learn"
         ):
             return super().radius_neighbors(X, radius, return_distance, sort_results)
+
+
+def _as_float32_query(X):
+    """A dense query cast to float32 for scikit-learn's radius search, container kept.
+
+    A pandas frame of NumPy numeric columns is cast with ``astype``, which keeps
+    its column names for scikit-learn's feature-name check. A frame from another
+    library, nullable or object columns, and complex data are handed over as
+    given: scikit-learn validates them in its own words and answers correctly,
+    only off the matched-dtype fast path.
+    """
+    if _is_pandas(X):
+        numeric = getattr(X, "ndim", 0) == 2 and all(
+            isinstance(dtype, np.dtype) and dtype.kind in "biuf" for dtype in X.dtypes
+        )
+        return X.astype(NUMPY_FLOAT) if numeric else X
+    if hasattr(X, "columns"):
+        return X  # another library's frame: np.asarray would drop its column names
+    try:
+        array = np.asarray(X)
+    except (TypeError, ValueError):
+        return X  # not an array at all: scikit-learn's validation reports it
+    if array.dtype.kind not in "biuf":
+        return array
+    return array.astype(NUMPY_FLOAT, order="C", copy=False)
