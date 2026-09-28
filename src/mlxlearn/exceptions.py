@@ -9,7 +9,7 @@ a transparent fall back to stock scikit-learn.
 The distinction that matters is between:
 
 **Capability mismatch** (:class:`UnsupportedParameterError`,
-:class:`UnsupportedInputError`, :class:`UnsupportedEstimatorStateError`)
+:class:`UnsupportedInputError`, :class:`SparseInputError`)
     mlxlearn understood the request and knows it cannot serve it. Falling back to
     scikit-learn produces a correct answer, so patched mode does exactly that.
 
@@ -22,9 +22,17 @@ The distinction that matters is between:
 Every class inherits from :class:`MLXLearnError` so callers can catch the family,
 and the input-validation classes additionally inherit from :class:`ValueError` so
 that code written against scikit-learn's error contract keeps working.
+
+Every class also survives :mod:`pickle`. That is not a nicety: joblib sends a
+worker's exception back to the parent by pickling it, so an error that cannot be
+unpickled turns ``cross_val_score(..., n_jobs=2)`` into an opaque
+``BrokenProcessPool`` with the precise message gone from the traceback.
 """
 
 from __future__ import annotations
+
+import pickle
+from typing import Any
 
 __all__ = [
     "MLXLearnError",
@@ -35,15 +43,45 @@ __all__ = [
     "UnsupportedEstimatorStateError",
     "DeviceError",
     "BackendExecutionError",
-    "NotSupportedByBackend",
     "MLXLearnFallbackWarning",
     "MLXLearnPerformanceWarning",
     "MLXLearnPatchWarning",
 ]
 
 
+def _rebuild_exception(cls: type, args: tuple) -> BaseException:
+    """Recreate an mlxlearn exception on unpickling, without calling ``__init__``.
+
+    ``BaseException.__new__`` restores ``args``; the attributes follow from the
+    pickled ``__dict__``. Going through ``__init__`` instead — the default — calls
+    ``cls(*args)``, which fails for any class with a required keyword-only
+    argument, such as :class:`UnsupportedParameterError`'s ``parameter``.
+    """
+    return cls.__new__(cls, *args)
+
+
+def _portable_state(state: dict[str, Any]) -> dict[str, Any]:
+    """``state`` with every value that cannot be pickled replaced by its ``repr``.
+
+    ``UnsupportedParameterError.value`` can be whatever the user passed — a lambda
+    as ``weights`` or ``kernel``, say. Losing the object is fine; losing the whole
+    exception to a ``PicklingError`` in a worker process is not.
+    """
+    portable = {}
+    for key, value in state.items():
+        try:
+            pickle.dumps(value)
+        except (pickle.PicklingError, TypeError, AttributeError):
+            value = repr(value)
+        portable[key] = value
+    return portable
+
+
 class MLXLearnError(Exception):
     """Base class for every error mlxlearn raises on purpose."""
+
+    def __reduce__(self):
+        return (_rebuild_exception, (type(self), self.args), _portable_state(self.__dict__))
 
 
 class CapabilityError(MLXLearnError):
@@ -107,8 +145,13 @@ class SparseInputError(CapabilityError, TypeError):
 class UnsupportedEstimatorStateError(CapabilityError, ValueError):
     """The fitted state cannot be represented or reused on the MLX path.
 
-    Raised when an estimator fitted elsewhere is handed to an MLX inference path
-    with state it cannot interpret.
+    For an estimator fitted elsewhere and handed to an MLX inference path with
+    state it cannot interpret.
+
+    Reserved: nothing in 0.1.x raises it, because inference never re-decides the
+    backend — a model fitted on scikit-learn predicts on scikit-learn. It is part of
+    the hierarchy now so that the first path to need it does not have to extend
+    the public API to say so.
     """
 
     def __init__(self, message: str, *, reason: str = "unsupported-state") -> None:
@@ -137,10 +180,6 @@ class BackendExecutionError(MLXLearnError, RuntimeError):
         self.original = original
 
 
-#: Historical alias. Some early notes used this name for the capability family.
-NotSupportedByBackend = CapabilityError
-
-
 class MLXLearnFallbackWarning(UserWarning):
     """Patched mode handed a call to stock scikit-learn.
 
@@ -156,6 +195,11 @@ class MLXLearnPerformanceWarning(UserWarning):
 
     Never emitted for the routine "problem is small, scikit-learn is faster here"
     dispatch, which is the system working as designed.
+
+    Reserved: nothing in 0.1.x emits it. The paths that are not accelerated — such
+    as ``radius_neighbors`` — are documented rather than warned about on every call,
+    and are no slower than stock scikit-learn. The category exists so that warning
+    filters written against it keep working once a genuinely slow path does warn.
     """
 
 
