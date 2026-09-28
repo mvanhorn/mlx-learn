@@ -15,11 +15,15 @@ without one, a plain `pytest` skips those tests, each with a reason.
 ### Processes and `fork`
 
 MLX is not fork-safe. Once a process has loaded MLX or scikit-learn's estimators — the
-first `fit` or `predict`, or `patch_sklearn()` — a child created by `fork()` without `exec`
-crashes on its first MLX call, on the CPU device too. Supported: the `spawn` start method
-(the macOS default), `forkserver`, and scikit-learn's `n_jobs` (joblib's `loky` workers are
-spawned). Not supported: an explicit `fork` context, `os.fork()`, Celery's prefork pool,
-and gunicorn `--preload` of an app that has already used mlxlearn.
+first `fit` or `predict`, or `patch_sklearn()` — MLX in a child created by `fork()`
+without `exec` crashes on its first operation, on the CPU device too. mlxlearn detects
+such a child and refuses instead: a directly imported estimator raises `DeviceError`, and
+a patched one hands the fit to scikit-learn (diagnostics reason `"forked-process"`). It
+cannot detect every unsafe case — numerical NumPy work in the parent can have the same
+effect — so the rule stands. Supported: the `spawn` start method (the macOS default),
+`forkserver`, and scikit-learn's `n_jobs` (joblib's `loky` workers are spawned). Not
+supported: an explicit `fork` context, `os.fork()`, Celery's prefork pool, and gunicorn
+`--preload` of an app that has already used mlxlearn.
 
 ## Python and scikit-learn
 
@@ -58,17 +62,21 @@ optimistic `>=`.
 
 Deprecations land as **string sentinel defaults**, which is a trap for any code that reads
 the attribute directly — a truthy string arrives where a bool was expected, or an unknown
-value where one of a fixed set was. Three of these fall inside the declared range:
+value where one of a fixed set was. Three of these fall inside the declared range, and
+they do not all land in the same release:
 
-| Parameter | 1.7 | 1.9 | How mlxlearn handles it |
-|---|---|---|---|
-| `LogisticRegression.multi_class` | present, deprecated | **removed** | read via `hasattr`; checked only where it exists |
-| `LogisticRegression.penalty` | real, default `"l2"` | sentinel `"deprecated"`; the penalty comes from `l1_ratio`, and `C=inf` means unpenalized | `_effective_penalty()` resolves the same way the installed version does, and capability is decided on the resolved value |
-| `SVC.probability` | real, default `False` | sentinel `"deprecated"` | the sentinel is treated as `False`; an explicit `True` is still refused |
+| Parameter | 1.7 | 1.8 | 1.9 | How mlxlearn handles it |
+|---|---|---|---|---|
+| `LogisticRegression.multi_class` | present, default sentinel `"deprecated"` | **removed** | removed | read via `hasattr`; checked only where it exists |
+| `LogisticRegression.penalty` | real, default `"l2"`; `l1_ratio` defaults to `None` | sentinel `"deprecated"`; the penalty comes from `l1_ratio` (default `0.0`), and `C=inf` means unpenalized | as 1.8 | `_effective_penalty()` resolves the same way the installed version does, and capability is decided on the resolved value |
+| `SVC.probability` | real, default `False` | real, default `False` | sentinel `"deprecated"` | the sentinel is treated as `False`; an explicit `True` is still refused |
 
-All three broke on 1.9 and were found by installing the built wheel into a clean
-environment, which resolved 1.9 while development ran on 1.7. `tests/unit/test_sklearn_version_compat.py`
-now covers them against whichever version is installed rather than pinning the problem away.
+All three broke on 1.9 — two of them had already changed in 1.8 — and were found by
+installing the built wheel into a clean environment, which resolved 1.9 while development
+ran on 1.7. `tests/unit/test_sklearn_version_compat.py` now covers them against whichever
+version is installed rather than pinning the problem away. On the MLX path mlxlearn emits
+the same fit-time `FutureWarning`s scikit-learn's own `fit` would for these parameters, so
+the advance notice of a removal does not depend on which path ran.
 
 ## MLX
 
@@ -90,17 +98,84 @@ precision on 1.x only. Mixed-precision arithmetic in the CPU paths states its dt
 
 ## Estimators
 
+"Falls back for" is what a directly imported (Layer 1) class refuses with a precise
+`CapabilityError`, and what a patched (Layer 2) class hands to scikit-learn — recorded in
+diagnostics, warned about once, and subject to `fallback_policy`. Every estimator also
+does this for sparse input (a SciPy sparse matrix, or a pandas frame whose every column is
+sparse) and for float64 values beyond float32's range
+([`fp32_policy.md`](fp32_policy.md) §1).
+
 | Estimator | Since | Accelerated path | Falls back for |
 |---|---|---|---|
-| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force Euclidean | non-Euclidean metrics, `kd_tree`/`ball_tree`, `metric_params`, sparse |
-| `neighbors.KNeighborsClassifier` | 0.1.0 | as above | as above, plus callable `weights`, multi-output `y` |
-| `neighbors.KNeighborsRegressor` | 0.1.0 | as above | as above |
-| `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
-| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
+| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force search, `metric` in `euclidean`, `l2`, `sqeuclidean`, or `minkowski` at `p=2`; `metric_params={"p": ...}` resolved as scikit-learn resolves it | any other metric, including `minkowski` at `p != 2`; `algorithm="kd_tree"`/`"ball_tree"`; `metric_params` other than Minkowski's `p` (a weight vector `w`, another metric's parameters); a prebuilt `KDTree`, `BallTree` or fitted estimator passed as `X` |
+| `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output | as above, plus callable `weights` |
+| `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output | as above, plus callable `weights` |
+| `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized, binary and multinomial; scikit-learn 1.9 callbacks (`set_callbacks`) are driven on this path | `l1`/`elasticnet` however spelled; non-`lbfgs` solvers; `dual=True`; `warm_start=True`; `multi_class` other than `"deprecated"`/`"auto"` (1.7 only); `intercept_scaling != 1` with `fit_intercept=True`; multi-label or multi-output `y`; negative `sample_weight`; under `patch_sklearn()` on scikit-learn 1.9, `array_api_dispatch=True` |
+| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32 |
 
-`radius_neighbors` and `radius_neighbors_graph` are inherited from scikit-learn and run
-unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
-for a profiler to reveal.
+A few inputs that look like capability questions are served directly. `SVC` treats a
+negative `sample_weight` as a zero weight, which is exactly what LIBSVM does, and a
+sample with no effective weight is dropped as LIBSVM drops it. `SVC(kernel="linear",
+gamma=0.0)` fits, since the linear kernel never reads `gamma`.
+
+**Queries are not re-dispatched.** Inference runs on the backend `fit` chose (the sticky
+backend in the README). A query float32 cannot represent is therefore an error at
+inference in both layers, not a fallback — for the neighbor estimators and `SVC`, which
+evaluate queries in float32; `LogisticRegression` predicts with scikit-learn's float64
+code. The one exception: under `patch_sklearn()`, a sparse query to a neighbor estimator
+fitted on MLX is answered by scikit-learn's brute-force search, which reads the fitted
+state directly; it is recorded as a fallback and honors `fallback_policy`. Directly
+imported, it raises `SparseInputError`.
+
+`radius_neighbors` and `radius_neighbors_graph` are not accelerated. On an MLX-fitted
+`NearestNeighbors` they run scikit-learn's own code at stock speed — a float32 query
+against the float32 training copy — so their distances carry the float32 rounding of the
+training data ([`fp32_policy.md`](fp32_policy.md) §3.4). Stated here rather than left for
+a profiler to reveal.
+
+### Handed to scikit-learn by size (patched only)
+
+Separately from capability, `patch_sklearn()` hands small problems to scikit-learn on
+purpose, because scikit-learn is faster there. These are decided from the input's shape
+before any scan or copy, recorded with reason `"below-crossover"` (or `"tree-wins"`), and
+never warned about. The thresholds are private `Tuning` values, measured in
+[`benchmarks.md`](benchmarks.md) and overridable with `MLXLEARN_*` environment variables.
+
+| Estimator | Goes to scikit-learn when |
+|---|---|
+| neighbor estimators | fewer than `knn_min_train_samples` rows **and** fewer than `knn_min_work` rows × features |
+| neighbor estimators, `algorithm="auto"` | scikit-learn would build a KD-tree (at most 15 features, `n_neighbors < n_samples // 2`, a KD-tree metric) and `n_samples >= knn_tree_density · 2**n_features` — dense enough for its dimension that the tree beats any brute-force scan |
+| `LogisticRegression` | fewer than `logreg_min_samples` rows **or** fewer than `logreg_min_work` rows × features × weight vectors (one per class for multinomial) |
+| `SVC` | `kernel="linear"`, at any size; fewer than `svc_min_samples` rows **or** fewer than `svc_min_work` rows × features; or, with more than two classes, a mean one-vs-one pair `(2n/K)·n_features` below `svc_min_pair_work` |
+
+`device` does not change any of this: `device="cpu"` selects MLX's CPU device for work
+that is sent to MLX, not scikit-learn. A directly imported class never dispatches to
+scikit-learn; below its crossover it runs on MLX's CPU device instead, and a directly
+imported neighbor estimator always searches by brute force, so on low-dimensional data
+that is dense for its dimension stock scikit-learn's KD-tree is the faster choice.
+`MLXLEARN_FORCE_BACKEND` outranks every size rule; it is for tests and bisection.
+
+### Deliberate differences from scikit-learn
+
+- **`SVC(max_iter=-1)`** resolves to upstream LIBSVM's budget, `max(10⁷, 100·n)` per
+  one-vs-one subproblem of `n` rows, rather than scikit-learn's unlimited. mlxlearn's SMO
+  iterates in Python, and uncapped a fit scikit-learn finishes in a minute could run for
+  hours. A fit that stops on the budget sets `fit_status_=1` and names the budget in its
+  `ConvergenceWarning`.
+- **`SVC.support_` with zero or negative weights** indexes the training data the caller
+  passed, so `support_vectors_ == X[support_]` always holds. scikit-learn indexes the
+  filtered problem instead.
+- **`SVC(cache_size=...)`** can change the last bits of a fit on MLX's CPU device, where a
+  materialized Gram and on-demand rows accumulate in different orders (about 1e-3 in the
+  decision values). On the GPU they are bit-identical (measured). See
+  [`fp32_policy.md`](fp32_policy.md) §2.4.
+- **Neighbor ties** are decided by `(distance, training index)` over the whole training
+  set, where scikit-learn's order among exactly equal distances is undefined
+  ([`fp32_policy.md`](fp32_policy.md) §3.1).
+- **Fitted attributes are float64** on the MLX path, even for float32 input
+  ([`fp32_policy.md`](fp32_policy.md) §1 and §4, Rule B).
+- **`n_jobs`, `leaf_size` and `verbose`** are accepted for signature compatibility and do
+  nothing on the MLX path.
 
 ### Not shipped, and why
 

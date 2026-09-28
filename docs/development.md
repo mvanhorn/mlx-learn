@@ -50,16 +50,53 @@ and `super().fit(...)` becomes an exact scikit-learn fallback with no extra mach
 The shape of a `fit`:
 
 ```python
+class MLXThingMixin(BackendMixin):
+    # Fitted attributes only the MLX path creates. _clear_backend deletes them, so a
+    # refit that ends on scikit-learn (or fails) does not keep the old device state
+    # alive in memory and in pickles.
+    _mlxlearn_mlx_attrs = ("_device_state_",)
+
+
 def fit(self, X, y):
-    if self._fit_something(X, y) == "sklearn":   # only reachable from Layer 2
+    self._validate_params()   # scikit-learn's constraints: overriding fit bypasses its decorator
+    self._clear_backend()     # forget the last fit; the estimator is unfitted until _set_backend
+    backend = self._select_backend(
+        "fit",
+        shape=_safe_shape(X),                          # the raw shape, before any conversion
+        crossover=self._below_crossover,               # (n_samples, n_features) -> (below, detail)
+        capability_check=lambda: self._check_params(X),   # parameters and sparsity: cheap
+        data_check=lambda: check_float32_range(X),        # O(n·d) scans: skipped on a handoff
+    )
+    if backend == "sklearn":                           # only reachable from Layer 2
         super().fit(X, y)
         self._set_backend("sklearn")
         return self
-    ...                                          # MLX path
+    X, y = validate_data(self, X, y, ...)
+    with mlx_guard(type(self).__name__, "fit"):
+        state = solve(X, y, ...)                       # locals only, evaluated before return
+    self.coef_ = state.coef                            # publish
+    self._set_backend(backend)                         # the commit point: the one fit event
     return self
 ```
 
-and of every inference method:
+`_select_backend` decides in a fixed order: the capability check, then
+`MLXLEARN_FORCE_BACKEND`, then size, then the data checks, then the device. The order is
+the point. "We cannot do this at all" outranks "this is small", so a capability mismatch
+is always reported as one. And when patched mode is about to hand a fit to scikit-learn
+by size, the decision comes from `X.shape` alone, before any validation, scan or copy —
+scikit-learn validates the data itself, and scanning it first made patched fits slower
+than the stock ones they replaced. Input with no shape before validation (a list) needs
+the size decision made again once it has one. The three 0.1.0 estimators implement this
+ordering in their own `fit` rather than through the `crossover=`/`data_check=` keywords,
+which a new estimator should use.
+
+`_select_backend` may run several times in one fit; it only *stages* its decision.
+`_set_backend(backend)`, called exactly once at the end of every successful fit, is the
+single commit point: it records the one fit event, with its warning if it is a fallback,
+and keeps it on the estimator as `fit_event_`. A fit that raises before it leaves the
+estimator unfitted, and inference then raises `NotFittedError`.
+
+And the shape of every inference method:
 
 ```python
 def predict(self, X):
@@ -67,28 +104,48 @@ def predict(self, X):
     if self._fitted_backend("predict") == "sklearn":
         self._note_inference("predict")
         return super().predict(X)
-    ...
+    ...                                                # _note_inference where the work is routed
 ```
+
+`BackendMixin` wraps every public inference method a subclass defines (`predict`,
+`predict_proba`, `decision_function`, `kneighbors`, `score`, …), so one public call
+records one event, named after the method the caller invoked, however many of the others
+it reaches internally.
 
 Inference never re-decides the backend. That is the sticky invariant, and it is what stops
 an MLX-fitted model from wandering into scikit-learn's inference path holding state that
-path cannot read.
+path cannot read. There is one carve-out, and it is Layer 2's: a sparse query to a
+neighbor estimator fitted on MLX is answered by scikit-learn's brute-force search, which
+reads the fitted state the MLX path populates for it (`_fit_X`, `_fit_method="brute"`,
+`effective_metric_`), and is recorded as a fallback. A GPU-fitted model running on MLX's
+CPU in a process without a GPU (`inference_device`) is not a carve-out: it is the same
+code on another MLX device.
 
 Wrap every MLX block in `mlx_guard(...)` so an unexpected failure becomes
 `BackendExecutionError` rather than a silent fallback.
 
 ### The gates, per estimator, before merge
 
-1. `parametrize_with_checks` from scikit-learn, with any xfail justified under a named rule
-   in [`fp32_policy.md`](fp32_policy.md) §4 and listed in `EXPECTED_XFAILS`.
+1. scikit-learn's estimator checks — `check_estimator(on_fail=None)` over both layers, at
+   the default configuration and with the MLX GPU path forced, plus
+   `check_param_validation` — in `tests/test_sklearn_compliance.py`. Any xfail is
+   justified under a named rule in [`fp32_policy.md`](fp32_policy.md) §4 and listed in
+   `EXPECTED_XFAILS`.
 2. `clone`, `get_params`/`set_params` round-trip, `Pipeline`, `GridSearchCV`,
-   cross-validation, `pickle`, `joblib`, refit, `n_features_in_`.
+   cross-validation, `pickle`, `joblib`, refit, `n_features_in_`. `tests/unit/test_gates.py`
+   runs `joblib` (memory-mapped too), process-parallel cross-validation and a `Pipeline`
+   inside `GridSearchCV` for every registered estimator in both layers; the check suite
+   covers clone, parameters, refit and `n_features_in_`, and
+   `tests/unit/test_invariants.py` pickling and fit purity.
 3. Numerical parity against stock scikit-learn at the tolerances in `fp32_policy.md` §3 —
    including the objective value, not only the coefficients. Two correct solvers land in
    different places on an ill-conditioned problem, so a coefficient-only test fails for a
-   correct implementation and passes for a subtly wrong one.
-4. Precise errors on the Layer 1 path; recorded fallbacks on the Layer 2 path.
-5. Sticky-backend tests.
+   correct implementation and passes for a subtly wrong one. `tests/parity/`.
+4. Precise errors on the Layer 1 path; recorded fallbacks on the Layer 2 path — exactly one
+   fit event per fit, matching `execution_backend_`, and one event per public inference
+   call (`tests/unit/test_runtime.py`).
+5. Sticky-backend tests: inference reuses whatever `fit` chose
+   (`tests/unit/test_gates.py`).
 6. A benchmark entry in `benchmarks/run.py` with a measured crossover wired into
    `_common/config.py`'s `Tuning`.
 
@@ -110,6 +167,30 @@ caller's buffer changes its own predictions when the caller mutates their array.
 everything and reran on scikit-learn, so a `ValueError: Converting -1 to uint32 would result
 in overflow` from a padding bug reached users as a slightly slow but correct answer. That
 bug survived for exactly as long as the `except` did.
+
+**No plain `ValueError` or `TypeError` for bad input inside `mlx_guard`.** The guard lets
+only the `MLXLearnError` family, `MemoryError` and escalated warnings through; everything
+else — including the `ValueError`s and `TypeError`s MLX raises for its own shape and
+argument errors — becomes `BackendExecutionError`. A deliberate input error detected
+inside a guarded block is therefore an `InvalidInputError`, which is a `ValueError`, so
+scikit-learn-facing behavior is unchanged. A capability limit discovered there is a
+`CapabilityError` as usual, but `_select_backend` has already returned, so nothing turns
+it into a fallback: find it before, or route it through `_handle_capability_error` by
+hand, as `SVC` does for its data-dependent limits.
+
+**No unevaluated `mx.array` on shared state.** MLX is lazy: an `mx.array` is a graph until
+something evaluates it. One published on an estimator or an index that other threads read
+— a device-resident training copy, a prepared operand — gets evaluated by whichever thread
+touches it first, concurrently with the others. Concurrent first queries on an unpickled
+neighbors model could segfault while two threads built the same device state, and the
+rule has since caught a lazy transpose published on an index. Build device state into
+locals, `mx.eval` it, and publish it with one assignment, under a lock if it is built
+lazily, so a reader sees either nothing or the finished state.
+
+**No data scan before a by-design handoff.** A patched fit headed for scikit-learn on size
+alone must cost what scikit-learn costs. Decide from the shape, and keep the O(n·d)
+capability checks — float32 range, target type, weight signs — in `data_check`, which
+does not run on that path.
 
 **No approximation under a scikit-learn estimator name.** If an estimator cannot implement
 the objective its name promises, it does not ship under that name.
