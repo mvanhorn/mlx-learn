@@ -4,8 +4,14 @@ name: Release
 # repository. Configure the publisher on PyPI for:
 #   owner: tabulai   repository: mlx-learn   workflow: release.yml   environment: pypi
 #
-# The `pypi` environment should require a manual approval, so that a tag push alone
-# cannot publish.
+# Three things stand between a tag and PyPI, and each is enough on its own to stop a
+# bad release:
+#   1. the whole CI workflow, run on the tagged commit;
+#   2. the build job's checks: a pure-Python wheel that installs into a clean
+#      environment and reports exactly the version the tag names;
+#   3. the `pypi` environment, which should require a manual approval and, ideally,
+#      allow deployments from `v*` tags only (both are GitHub settings, not files).
+# Only a tag push can publish. A manual run is a dry run of 1 and 2.
 
 on:
   push:
@@ -16,46 +22,82 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    name: CI on the release commit
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: build distributions
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip build twine
       - run: python -m build
       - run: python -m twine check --strict dist/*
-      - name: Tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Wheel is pure-Python
         run: |
           python - <<'PY'
-          import os, pathlib, re, sys
-          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
-          text = pathlib.Path("pyproject.toml").read_text()
-          version = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
-          if tag != version:
-              sys.exit(f"tag {tag!r} does not match pyproject version {version!r}")
-          print(version)
+          import pathlib
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          name = wheels[0].name
+          assert name.endswith("-py3-none-any.whl"), f"expected a pure-Python wheel, got {name}"
+          print(name)
           PY
-      - uses: actions/upload-artifact@v4
+      - name: Installs clean, and is the version the tag names
+        # Checked against what was built and installed, not against a source file:
+        # the wheel's metadata, the imported package, and the tag must all agree.
+        run: |
+          python -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/pip install --upgrade pip
+          /tmp/wheeltest/bin/pip install dist/*.whl
+          /tmp/wheeltest/bin/python - <<'PY'
+          import os, pathlib, sys
+          from importlib import metadata
+
+          import mlxlearn
+
+          (wheel,) = pathlib.Path("dist").glob("*.whl")
+          built = wheel.name.split("-")[1]
+          installed = metadata.version("mlx-learn")
+          versions = {"wheel filename": built, "wheel metadata": installed,
+                      "mlxlearn.__version__": mlxlearn.__version__}
+          if os.environ.get("GITHUB_REF_TYPE") == "tag":
+              versions["tag"] = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          print(versions)
+          if len(set(versions.values())) != 1:
+              sys.exit(f"version mismatch: {versions}")
+          mlxlearn.patch_sklearn()
+          mlxlearn.unpatch_sklearn()
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dist
+          # Not "dist": the CI workflow called above uploads one of that name into
+          # the same run.
+          name: release-dist
           path: dist/
 
   publish:
     name: publish to PyPI
-    needs: build
+    needs: [ci, build]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/mlx-learn
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: dist
+          name: release-dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # Pinned to a release commit rather than the release/v1 branch its maintainers
+      # suggest: this is the one step holding a publishing credential. Dependabot
+      # proposes the updates.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
