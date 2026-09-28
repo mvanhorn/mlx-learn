@@ -540,12 +540,13 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
 
     **Convergence is reported.** A run that exhausts ``max_iter`` or stalls emits
     :class:`sklearn.exceptions.ConvergenceWarning`, as scikit-learn does, and
-    records the stop in the diagnostics (operation ``"lbfgs"``). The exception is
-    a run that stops because the objective can no longer resolve progress with
-    ``max|gradient|`` already below about 1e-6 of its starting value: that is the
-    float32 floor ``docs/fp32_policy.md`` §2.3 describes, reached rather than
-    missed, so it is recorded without a warning. ``n_iter_`` counts accepted steps,
-    so a problem already optimal at the zero start reports ``0``.
+    records the stop on the fit's diagnostics event: ``fit_event_.extra`` gains
+    ``stop_reason`` and the solver's state. The exception is a run that stops
+    because the objective can no longer resolve progress with ``max|gradient|``
+    already below about 1e-6 of its starting value: that is the float32 floor
+    ``docs/fp32_policy.md`` §2.3 describes, reached rather than missed, so it is
+    recorded without a warning. ``n_iter_`` counts accepted steps, so a problem
+    already optimal at the zero start reports ``0``.
 
     **Callbacks.** On scikit-learn 1.9+, callbacks set with ``set_callbacks`` see
     the same task tree as scikit-learn's lbfgs path: the fit, and one subtask per
@@ -707,7 +708,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self.n_iter_ = np.array([solution.n_iter], dtype=np.int32)
         # Before the commit, so a ConvergenceWarning that a user's "error" filter
         # escalates leaves the fit incomplete, as every fit that raises does.
-        self._report_convergence(solution, backend)
+        self._report_convergence(solution)
         self._set_backend(backend)
 
         if callback_ctx is not None:
@@ -742,12 +743,19 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self._set_backend("sklearn")
         return self
 
-    def _report_convergence(self, solution, backend) -> None:
+    def _report_convergence(self, solution) -> None:
         """Warn about a run that did not converge, and record every such stop.
 
         The ancestor unpacked ``converged`` and discarded it at every call site, so
         a model that stopped at max_iter was indistinguishable from one that
         reached the tolerance.
+
+        The stop is recorded on the fit's own diagnostics event, which
+        :meth:`_set_backend` commits next: its ``detail`` gains the explanation and
+        its ``extra`` the ``stop_reason``, ``n_iter``, ``n_fev``, ``grad_max_abs``,
+        ``tol`` and ``at_resolution_floor``. As an event of its own it broke "one
+        fit, one event": it became ``get_last_backend_event()`` in place of the
+        fit's, and counted as a second piece of work in ``diagnostics_summary()``.
         """
         if solution.converged:
             return
@@ -787,11 +795,11 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                 "starting point; check the data for extreme values, or scale it."
             )
 
-        self._backend_event(
-            "lbfgs",
-            backend,  # type: ignore[arg-type]
-            reason=solution.stop_reason,
-            detail=detail,
+        # The decision _select_backend staged, on every path that reaches the solver.
+        pending = self.__dict__["_mlxlearn_pending_event"]
+        pending["detail"] = f"{pending.get('detail', '')} {detail}".lstrip()
+        pending.update(
+            stop_reason=solution.stop_reason,
             n_iter=solution.n_iter,
             n_fev=solution.n_fev,
             grad_max_abs=solution.grad_max_abs,

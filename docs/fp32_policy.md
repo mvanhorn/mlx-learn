@@ -176,10 +176,11 @@ product cannot pass for convergence. Near the floor it does two things:
 So a `tol` below what float32 can resolve — `tol=0`, say — is honored as "run to the
 float32 floor" rather than rejected, and `n_iter_` reports the steps actually accepted. A
 floor stop with `max|g| ≤ 1e-6 · max|g₀|` has done everything float32 allows: it emits no
-`ConvergenceWarning`, and is recorded as a diagnostics event with operation `"lbfgs"`,
-reason `"float32-floor"`, and `n_iter`, `n_fev`, `grad_max_abs`, `tol` and
-`at_resolution_floor` in its `extra`. A floor stop above that level is a stall. It warns,
-as a `max_iter` or line-search-failure stop does, and those are recorded the same way.
+`ConvergenceWarning`, and is recorded on the fit's own diagnostics event (`fit_event_`),
+whose `extra` gains `stop_reason="float32-floor"`, `n_iter`, `n_fev`, `grad_max_abs`, `tol`
+and `at_resolution_floor`, and whose `detail` explains the stop. A floor stop above that
+level is a stall. It warns, as a `max_iter` or line-search-failure stop does, and those are
+recorded the same way.
 
 ### 2.4 Kernel evaluation (`SVC`)
 

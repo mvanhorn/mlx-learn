@@ -526,19 +526,28 @@ def test_tol_zero_runs_to_the_float32_floor_and_records_it():
         model = _fit("mlx", LogisticRegression(tol=0.0, max_iter=1000), X, y)
 
     assert model.n_iter_[0] < 200
-    events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "lbfgs"]
-    assert [e.reason for e in events] == ["float32-floor"]
-    assert events[0].extra["at_resolution_floor"] is True
+    assert mlxlearn.get_backend_diagnostics() == [model.fit_event_]
+    assert model.fit_event_.extra["stop_reason"] == "float32-floor"
+    assert model.fit_event_.extra["at_resolution_floor"] is True
+    assert "float32 floor" in model.fit_event_.detail
 
 
 def test_non_convergence_warns_and_is_recorded():
+    """On the fit's one event: a second, solver event became
+    ``get_last_backend_event()`` in the fit's place and counted as more work.
+    """
     X, y = _data()
     mlxlearn.clear_backend_diagnostics()
     with pytest.warns(ConvergenceWarning, match=r"\(max_iter\).*Increase max_iter"):
-        LogisticRegression(max_iter=1).fit(X, y)
-    events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "lbfgs"]
-    assert [e.reason for e in events] == ["max_iter"]
-    assert events[0].extra["n_iter"] == 1
+        model = LogisticRegression(max_iter=1).fit(X, y)
+    assert mlxlearn.get_backend_diagnostics() == [model.fit_event_]
+    assert mlxlearn.get_last_backend_event() is model.fit_event_
+    event = model.fit_event_
+    assert (event.operation, event.reason) == ("fit", "below-crossover")
+    assert event.extra["stop_reason"] == "max_iter" and event.extra["n_iter"] == 1
+    # The crossover's explanation first, then the solver's.
+    assert event.detail.index("crossover") < event.detail.index("failed to converge")
+    assert mlxlearn.diagnostics_summary() == {"LogisticRegression.fit -> cpu": 1}
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
