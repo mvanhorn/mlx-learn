@@ -128,6 +128,25 @@ def test_parity_across_regularization(C, n_classes):
     _assert_parity(mlx, ref, X, y, C=C)
 
 
+def test_a_wide_problem_agrees_on_the_objective_then_on_probabilities_at_tight_tol():
+    """docs/fp32_policy.md §3: the probability tolerance at default ``tol`` is the grid's.
+
+    On a wide problem above the crossover, where lbfgs stops moves the
+    probabilities by up to 5e-3 at default ``tol`` — scikit-learn's own lbfgs and
+    newton-cg differ as much — so the objective is what agrees there; at
+    ``tol=1e-6`` every axis does.
+    """
+    X, y = make_classification(25_000, 1_000, random_state=2)
+    for tol in (1e-4, 1e-6):
+        mlx = LogisticRegression(tol=tol, max_iter=1000).fit(X, y)
+        ref = SkLogisticRegression(tol=tol, max_iter=1000).fit(X, y)
+        assert _objective(mlx, X, y, C=1.0) == pytest.approx(
+            _objective(ref, X, y, C=1.0), rel=OBJECTIVE_RTOL
+        )
+    assert mlx.fit_event_.reason == "selected"
+    _assert_parity(mlx, ref, X, y, C=1.0)
+
+
 @pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("n_classes", [2, 5])
 def test_parity_without_intercept(n_classes, backend):
@@ -296,6 +315,30 @@ def test_binary_objective_matches_float64_in_both_layouts(fit_intercept, weighte
             got_value, got_grad = fun(mx.array(theta))
             assert got_value == pytest.approx(value, rel=1e-6)
             np.testing.assert_allclose(np.asarray(got_grad)[0], grad, rtol=1e-4, atol=1e-6)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_gpu_binary_fit_runs_on_the_transposed_design(backend, monkeypatch):
+    """The layout is chosen from the device the fit actually runs on.
+
+    The gate compared what ``use_device`` yields with the string ``"gpu"``; once it
+    yielded an ``mx.Stream`` that never matched, and every GPU binary fit silently
+    took the slow ``(n,) @ (n, d)`` gradient, 2.5-2.9x slower on tall, narrow data.
+    """
+    from mlxlearn._solvers import logistic
+
+    seen = []
+    original = logistic._binary_objective
+
+    def spy(mx, X, *args, transposed=False, **kwargs):
+        seen.append((transposed, tuple(X.shape)))
+        return original(mx, X, *args, transposed=transposed, **kwargs)
+
+    monkeypatch.setattr(logistic, "_binary_objective", spy)
+    X, y = _data(n_samples=400, n_features=8)
+    _fit(backend, LogisticRegression(), X, y)
+    on_gpu = backend == "mlx"
+    assert seen == [(on_gpu, (8, 400) if on_gpu else (400, 8))]
 
 
 # ------------------------------------------------------------- hard numerics
@@ -502,19 +545,75 @@ def test_tol_zero_runs_to_the_float32_floor_and_records_it():
         model = _fit("mlx", LogisticRegression(tol=0.0, max_iter=1000), X, y)
 
     assert model.n_iter_[0] < 200
-    events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "lbfgs"]
-    assert [e.reason for e in events] == ["float32-floor"]
-    assert events[0].extra["at_resolution_floor"] is True
+    assert mlxlearn.get_backend_diagnostics() == [model.fit_event_]
+    assert model.fit_event_.extra["stop_reason"] == "float32-floor"
+    assert model.fit_event_.extra["at_resolution_floor"] is True
+    assert "float32 floor" in model.fit_event_.detail
 
 
 def test_non_convergence_warns_and_is_recorded():
+    """On the fit's one event: a second, solver event became
+    ``get_last_backend_event()`` in the fit's place and counted as more work.
+    """
     X, y = _data()
     mlxlearn.clear_backend_diagnostics()
     with pytest.warns(ConvergenceWarning, match=r"\(max_iter\).*Increase max_iter"):
-        LogisticRegression(max_iter=1).fit(X, y)
-    events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "lbfgs"]
-    assert [e.reason for e in events] == ["max_iter"]
-    assert events[0].extra["n_iter"] == 1
+        model = LogisticRegression(max_iter=1).fit(X, y)
+    assert mlxlearn.get_backend_diagnostics() == [model.fit_event_]
+    assert mlxlearn.get_last_backend_event() is model.fit_event_
+    event = model.fit_event_
+    assert (event.operation, event.reason) == ("fit", "below-crossover")
+    assert event.extra["stop_reason"] == "max_iter" and event.extra["n_iter"] == 1
+    # The crossover's explanation first, then the solver's.
+    assert event.detail.index("crossover") < event.detail.index("failed to converge")
+    assert mlxlearn.diagnostics_summary() == {"LogisticRegression.fit -> cpu": 1}
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_the_convergence_warning_starts_as_scikit_learns_does(backend):
+    """Filters on "lbfgs failed to converge" — scikit-learn's own tests use them —
+    must match wherever the fit ran. The message began "LogisticRegression failed
+    to converge", so under patch_sklearn() such a filter silenced the small fits it
+    handed to scikit-learn and none of the large ones it sent to MLX.
+    """
+    X, y = _data()
+    prefix = r"^lbfgs failed to converge after 1 iteration\(s\) \("
+    with pytest.warns(ConvergenceWarning, match=prefix):
+        SkLogisticRegression(max_iter=1).fit(X, y)
+    with pytest.warns(ConvergenceWarning, match=prefix):
+        _fit(backend, LogisticRegression(max_iter=1), X, y)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        warnings.filterwarnings("ignore", message="lbfgs failed to converge")
+        _fit(backend, LogisticRegression(max_iter=1), X, y)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_an_escalated_convergence_warning_leaves_the_fit_incomplete(backend):
+    """A fit that raises does not commit, whatever raised — here, an "error" filter.
+
+    The warning came after the commit point, so the fit raised with the model
+    fitted, predicting and recorded as a completed fit, where the patched class's
+    scikit-learn path and SVC both end unfitted.
+    """
+    if backend == "mlx" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    X, y = _data()
+    model = _fit(backend, LogisticRegression(), X, y)
+    model.set_params(max_iter=1)
+    mlxlearn.clear_backend_diagnostics()
+    with warnings.catch_warnings(), tuning_context(force_backend=backend):
+        warnings.simplefilter("error", ConvergenceWarning)
+        with pytest.raises(ConvergenceWarning):
+            model.fit(X, y)
+
+    # Not the previous fit's coefficients either.
+    with pytest.raises(NotFittedError):
+        model.predict(X)
+    with pytest.raises(AttributeError):
+        model.execution_backend_
+    assert not [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
 
 
 def test_objective_is_no_worse_at_an_equal_truncated_budget():
@@ -806,6 +905,40 @@ def test_backends_agree():
     assert _objective(cpu, X, y, C=1.0) == pytest.approx(_objective(gpu, X, y, C=1.0), rel=1e-8)
 
 
+def test_a_forced_mlx_fit_without_a_gpu_runs_on_mlxs_cpu(monkeypatch):
+    """As the other estimators' forced fits do, unless ``device="gpu"`` was named.
+
+    The forced backend was mapped straight to ``device="gpu"``, so on a host
+    with no GPU the fit raised "device='gpu' was requested ... use device='auto'"
+    under a configured ``"auto"`` or ``"cpu"`` that asked for nothing of the kind.
+    """
+    from mlxlearn.exceptions import DeviceError
+    from mlxlearn.linear_model import _logistic
+
+    devices = []
+    original = _logistic.solve_logistic
+
+    def spy(*args, config, **kwargs):
+        devices.append(config.device)
+        return original(*args, config=config, **kwargs)
+
+    monkeypatch.setattr(_logistic, "solve_logistic", spy)
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    X, y = _data(n_samples=400)
+    for device in ("auto", "cpu"):
+        with mlxlearn.config_context(device=device), tuning_context(force_backend="mlx"):
+            try:
+                model = LogisticRegression().fit(X, y)
+            except DeviceError as exc:  # which tests/_gpu.py would report as a skip
+                pytest.fail(f"device={device!r}: {exc}")
+        assert (model.execution_backend_, model.fit_event_.reason) == ("mlx", "forced")
+    assert devices == ["cpu", "cpu"]
+
+    with mlxlearn.config_context(device="gpu"), tuning_context(force_backend="mlx"):
+        with pytest.raises(DeviceError, match="device='gpu' was requested"):
+            LogisticRegression().fit(X, y)
+
+
 def test_fit_is_a_pure_function_of_its_arguments():
     """No warm start, no continuation cache.
 
@@ -952,11 +1085,13 @@ def _warning_grid():
 
 
 def _fit_warnings(estimator, X, y):
+    # The whole message: a 40-character prefix hid the removal version, which
+    # scikit-learn 1.7.2 changed from 1.7 to 1.8.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         estimator.fit(X, y)
     return Counter(
-        (w.category.__name__, str(w.message)[:40])
+        (w.category.__name__, str(w.message))
         for w in caught
         if w.category in (FutureWarning, UserWarning)
     )
@@ -1053,6 +1188,77 @@ def test_a_callback_error_is_raised_as_itself(backend, error):
     with tuning_context(force_backend=backend), pytest.raises(type(error)) as excinfo:
         model.fit(X, y)
     assert excinfo.value is error
+
+
+class _CallbackFailure(Exception):
+    pass
+
+
+class _ChainingRecorder(_Recorder):
+    """Raises from the per-iteration hook with an explicit cause, or inside a handler."""
+
+    def __init__(self, chain):
+        super().__init__()
+        self.chain = chain
+
+    def on_fit_task_end(self, estimator, context, **kwargs):
+        super().on_fit_task_end(estimator, context, **kwargs)
+        if self.hooks["end"] != 2:
+            return
+        if self.chain == "cause":
+            raise _CallbackFailure("from the callback") from OSError("root cause")
+        try:
+            {}["missing"]
+        except KeyError:
+            raise _CallbackFailure("from the callback")  # noqa: B904
+
+
+@pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
+@pytest.mark.parametrize("chain", ["cause", "context"])
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_callback_error_keeps_its_chain_and_lets_the_fit_go(backend, chain):
+    """Its own ``__cause__`` and ``__context__`` survive, as with scikit-learn, and
+    the failed fit's MLX arrays are freed without waiting for the garbage collector.
+
+    It was re-raised inside the handler for the ``BackendExecutionError`` around it,
+    which replaced both with that error; and its traceback ran through
+    ``mlx_guard``'s generator frame, whose caller's frame held the error itself, a
+    cycle that kept the solver's frame and its device copy of ``X`` alive.
+    """
+    import gc
+
+    import mlx.core as mx
+
+    if backend == "mlx" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    active_memory = getattr(mx, "get_active_memory", None) or mx.metal.get_active_memory
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((50_000, 16), dtype=np.float32)
+    y = (X[:, 0] > 0).astype(np.int64)
+    model = LogisticRegression().set_callbacks(_ChainingRecorder(chain))
+
+    gc.collect()
+    gc.disable()
+    try:
+        before = active_memory()
+        with tuning_context(force_backend=backend):
+            try:
+                model.fit(X, y)
+            except _CallbackFailure as error:
+                # Types only: a raised context's traceback holds the fit's frames
+                # for as long as it is referenced, cycle or not.
+                chained = (
+                    type(error.__cause__), type(error.__context__), error.__suppress_context__
+                )
+        held = active_memory() - before
+    finally:
+        gc.enable()
+
+    assert held < X.nbytes // 2, f"{held} bytes of MLX memory outlived the failed fit"
+    if chain == "cause":
+        assert chained == (OSError, type(None), True)
+    else:
+        assert chained == (type(None), KeyError, False)
 
 
 @pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")

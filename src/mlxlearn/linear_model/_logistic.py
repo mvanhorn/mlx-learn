@@ -30,7 +30,8 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression as _SkLogisticRegression
 
 from .._common.base import BackendMixin, mlx_guard
-from .._common.config import get_tuning
+from .._common.config import get_config, get_tuning
+from .._common.device import inference_device
 from .._common.validation import (
     check_classification_targets,
     check_float32_range,
@@ -73,10 +74,13 @@ _SUPPORTED_PENALTIES = ("l2", None)
 #: else gets the multinomial loss", which is what this implementation does.
 _SUPPORTED_MULTI_CLASS = ("deprecated", "auto")
 
-#: ``(major, minor)`` of the installed scikit-learn. Only the fit-time warnings are
-#: version-gated on it; capability is decided on resolved values (see
+#: ``(major, minor, patch)`` of the installed scikit-learn. Only the fit-time
+#: warnings are version-gated on it; capability is decided on resolved values (see
 #: :meth:`MLXLogisticMixin._effective_penalty`), never on version numbers.
-_SKLEARN = tuple(int(part) for part in re.match(r"(\d+)\.(\d+)", sklearn.__version__).groups())
+_SKLEARN = tuple(
+    int(part or 0)
+    for part in re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", sklearn.__version__).groups()
+)
 
 #: Whether ``penalty`` is a deprecated sentinel on the installed scikit-learn (1.8+).
 _PENALTY_DEPRECATED = (
@@ -165,10 +169,12 @@ class MLXLogisticMixin(BackendMixin):
                     UserWarning,
                 ))
             if getattr(self, "multi_class", "deprecated") == "auto":
+                # 1.7.0 and 1.7.1 announce the removal for 1.7; 1.7.2 moved it to 1.8.
+                removal = "1.7" if _SKLEARN < (1, 7, 2) else "1.8"
                 emitted.append((
                     "'multi_class' was deprecated in version 1.5 and will be removed in "
-                    "1.8. From then on, it will always use 'multinomial'. Leave it to "
-                    "its default value to avoid this warning.",
+                    f"{removal}. From then on, it will always use 'multinomial'. Leave "
+                    "it to its default value to avoid this warning.",
                     FutureWarning,
                 ))
         else:  # scikit-learn 1.8, 1.9
@@ -540,12 +546,13 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
 
     **Convergence is reported.** A run that exhausts ``max_iter`` or stalls emits
     :class:`sklearn.exceptions.ConvergenceWarning`, as scikit-learn does, and
-    records the stop in the diagnostics (operation ``"lbfgs"``). The exception is
-    a run that stops because the objective can no longer resolve progress with
-    ``max|gradient|`` already below about 1e-6 of its starting value: that is the
-    float32 floor ``docs/fp32_policy.md`` §2.3 describes, reached rather than
-    missed, so it is recorded without a warning. ``n_iter_`` counts accepted steps,
-    so a problem already optimal at the zero start reports ``0``.
+    records the stop on the fit's diagnostics event: ``fit_event_.extra`` gains
+    ``stop_reason`` and the solver's state. The exception is a run that stops
+    because the objective can no longer resolve progress with ``max|gradient|``
+    already below about 1e-6 of its starting value: that is the float32 floor
+    ``docs/fp32_policy.md`` §2.3 describes, reached rather than missed, so it is
+    recorded without a warning. ``n_iter_`` counts accepted steps, so a problem
+    already optimal at the zero start reports ``0``.
 
     **Callbacks.** On scikit-learn 1.9+, callbacks set with ``set_callbacks`` see
     the same task tree as scikit-learn's lbfgs path: the fit, and one subtask per
@@ -646,6 +653,14 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         # "unpenalized" here exactly as it does there.
         C = math.inf if self._effective_penalty() is None else float(self.C)
 
+        # "mlx" is the MLX GPU backend. A fit forced onto it in a process with no
+        # GPU runs the same float32 code on MLX's CPU, as the other estimators'
+        # kernels do (inference_device) — unless device="gpu" was named, which
+        # use_device then refuses.
+        device = "cpu"
+        if backend == "mlx":
+            device = "gpu" if get_config().device == "gpu" else inference_device(backend)
+
         tuning = get_tuning()
         config = LogisticConfig(
             C=C,
@@ -654,7 +669,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
             max_iter=int(self.max_iter),
             history_size=tuning.lbfgs_history,
             max_line_search=tuning.lbfgs_max_line_search,
-            device="gpu" if backend == "mlx" else "cpu",
+            device=device,
         )
 
         callback_ctx = bridge = None
@@ -674,6 +689,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                     n_features=X_checked.shape[1],
                 )
 
+        callback_error = None
         try:
             with mlx_guard(type(self).__name__, "fit"):
                 solution = solve_logistic(
@@ -687,8 +703,16 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         except BackendExecutionError as exc:
             if bridge is None or bridge.error is None or exc.original is not bridge.error:
                 raise
-            # The user's callback raised, not MLX: re-raise exactly that.
-            raise bridge.error from None
+            callback_error = bridge.take_error()
+        if callback_error is not None:
+            # The user's callback raised, not MLX: re-raise exactly that. Outside
+            # the handler, which would replace its own __cause__ and __context__
+            # with the BackendExecutionError, and without keeping it in this frame,
+            # which its traceback holds.
+            try:
+                raise callback_error
+            finally:
+                callback_error = None
 
         if bridge is not None:
             bridge.close()
@@ -696,8 +720,10 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self.coef_ = solution.coef
         self.intercept_ = solution.intercept
         self.n_iter_ = np.array([solution.n_iter], dtype=np.int32)
+        # Before the commit, so a ConvergenceWarning that a user's "error" filter
+        # escalates leaves the fit incomplete, as every fit that raises does.
+        self._report_convergence(solution)
         self._set_backend(backend)
-        self._report_convergence(solution, backend)
 
         if callback_ctx is not None:
             callback_ctx.call_on_fit_task_end(
@@ -731,56 +757,63 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self._set_backend("sklearn")
         return self
 
-    def _report_convergence(self, solution, backend) -> None:
+    def _report_convergence(self, solution) -> None:
         """Warn about a run that did not converge, and record every such stop.
 
         The ancestor unpacked ``converged`` and discarded it at every call site, so
         a model that stopped at max_iter was indistinguishable from one that
         reached the tolerance.
+
+        The stop is recorded on the fit's own diagnostics event, which
+        :meth:`_set_backend` commits next: its ``detail`` gains the explanation and
+        its ``extra`` the ``stop_reason``, ``n_iter``, ``n_fev``, ``grad_max_abs``,
+        ``tol`` and ``at_resolution_floor``. As an event of its own it broke "one
+        fit, one event": it became ``get_last_backend_event()`` in place of the
+        fit's, and counted as a second piece of work in ``diagnostics_summary()``.
         """
         if solution.converged:
             return
-        name = type(self).__name__
         floor = solution.stop_reason == "float32-floor" and solution.at_resolution_floor
         state = (
-            f"after {solution.n_iter} iterations; max|gradient| is "
-            f"{solution.grad_max_abs:.3g} against tol={self.tol:g}"
+            f"after {solution.n_iter} iteration(s) ({solution.stop_reason}): max|gradient| "
+            f"is {solution.grad_max_abs:.3g} against tol={self.tol:g}"
         )
+        # Every warning starts the way scikit-learn's lbfgs warning does, so a filter
+        # or a pytest.warns(match=...) written against "lbfgs failed to converge"
+        # still matches when patch_sklearn() sends the fit to MLX.
         if floor:
             detail = (
-                f"{name} ran to the float32 floor {state}, below the ~1e-6 x "
+                f"lbfgs ran to the float32 floor {state}, below the ~1e-6 x "
                 f"{solution.initial_grad_max_abs:.3g} that float32 resolves "
                 "(docs/fp32_policy.md §2.3)."
             )
         elif solution.stop_reason == "max_iter":
             detail = (
-                f"{name} failed to converge (max_iter) {state}. Increase max_iter, "
-                "scale the data, or relax tol."
+                f"lbfgs failed to converge {state}. Increase max_iter, scale the data, "
+                "or relax tol."
             )
         elif solution.stop_reason == "float32-floor":
             detail = (
-                f"{name} failed to converge (float32-floor) {state}: the objective "
-                "stopped resolving progress in float32 before the gradient reached "
-                "tol. Scale the data, or relax tol."
+                f"lbfgs failed to converge {state}; the objective stopped resolving "
+                "progress in float32 before the gradient reached tol. Scale the data, "
+                "or relax tol."
             )
         elif solution.stop_reason == "line-search-failure":
             detail = (
-                f"{name} failed to converge (line-search-failure) {state}: no step "
-                "along the search direction decreased the objective. Scale the data, "
-                "or relax tol."
+                f"lbfgs failed to converge {state}; no step along the search direction "
+                "decreased the objective. Scale the data, or relax tol."
             )
         else:
             detail = (
-                f"{name} failed to converge ({solution.stop_reason}) {state}. The "
-                "objective is not finite at the starting point; check the data for "
-                "extreme values, or scale it."
+                f"lbfgs failed to converge {state}. The objective is not finite at the "
+                "starting point; check the data for extreme values, or scale it."
             )
 
-        self._backend_event(
-            "lbfgs",
-            backend,  # type: ignore[arg-type]
-            reason=solution.stop_reason,
-            detail=detail,
+        # The decision _select_backend staged, on every path that reaches the solver.
+        pending = self.__dict__["_mlxlearn_pending_event"]
+        pending["detail"] = f"{pending.get('detail', '')} {detail}".lstrip()
+        pending.update(
+            stop_reason=solution.stop_reason,
             n_iter=solution.n_iter,
             n_fev=solution.n_fev,
             grad_max_abs=solution.grad_max_abs,
@@ -931,8 +964,10 @@ class _CallbackBridge:
         self._y = y
         self._metadata = metadata
         self._backend = backend
-        #: What the last per-iteration hook raised, if it did not return.
+        #: What the last per-iteration hook raised, if it did not return, and the
+        #: traceback it had as it left the bridge.
         self.error: BaseException | None = None
+        self._traceback = None
         self._iteration = self._begin(
             np.zeros((n_targets, n_features)), np.zeros(n_targets)
         )
@@ -965,7 +1000,19 @@ class _CallbackBridge:
             returned = True
         finally:
             # Only noted: whatever was raised propagates untouched from here.
-            self.error = None if returned else sys.exc_info()[1]
+            self.error, self._traceback = (None, None) if returned else sys.exc_info()[1:]
+
+    def take_error(self) -> BaseException:
+        """Hand over what a hook raised, with the traceback it left the bridge with.
+
+        Past the bridge it also picked up ``mlx_guard``'s generator frame, whose
+        caller's frame holds the exception itself: a reference cycle that kept the
+        failed fit's frames, device copy of ``X`` included, alive until the garbage
+        collector next ran, rather than until the caller let go of the exception.
+        """
+        error, traceback = self.error, self._traceback
+        self.error = self._traceback = None
+        return error.with_traceback(traceback)
 
     def close(self):
         self._iteration.call_on_fit_task_end(estimator=self._estimator)

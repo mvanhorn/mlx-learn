@@ -538,12 +538,13 @@ def solve_logistic(
         def iteration_callback(theta):
             callback(*unpack(theta))
 
-    with use_device(config.device) as kind:
+    with use_device(config.device) as stream:
         Xm = mx.array(X_host, dtype=mx.float32)
         swm = None if weights is None else mx.array(weights.astype(NUMPY_FLOAT))
 
         if n_targets == 1:
-            transposed = kind == "gpu"
+            # use_device yields the block's stream, not the device's name.
+            transposed = stream.device == mx.gpu
             if transposed:
                 # Transpose once on the device and keep only the transpose, so the
                 # resident footprint is unchanged; see the module docstring.
