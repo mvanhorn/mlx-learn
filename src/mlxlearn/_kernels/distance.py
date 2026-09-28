@@ -1103,11 +1103,13 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, bac
         if not math.isfinite(spread):
             raise ValueError("The training data contains NaN or infinity.")
         if spread > _SPAN_LIMIT:
+            # The remedy is advice: a patched estimator falls back on this at fit,
+            # and reports the limit without telling its caller to use scikit-learn.
             raise UnsupportedInputError(
                 f"The training data spans {spread:.3g} from its mean, too wide for "
-                "float32 to subtract two of its coordinates. Rescale it, or compute "
-                "these neighbors with scikit-learn.",
+                "float32 to subtract two of its coordinates.",
                 reason="float32-overflow",
+                advice="Rescale it, or compute these neighbors with scikit-learn.",
             )
         # Scale by an exact power of two so the largest translated coordinate lands
         # in [0.5, 1). Scaling by 2**k is exact, so ordinary data is unchanged bit

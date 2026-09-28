@@ -23,6 +23,7 @@ import pytest
 import scipy.sparse as sp
 from sklearn.datasets import make_classification
 from sklearn.exceptions import NotFittedError
+from sklearn.neighbors import NearestNeighbors as SkNearestNeighbors
 
 import mlxlearn
 from mlxlearn._common import base as base_module
@@ -798,6 +799,44 @@ def test_only_layer1_is_told_to_run_under_patch_sklearn(data, kind):
 
     assert "patch_sklearn()" not in str(refused.value)
     assert "fallback_policy='raise'" in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    "layer1, layer2",
+    [
+        (NearestNeighbors, patched.NearestNeighbors),
+        (KNeighborsClassifier, patched.KNeighborsClassifier),
+        (KNeighborsRegressor, patched.KNeighborsRegressor),
+    ],
+    ids=["NearestNeighbors", "KNeighborsClassifier", "KNeighborsRegressor"],
+)
+def test_a_training_span_float32_cannot_subtract_falls_back_when_patched(data, layer1, layer2):
+    """1e38 is finite in float32, so the range check passes it — but the index
+    cannot subtract two coordinates that far apart, and says so only once it is
+    built, after backend selection. Patched, that raised instead of falling back.
+    """
+    X, y = data
+    X = X.copy()
+    X[0, 0] = 1e38
+    kwargs = {"n_neighbors": 3}
+    with tuning_context(**NO_CROSSOVER):
+        with pytest.raises(UnsupportedInputError) as raised:
+            layer1(**kwargs).fit(X, y)
+        with pytest.warns(MLXLearnFallbackWarning) as caught:
+            model = layer2(**kwargs).fit(X, y)
+        with mlxlearn.config_context(fallback_policy="raise"):
+            with pytest.raises(CapabilityError, match="fallback_policy='raise'"):
+                layer2(**kwargs).fit(X, y)
+
+    assert raised.value.reason == "float32-overflow"
+    assert "scikit-learn" in raised.value.advice
+    warned = [str(w.message) for w in caught if w.category is MLXLearnFallbackWarning]
+    assert len(warned) == 1 and warned[0].startswith(raised.value.summary)
+    assert "handed this fit to scikit-learn" in warned[0]
+    assert model.execution_backend_ == "sklearn"
+    assert model.fit_event_.reason == "float32-overflow" and model.fit_event_.fallback
+    expected = SkNearestNeighbors(n_neighbors=3).fit(X).kneighbors(X[:5])[1]
+    np.testing.assert_array_equal(model.kneighbors(X[:5])[1], expected)
 
 
 @pytest.mark.parametrize("layer", ["L1", "L2"])

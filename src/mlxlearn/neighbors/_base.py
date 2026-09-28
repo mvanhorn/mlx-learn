@@ -344,8 +344,16 @@ class MLXNeighborsMixin(BackendMixin):
 
         if y_checked is not None:
             self._fit_targets(y_checked)
-        with mlx_guard(type(self).__name__, "fit"):
-            index = build_index(X_checked, backend=backend)
+        try:
+            with mlx_guard(type(self).__name__, "fit"):
+                index = build_index(X_checked, backend=backend)
+        except CapabilityError as exc:
+            # The index finds one limit itself: a span from the training mean that
+            # float32 cannot subtract (past FLOAT32_MAX / 8, below FLOAT32_MAX, so
+            # the range check passed it). _select_backend has already returned, so
+            # it is routed through the same policy by hand, as SVC does: Layer 1
+            # raises, Layer 2 falls back — or raises under fallback_policy="raise".
+            return self._handle_capability_error(exc, "fit", shape=X_checked.shape)
 
         self._index_ = index
         self.n_samples_fit_ = int(X_checked.shape[0])
