@@ -747,8 +747,8 @@ def _solve(
             )
             a_alpha[ii] = new_i
             a_alpha[jj] = new_j
-            # The float32 kernel row is widened explicitly (see _widened); every
-            # gradient update in this module goes through it.
+            # The float32 kernel row is widened explicitly (see _widened), as in
+            # every gradient product in this module.
             a_yg += _widened(row_i, (new_i - old_i) * y_i)
             a_yg += _widened(row_j, (new_j - old_j) * y_j)
 
