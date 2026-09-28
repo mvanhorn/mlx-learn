@@ -34,6 +34,7 @@ base raised to an odd degree yields the negative value it should.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 
 import numpy as np
@@ -272,6 +273,103 @@ def _transform(mx, spec: KernelSpec, dot, a_sq, b_sq):
     return _integer_power(mx, z, int(spec.degree))
 
 
+@functools.lru_cache(maxsize=1)
+def _fused_rbf():
+    """The rbf branch of :func:`_transform` compiled into one GPU kernel.
+
+    Evaluated eagerly, that branch is six full passes over the tile — broadcast
+    add, scale, subtract, clamp, scale, exponentiate — each writing an ``n_a × n_b``
+    intermediate. Fused, it is one pass, which measured 1.5–5.7× faster per tile.
+
+    ``gamma`` is an *argument*, a 0-d float32 array, and never a constant captured
+    in the traced function. Captured, MLX embeds its own rounding of the Python
+    float into the kernel, which differs from the eager path's float32 scalar by
+    an ulp for most values — including the default ``gamma="scale"`` — and every
+    kernel entry then moves with it. Passed as an array, the fused kernel is
+    bit-identical to :func:`_transform`, and it is one compiled function for every
+    ``gamma`` rather than one per fit, so this is a cache of *code*, keyed on
+    nothing: the "no cache keyed on data" rule is about the other kind.
+
+    ``shapeless=True`` because tile shapes vary with every query batch, and there
+    is nothing shape-dependent in the graph to specialize on.
+    """
+    import mlx.core as mx
+
+    def rbf(dot, a_sq, b_sq, neg_gamma):
+        squared = a_sq[:, None] + b_sq[None, :] - 2.0 * dot
+        return mx.exp(neg_gamma * mx.maximum(squared, 0.0))
+
+    return mx.compile(rbf, shapeless=True)
+
+
+def _tile_transform(mx, spec: KernelSpec, backend: str):
+    """``f(dot, a_sq, b_sq)`` turning an inner-product tile into a kernel tile.
+
+    The fused rbf kernel is used on the GPU only. On MLX's CPU device the same
+    compiled graph measured 2.3–2.6× *slower* than the eager ops, and its first
+    call per process shells out to a C compiler for about a second — neither of
+    which the CPU path, which Layer 1 takes for every problem below the SVC
+    crossover, should pay for an identical answer.
+    """
+    if spec.kernel == "rbf" and backend == "mlx":
+        fused = _fused_rbf()
+        neg_gamma = mx.array(-spec.gamma, dtype=mx.float32)
+        return lambda dot, a_sq, b_sq: fused(dot, a_sq, b_sq, neg_gamma)
+    return lambda dot, a_sq, b_sq: _transform(mx, spec, dot, a_sq, b_sq)
+
+
+#: Rows of a kernel tile contracted per host matmul in :func:`kernel_combine`.
+#: Converting a whole tile to float64 first materializes a twin twice its size
+#: (256 MiB for a full-budget tile) and streams it through memory once more than
+#: necessary; a few hundred rows at a time keep the float64 copy in cache, and are
+#: still enough rows for BLAS to run its full-width kernel.
+_HOST_CONTRACT_ROWS = 256
+
+
+def _contract_tile(tile, weights: np.ndarray, out: np.ndarray) -> None:
+    """``out[:] = tile @ weights`` in float64, a chunk of rows at a time.
+
+    Blocks until ``tile`` has been evaluated — the only synchronization point in
+    the pipelined loops below.
+    """
+    host = np.asarray(tile)
+    for start in range(0, host.shape[0], _HOST_CONTRACT_ROWS):
+        stop = start + _HOST_CONTRACT_ROWS
+        out[start:stop] = host[start:stop].astype(np.float64) @ weights
+
+
+def _combine_pipelined(mx, transform, n_a: int, rows: int, left, right, b_sq, weights, out):
+    """Fold ``K(left, right) @ weights`` into ``out``, overlapping device and host.
+
+    ``left(start, stop)`` returns one block of the left operand and its squared
+    norms (``None`` unless rbf). Tile ``i + 1`` is submitted with ``mx.async_eval``
+    *before* the host contracts tile ``i``, so the device computes the next tile
+    while the host is busy with this one; evaluated serially, the GPU sat idle for
+    the contraction, measured at 39–47% of multiclass predict time.
+
+    Memory: at most three tiles are alive on the device — the one being contracted
+    and the next one's inner product and result — where the serial loop held two
+    plus a float64 host twin of one, i.e. the equivalent of four. The chunked
+    contraction is what pays for the pipelining, so the block size derived from
+    the byte budget does not have to shrink.
+    """
+    right_t = right.T
+
+    def submit(start):
+        block, a_sq = left(start, min(start + rows, n_a))
+        tile = transform(block @ right_t, a_sq, b_sq)
+        mx.async_eval(tile)
+        return tile
+
+    tile = submit(0)
+    for start in range(0, n_a, rows):
+        following = submit(start + rows) if start + rows < n_a else None
+        _contract_tile(tile, weights, out[start : start + rows])
+        # Rebinding releases this tile before the next submission, which is what
+        # keeps the device at three live tiles rather than four.
+        tile = following
+
+
 def _prepare(spec: KernelSpec, A, center) -> np.ndarray:
     """Host-side float32 copy of ``A``, translated when the kernel allows it."""
     out = np.ascontiguousarray(A, dtype=NUMPY_FLOAT)
@@ -328,6 +426,7 @@ def kernel_matrix(
     needs_norms = spec.kernel == "rbf"
 
     with use_device(_device(backend)):
+        transform = _tile_transform(mx, spec, backend)
         right = mx.array(B32, dtype=mx.float32)
         right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
@@ -335,7 +434,7 @@ def kernel_matrix(
             end = min(start + rows, n_a)
             block = mx.array(A32[start:end], dtype=mx.float32)
             a_sq = mx.sum(block * block, axis=1) if needs_norms else None
-            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq)
+            tile = transform(block @ right_t, a_sq, b_sq)
             mx.eval(tile)
             out[start:end] = np.asarray(tile)
     return out
@@ -369,17 +468,20 @@ def kernel_combine(
 
     Notes
     -----
-    The kernel entries are computed in float32 on device — that is where the work
-    is, ``n_a · n_b · n_features`` — and the contraction against ``weights`` is
-    done in float64 on the host. The contraction is only ``n_a · n_b · n_outputs``
-    with ``n_outputs`` equal to the number of one-vs-one classifiers, so it is
-    negligible next to the kernel, while doing it in float32 would add an
-    accumulation error over every support vector on top of the kernel's own
-    rounding. Buying an order of magnitude of decision-value accuracy for a cost
-    that does not show up in a profile is not a trade worth declining.
+    The kernel entries are computed in float32 on device — that is where the
+    arithmetic is, ``n_a · n_b · n_features`` — and the contraction against
+    ``weights`` is done in float64 on the host, because doing it in float32 would
+    add an accumulation error over every support vector on top of the kernel's own
+    rounding. That precision is not free: with many one-vs-one pairs the host
+    contraction measured 39–47% of ``predict``. It is therefore overlapped with
+    the device, which computes the next tile while the host contracts this one,
+    and done a chunk of rows at a time rather than through a float64 copy of the
+    whole tile.
 
-    The result is independent of ``block_rows``: each row of ``A`` is reduced on
-    its own, so any chunking gives bit-identical output.
+    Each row of ``A`` is reduced on its own, so ``block_rows`` changes the result
+    only at the level of rounding — a BLAS may choose a different kernel for a
+    block of a handful of rows — and, for a given input and blocking, the output
+    is deterministic.
     """
     import mlx.core as mx
 
@@ -396,16 +498,21 @@ def kernel_combine(
 
     with use_device(_device(backend)):
         right = mx.array(B32, dtype=mx.float32)
-        right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
-        for start in range(0, n_a, rows):
-            end = min(start + rows, n_a)
-            block = mx.array(A32[start:end], dtype=mx.float32)
-            a_sq = mx.sum(block * block, axis=1) if needs_norms else None
-            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq)
-            mx.eval(tile)
-            out[start:end] = np.asarray(tile).astype(np.float64) @ W
+
+        def left(start, stop):
+            block = mx.array(A32[start:stop], dtype=mx.float32)
+            return block, (mx.sum(block * block, axis=1) if needs_norms else None)
+
+        _combine_pipelined(
+            mx, _tile_transform(mx, spec, backend), n_a, rows, left, right, b_sq, W, out
+        )
     return out
+
+
+#: See :attr:`KernelRows.prefetch_rows`. 16–64 measured alike at 8 000 × 128;
+#: much more fills the cache with rows fetched before the ranking meant anything.
+_GPU_PREFETCH_ROWS = 32
 
 
 @dataclass(slots=True)
@@ -426,10 +533,38 @@ class KernelRows:
 
     Notes
     -----
-    A row costs one ``(n, d) @ (d,)`` product. That is deliberate: a decomposition
-    solver touches a small, scattered subset of rows, so computing the rows it
-    actually asks for beats materializing all ``n`` of them — and it is the only
-    shape of this problem that fits in bounded memory at large ``n``.
+    Rows are computed on demand, never all ``n`` of them: a decomposition solver
+    touches a scattered subset, and on-demand rows are the only shape of this
+    problem that fits in bounded memory at large ``n``.
+
+    What a row costs on the GPU is almost entirely the round trip — one
+    synchronous evaluation, about 150–250 µs whether the row is ``n = 2 000`` or
+    ``20 000`` long — so :meth:`rows` exists to pay it once for many rows: ``k``
+    rows are one ``(n, d) @ (d, k)`` product, measured at 8–9 µs per row for
+    ``k = 32`` against 200–250 µs for one at a time.
+
+    :meth:`rows` evaluates every row, a single one included, through that product
+    and the same tile transform :func:`kernel_matrix` uses; a lone row is a
+    two-column product with itself repeated. A one-column product would be a
+    matrix-*vector* product, which the backends reduce in a different order, so a
+    row's value would depend on how many other rows were fetched alongside it — and
+    a solver prefetching rows would take a different path from one that did not.
+    As it is, on the GPU a row's value does not depend on its batch, and equals
+    the corresponding row of :func:`kernel_matrix`'s Gram (measured on MLX 0.32
+    over every shape tried; neither is a documented property of MLX, so neither
+    is promised). On the CPU device it can differ in the last bit: the vectorized
+    ``exp``/``tanh`` finish a tile with a scalar tail whose rounding differs, and
+    where an entry falls in the tile depends on the batch. What is guaranteed on
+    both is that a given request returns the same bits every time.
+
+    :meth:`row` is the one-at-a-time path, and it differs by device. On the GPU it
+    is ``rows([index])[0]``, at no extra cost. On the CPU device the per-call
+    overhead is small, a batch buys little (13–22 µs per row, against 40–75 µs for
+    a matrix-vector product), and the two-column product costs twice the
+    matrix-vector one — so there :meth:`row` *is* the matrix-vector product, and
+    its last bits can differ from :meth:`rows`'. A solver should therefore draw
+    the rows it iterates on from one of the two, on the CPU device; the SVC fit
+    uses :meth:`rows` there only to rebuild a gradient in bulk.
     """
 
     X: np.ndarray
@@ -437,6 +572,7 @@ class KernelRows:
     backend: str
     _device_X: object = None  # mx.array (n, d)
     _device_sq: object = None  # mx.array (n,), only for rbf
+    _tile: object = None  # f(dot, a_sq, b_sq), from _tile_transform
 
     def __post_init__(self) -> None:
         import mlx.core as mx
@@ -444,6 +580,7 @@ class KernelRows:
         with use_device(_device(self.backend)):
             data = mx.array(self.X, dtype=mx.float32)
             self._device_X = data
+            self._tile = _tile_transform(mx, self.spec, self.backend)
             if self.spec.kernel == "rbf":
                 self._device_sq = mx.sum(data * data, axis=1)
                 mx.eval(data, self._device_sq)
@@ -454,10 +591,30 @@ class KernelRows:
     def n_samples(self) -> int:
         return int(self.X.shape[0])
 
+    @property
+    def prefetch_rows(self) -> int:
+        """Further rows worth fetching alongside a cache miss, on this device.
+
+        ``32`` on the GPU, where a call costs a round trip however many rows it
+        carries: prefetching the near-violators this way measured 1.5–2.4× on SVC
+        fits of 8 000–20 000 rows. ``0`` on the CPU device, where a batched row
+        costs a third of a lone one rather than a twentieth: prefetching 32 rows
+        measured 0.82–0.87× there, and 8 rows 1.02–1.03×, which does not buy
+        the batch-dependent last bits that mixing :meth:`row` and :meth:`rows`
+        brings on that device (see Notes).
+        """
+        return _GPU_PREFETCH_ROWS if self.backend == "mlx" else 0
+
     def row(self, index: int) -> np.ndarray:
         """``K(X[index], X)`` as a float32 array of length ``n_samples``."""
+        if self.backend == "mlx":
+            return self.rows(np.array([index]))[0]
+
         import mlx.core as mx
 
+        index = int(index)
+        if not 0 <= index < self.n_samples:
+            raise IndexError(f"row index must lie in [0, {self.n_samples}); got {index}")
         with use_device(_device(self.backend)):
             data = self._device_X
             dot = (data @ data[index][:, None])[:, 0]
@@ -475,6 +632,44 @@ class KernelRows:
                     out = _integer_power(mx, z, int(self.spec.degree))
             mx.eval(out)
             return np.asarray(out, dtype=NUMPY_FLOAT)
+
+    def rows(self, indices) -> np.ndarray:
+        """``K(X[indices], X)`` as a float32 array of shape ``(len(indices), n_samples)``.
+
+        One device round trip however many rows are asked for. The result owns
+        its memory, so a caller may keep some rows and drop others without the
+        ones it keeps pinning a buffer shared with the ones it dropped.
+        """
+        import mlx.core as mx
+
+        index = np.asarray(indices).reshape(-1)
+        count = int(index.shape[0])
+        n = self.n_samples
+        if count == 0:
+            return np.empty((0, n), dtype=NUMPY_FLOAT)
+        if not np.issubdtype(index.dtype, np.integer):
+            raise TypeError(f"row indices must be integers, got dtype {index.dtype}")
+        # An MLX gather does not bounds-check: an index past the end reads
+        # whatever is there and returns it as a kernel row.
+        if int(index.min()) < 0 or int(index.max()) >= n:
+            raise IndexError(f"row indices must lie in [0, {n}); got {index.min()}..{index.max()}")
+        # See the class Notes: one row is a two-column product, never a GEMV.
+        chosen = np.repeat(index, 2) if count == 1 else index
+
+        with use_device(_device(self.backend)):
+            data = self._device_X
+            selected = mx.array(chosen.astype(np.int32))
+            a_sq = b_sq = None
+            if self.spec.kernel == "rbf":
+                b_sq = self._device_sq
+                a_sq = b_sq[selected]
+            # (n, d) @ (d, k) rather than (k, d) @ (d, n): the same entries, but
+            # on the CPU device the latter's reduction order changed with k for
+            # small shapes, and batch-independence is the point of this method.
+            dot = (data @ data[selected].T).T
+            tile = self._tile(dot, a_sq, b_sq)
+            mx.eval(tile)
+            return np.array(np.asarray(tile)[:count], dtype=NUMPY_FLOAT, order="C")
 
 
 def build_kernel_rows(
