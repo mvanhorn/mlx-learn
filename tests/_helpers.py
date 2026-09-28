@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 
-__all__ = ["assert_neighbor_parity", "logistic_objective"]
+__all__ = ["assert_neighbor_parity", "join_or_fail", "logistic_objective"]
+
+
+def join_or_fail(threads, *, timeout: float = 120.0) -> None:
+    """Join ``threads`` against one deadline, and fail if any of them is still running.
+
+    For worker threads started with ``daemon=True``: a deadlock — in the device
+    gate, or an index's lock — then fails the test that caused it, by name,
+    rather than hanging the session until the CI job's own timeout, and a stuck
+    worker does not keep the interpreter from exiting afterwards either.
+    """
+    deadline = time.monotonic() + timeout
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    stuck = sum(thread.is_alive() for thread in threads)
+    assert not stuck, f"{stuck} of {len(threads)} threads still running after {timeout:g} s"
 
 
 def assert_neighbor_parity(mlx_dist, mlx_idx, ref_dist, ref_idx, *, atol=1e-6):

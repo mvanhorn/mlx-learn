@@ -154,8 +154,8 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
         """
         check_is_fitted(self)
         if self._fitted_backend("predict") == "sklearn":
-            with self._inference("predict"):
-                return super().predict(X)
+            self._note_inference("predict")
+            return super().predict(X)
 
         dist, idx = self._query_indices(X, "predict", need_distance=self.weights != "uniform")
         weights = _check_nonzero_weights(compute_weights(dist, self.weights))
@@ -185,8 +185,8 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
         """
         check_is_fitted(self)
         if self._fitted_backend("predict_proba") == "sklearn":
-            with self._inference("predict_proba"):
-                return super().predict_proba(X)
+            self._note_inference("predict_proba")
+            return super().predict_proba(X)
 
         dist, idx = self._query_indices(
             X, "predict_proba", need_distance=self.weights != "uniform"

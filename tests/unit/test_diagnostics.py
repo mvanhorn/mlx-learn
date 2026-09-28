@@ -27,6 +27,19 @@ def test_last_event():
     assert mlxlearn.get_last_backend_event().estimator == "A"
 
 
+def test_a_revised_decision_takes_the_earlier_ones_place():
+    """How a fit that decides again stays one event, wherever it sits in the record."""
+    first = record_event("A", "fit", "mlx")
+    other = record_event("B", "predict", "cpu")
+    revised = record_event("A", "fit", "cpu", reason="below-crossover", replacing=first)
+    events = mlxlearn.get_backend_diagnostics()
+    assert len(events) == 2 and events[0] is revised and events[1] is other
+    # One no longer in the record is appended.
+    mlxlearn.clear_backend_diagnostics()
+    again = record_event("A", "fit", "sklearn", replacing=revised)
+    assert mlxlearn.get_backend_diagnostics() == [again]
+
+
 def test_clearing_resets_warning_deduplication():
     with pytest.warns(MLXLearnFallbackWarning):
         record_event("A", "fit", "sklearn", reason="sparse-input", fallback=True, warn=True)

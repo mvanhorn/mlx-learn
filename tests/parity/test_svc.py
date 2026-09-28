@@ -51,6 +51,7 @@ from mlxlearn.exceptions import (
 )
 from mlxlearn.patching._estimators import SVC as PatchedSVC
 from mlxlearn.svm import SVC
+from tests._helpers import join_or_fail
 
 #: Decision-value tolerance, from measurement rather than from hope.
 #:
@@ -646,9 +647,13 @@ def test_linear_kernel_overflow_is_a_capability_error():
             PatchedSVC(kernel="linear").fit(X, y)
     # scikit-learn's own error — a plain ValueError — so the range guard handed the
     # fit over rather than the MLX path failing (its error is an InvalidInputError).
-    # A fit that fails commits no diagnostics event (BackendMixin._set_backend is
-    # the commit point), so the handoff is proven by the error's type instead.
+    # Both fits failed, and both decisions are on the record: Layer 1's refusal,
+    # then the patched handoff.
     assert type(excinfo.value) is ValueError
+    assert [(e.backend, e.reason, e.fallback) for e in get_backend_diagnostics()] == [
+        ("cpu", "float32-overflow", False),
+        ("sklearn", "float32-overflow", True),
+    ]
 
 
 def test_linear_kernel_accepts_gamma_zero():
@@ -1335,7 +1340,7 @@ def test_support_vector_basis_survives_pickle_and_copy_without_device_state():
 def _first_predictions_in_a_burst(blob, X, n_threads=12):
     """Unpickle a fresh model, then have ``n_threads`` threads predict at once."""
     model = pickle.loads(blob)  # nothing built yet
-    barrier = threading.Barrier(n_threads)
+    barrier = threading.Barrier(n_threads, timeout=60)
     results: list = [None] * n_threads
     errors: list[BaseException] = []
 
@@ -1346,11 +1351,10 @@ def _first_predictions_in_a_burst(blob, X, n_threads=12):
         except BaseException as exc:  # noqa: BLE001 - reported by the caller
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+    threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(n_threads)]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join()
+    join_or_fail(threads)
     return results, errors
 
 

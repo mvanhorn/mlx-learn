@@ -18,22 +18,20 @@ so a capability mismatch raises. Layer 2 flips the flag; nothing else differs.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator
-from contextlib import contextmanager
-from contextvars import ContextVar
 from numbers import Integral
 from typing import ClassVar
 
 import numpy as np
 from sklearn.base import BaseEstimator
 from sklearn.neighbors import VALID_METRICS, BallTree, KDTree
-from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
 from .._common.arrays import INDEX_DTYPE
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
+from .._common.device import inference_device
 from .._common.validation import (
     SparseInputError,
+    _safe_shape,
     check_float32_range,
     check_is_fitted,
     require_dense,
@@ -62,14 +60,6 @@ _INPUT_DTYPES = (np.float64, np.float32)
 #: scikit-learn's ``algorithm="auto"`` never builds a tree above this many features.
 _SKLEARN_TREE_MAX_FEATURES = 15
 
-#: Set while a public inference call on a neighbor estimator has recorded its
-#: diagnostics event, so that the ``kneighbors`` scikit-learn's own ``predict``
-#: makes back into this class does not record a second one for the same call.
-#: A context variable rather than an attribute on the estimator: it is private to
-#: the thread (and task) making the call, so two threads predicting with one
-#: fitted model cannot silence each other, and it holds a flag, never data.
-_EVENT_RECORDED: ContextVar[bool] = ContextVar("mlxlearn_neighbors_event_recorded", default=False)
-
 
 class MLXNeighborsMixin(BackendMixin):
     """``fit`` and ``kneighbors`` for the MLX brute-force neighbor path."""
@@ -89,22 +79,15 @@ class MLXNeighborsMixin(BackendMixin):
 
     # --------------------------------------------------------------- capability
 
-    def _check_neighbors_capability(self, X, *, data: bool = True) -> None:
+    def _check_neighbors_capability(self, X) -> None:
         """Raise :class:`CapabilityError` for anything the MLX path cannot serve.
 
-        Runs before ``validate_data``, so a float64 value that overflows float32
-        is reported as a capability limit — which scikit-learn's float64 path can
-        serve, and therefore which patched mode can fall back on — rather than as
-        scikit-learn's generic post-conversion "contains infinity" ``ValueError``.
-
-        Parameters
-        ----------
-        data : bool, default=True
-            Also run the checks that scan the data, which cost a pass over ``X``.
-            Patched mode skips them when it is handing a fit to scikit-learn on
-            size alone: scikit-learn validates the data itself, and scanning it
-            first is the kind of overhead that made patched fits slower than the
-            stock ones they replaced.
+        The input's kind and the parameters only: nothing here scans the data. The
+        one check that does — float32 range — is the fit's ``data_check``, which
+        patched mode skips when it hands a fit to scikit-learn on size alone:
+        scikit-learn validates the data itself, and scanning it first is the kind
+        of overhead that made patched fits slower than the stock ones they
+        replaced.
         """
         name = type(self).__name__
 
@@ -157,9 +140,6 @@ class MLXNeighborsMixin(BackendMixin):
                 value=self.metric_params,
             )
 
-        if data:
-            check_float32_range(X)
-
     def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
@@ -182,8 +162,8 @@ class MLXNeighborsMixin(BackendMixin):
             )
         return False, ""
 
-    def _tree_wins(self, n_samples: int, n_features: int) -> tuple[bool, str]:
-        """Whether stock scikit-learn would answer this with a KD-tree that wins.
+    def _tree_wins(self, n_samples: int, n_features: int) -> tuple[str, str] | None:
+        """``("tree-wins", detail)`` when stock scikit-learn's KD-tree would beat this search.
 
         With ``algorithm="auto"``, scikit-learn builds a KD-tree whenever there are
         at most 15 features and ``n_neighbors < n_samples // 2``. A tree query costs
@@ -197,20 +177,20 @@ class MLXNeighborsMixin(BackendMixin):
         200 000 rows — and ``knn_tree_density`` is the measured ``n / 2**d`` at
         which it flips.
 
-        Only patched mode acts on this, because only patched mode has a tree to
-        hand the work to: the Layer 1 CPU path is brute force as well, and slower
-        than the GPU one.
+        Only patched mode acts on this (``_select_backend``'s ``handoff``), because
+        only patched mode has a tree to hand the work to: the Layer 1 CPU path is
+        brute force as well, and slower than the GPU one.
         """
         density = get_tuning().knn_tree_density
         if not density or self.algorithm != "auto" or n_features > _SKLEARN_TREE_MAX_FEATURES:
-            return False, ""
+            return None
         if self.n_neighbors is not None and self.n_neighbors >= n_samples // 2:
-            return False, ""
+            return None
         if self._effective_metric()[0] not in VALID_METRICS["kd_tree"]:
-            return False, ""
+            return None
         if n_samples < density * 2**n_features:
-            return False, ""
-        return True, (
+            return None
+        return "tree-wins", (
             f"{n_samples} training samples x {n_features} features with "
             "algorithm='auto': scikit-learn answers this with a KD-tree, which beats "
             f"brute-force search once n_samples >= {density} * 2**n_features"
@@ -261,22 +241,21 @@ class MLXNeighborsMixin(BackendMixin):
         # InvalidParameterError scikit-learn raises. LogisticRegression and SVC
         # do the same.
         self._validate_params()
-        self._forget_fit()
+        self._clear_backend()
 
         X = _as_array(X)
         shape = _safe_shape(X)
-        if shape is not None:
-            handoff = self._sklearn_by_design(*shape)
-            if handoff is not None:
-                return self._hand_to_sklearn(X, shape, *handoff)
-
-        below, detail = self._below_crossover(*shape) if shape is not None else (False, "")
         backend = self._select_backend(
             "fit",
-            capability_check=lambda: self._check_neighbors_capability(X),
-            below_crossover=below,
-            crossover_detail=detail,
             shape=shape,
+            crossover=self._below_crossover,
+            handoff=self._tree_wins,
+            capability_check=lambda: self._check_neighbors_capability(X),
+            # Before validate_data, so a float64 value that overflows float32 is a
+            # capability limit — which scikit-learn's float64 path can serve, and
+            # patched mode can fall back on — rather than scikit-learn's generic
+            # post-conversion "contains infinity" ValueError.
+            data_check=lambda: check_float32_range(X),
         )
         if backend == "sklearn":
             return "sklearn"
@@ -318,35 +297,32 @@ class MLXNeighborsMixin(BackendMixin):
                 y_numeric=target == "regression",
                 reset=True,
             )
-        # No second pass over X here. The capability check has already range-checked
-        # the raw input (_select_backend runs it before anything else), validation
+        # No second pass over X here. The data check has already range-checked the
+        # raw input (_select_backend runs it before choosing MLX), validation
         # keeps float64 as float64 and float32 as float32 — rejecting non-finite
         # values in either — so nothing is cast to float32 before build_index, which
         # translates and splits float64 itself and refuses a span float32 cannot hold.
 
         if shape is None:
             # The input had no shape to read before validation (an array-like
-            # without a shape attribute, say; lists were converted above), so
-            # the size rules run now. No ``backend != "cpu"`` exemption: device
-            # never overrides the crossover, and _select_backend already lets
-            # MLXLEARN_FORCE_BACKEND outrank it.
-            shape = X_checked.shape
-            handoff = self._sklearn_by_design(*shape)
-            if handoff is not None:
-                return self._hand_to_sklearn(X, shape, *handoff)
-            below, detail = self._below_crossover(*shape)
-            if below:
-                backend = self._select_backend(
-                    "fit", below_crossover=True, crossover_detail=detail, shape=shape,
-                )
-                if backend == "sklearn":
-                    return "sklearn"
+            # without a shape attribute, say; lists were converted above), so the
+            # size rules — and the device — are decided now.
+            backend = self._select_backend(
+                "fit",
+                shape=X_checked.shape,
+                crossover=self._below_crossover,
+                handoff=self._tree_wins,
+            )
+            if backend == "sklearn":
+                return "sklearn"
 
         if y_checked is not None:
             self._fit_targets(y_checked)
+        # Resolved here, where the configuration may be read; the index reads none.
+        device = inference_device(backend)
         try:
             with mlx_guard(type(self).__name__, "fit"):
-                index = build_index(X_checked, backend=backend)
+                index = build_index(X_checked, backend=backend, device=device)
         except CapabilityError as exc:
             # The index finds one limit itself: a span from the training mean that
             # float32 cannot subtract (past FLOAT32_MAX / 8, below FLOAT32_MAX, so
@@ -371,46 +347,6 @@ class MLXNeighborsMixin(BackendMixin):
     def _fit_targets(self, y: np.ndarray) -> None:
         """Store the validated target. The supervised estimators implement this."""
         raise NotImplementedError
-
-    def _forget_fit(self) -> None:
-        """Drop the previous fit's backend and the MLX state it owned."""
-        self._clear_backend()
-        for attribute in self._mlxlearn_mlx_attrs:
-            self.__dict__.pop(attribute, None)
-
-    def _sklearn_by_design(self, n_samples: int, n_features: int) -> tuple[str, str] | None:
-        """``(reason, detail)`` when patched mode hands this fit to scikit-learn by size.
-
-        Layer 2 only, and never under ``MLXLEARN_FORCE_BACKEND``, which outranks
-        every size rule. Decided from the input's shape before any pass over the
-        data, so the work handed away costs what stock scikit-learn costs.
-        """
-        if not self._mlxlearn_allow_fallback or get_tuning().force_backend:
-            return None
-        below, detail = self._below_crossover(n_samples, n_features)
-        if below:
-            return "below-crossover", detail
-        tree, detail = self._tree_wins(n_samples, n_features)
-        if tree:
-            return "tree-wins", detail
-        return None
-
-    def _hand_to_sklearn(self, X, shape, reason: str, detail: str) -> str:
-        """Record a by-design handoff to scikit-learn and return ``"sklearn"``.
-
-        Parameter and sparsity mismatches still win, as they do in
-        ``_select_backend``: "we cannot do this at all" outranks "this is small",
-        and is recorded — and warned about — as what it is.
-        """
-        try:
-            self._check_neighbors_capability(X, data=False)
-        except CapabilityError as exc:
-            return self._handle_capability_error(exc, "fit", shape=shape)
-        # Not a warning: dispatching this to scikit-learn is the design working.
-        # Staged, not recorded: the caller's _set_backend("sklearn") commits it,
-        # so the fit records exactly one event.
-        self._stage_event("fit", "sklearn", reason=reason, detail=detail, shape=shape, fallback=True)
-        return "sklearn"
 
     # -------------------------------------------------------------- kneighbors
 
@@ -448,8 +384,8 @@ class MLXNeighborsMixin(BackendMixin):
         """
         check_is_fitted(self)
         if self._fitted_backend("kneighbors") == "sklearn":
-            with self._inference("kneighbors"):
-                return super().kneighbors(X, n_neighbors, return_distance)
+            self._note_inference("kneighbors")
+            return super().kneighbors(X, n_neighbors, return_distance)
         return self._kneighbors("kneighbors", X, n_neighbors, return_distance)
 
     def _kneighbors(self, operation: str, X, n_neighbors=None, return_distance=True):
@@ -475,8 +411,7 @@ class MLXNeighborsMixin(BackendMixin):
                     exc, self._claim_call_event(operation) or operation, shape=_safe_shape(X)
                 )
                 X = _sparse_query_for_sklearn(X, self._fit_X.dtype)
-                with self._inference(operation, record=False):
-                    return super().kneighbors(X, n_neighbors, return_distance)
+                return super().kneighbors(X, n_neighbors, return_distance)
 
         if query_is_train:
             Q = self._index_.X
@@ -489,10 +424,13 @@ class MLXNeighborsMixin(BackendMixin):
             Q = validate_float32_input(self, X, operation=operation, dtype=_INPUT_DTYPES)
         k = self._check_n_neighbors_bound(n_neighbors, query_is_train, n_queries=Q.shape[0])
 
+        # Resolved here, where the configuration may be read; the index reads none.
+        device = inference_device(self._execution_backend_)
         stats: dict = {}
         with mlx_guard(type(self).__name__, operation):
             dist, idx = self._index_.query(
-                Q, k, return_distance=return_distance, exclude_self=query_is_train, stats=stats
+                Q, k, return_distance=return_distance, exclude_self=query_is_train, stats=stats,
+                device=device,
             )
         if self._fit_X is not self._index_.X:
             # The first query after unpickling or deepcopy rebuilt the index's device
@@ -500,10 +438,9 @@ class MLXNeighborsMixin(BackendMixin):
             # kept a second full copy of the training set alive, and pickled it too.
             self._fit_X = self._index_.X
         # Recorded once the search has run, so the call's one event can also say how
-        # it was served (_search_diagnostics). Nothing above makes a nested public
-        # call, so there is nothing for the _inference guard to silence.
+        # it was served (_search_diagnostics).
         detail, extra = _search_diagnostics(stats)
-        self._record_call(operation, shape=Q.shape, detail=detail, **extra)
+        self._note_inference(operation, shape=Q.shape, detail=detail, **extra)
         if not return_distance:
             return idx
         if self.effective_metric_ == "sqeuclidean":
@@ -546,45 +483,6 @@ class MLXNeighborsMixin(BackendMixin):
 
     # ------------------------------------------------------------------ helpers
 
-    def _record_call(
-        self,
-        operation: str,
-        *,
-        shape: tuple[int, ...] | None = None,
-        detail: str = "",
-        **extra,
-    ) -> None:
-        """Record this public call's one event, unless an enclosing call already has."""
-        if not _EVENT_RECORDED.get():
-            self._note_inference(operation, shape=shape, detail=detail, **extra)
-
-    @contextmanager
-    def _inference(
-        self,
-        operation: str,
-        *,
-        shape: tuple[int, ...] | None = None,
-        record: bool = True,
-        **note,
-    ) -> Iterator[None]:
-        """Record one sticky event for a public inference call, and no nested ones.
-
-        scikit-learn's ``predict`` calls ``self.kneighbors``, so on a model fitted
-        by scikit-learn one ``predict`` used to be recorded twice, as ``predict``
-        and again as ``kneighbors``, while the MLX path recorded it only as
-        ``kneighbors``. The same call is now one event named after it, whichever
-        backend fitted the model. ``record=False`` only silences nested calls, for
-        a caller that has already recorded the decision itself. ``note`` goes to
-        :meth:`BackendMixin._note_inference`.
-        """
-        if record:
-            self._record_call(operation, shape=shape, **note)
-        token = _EVENT_RECORDED.set(True)
-        try:
-            yield
-        finally:
-            _EVENT_RECORDED.reset(token)
-
     def _query_indices(self, X, operation: str, *, need_distance: bool):
         """One neighbor-acquisition path for ``predict`` and ``predict_proba``.
 
@@ -621,13 +519,6 @@ def _search_diagnostics(stats: dict) -> tuple[str, dict]:
         "widened_rows": widened,
         "exact_rows": exact,
     }
-
-
-def _safe_shape(X) -> tuple[int, ...] | None:
-    shape = getattr(X, "shape", None)
-    if shape is None or len(shape) != 2:
-        return None
-    return (int(shape[0]), int(shape[1]))
 
 
 def _as_array(X):
@@ -766,7 +657,3 @@ def class_probabilities(codes: np.ndarray, weights: np.ndarray | None, n_classes
     total = proba.sum(axis=1, keepdims=True)
     np.divide(proba, np.where(total > 0, total, 1.0), out=proba)
     return proba
-
-
-# Re-exported so the estimator modules do not each import scikit-learn's base.
-_SK_NEAREST_NEIGHBORS = _SkNearestNeighbors

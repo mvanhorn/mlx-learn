@@ -21,6 +21,7 @@ from mlxlearn._common.device import gpu_available
 from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.svm import SVC
+from tests._helpers import join_or_fail
 
 SUPERVISED = [
     (KNeighborsClassifier, {"n_neighbors": 5}),
@@ -146,11 +147,10 @@ def test_concurrent_fits_match_sequential_fits(cls, kwargs):
         except BaseException as exc:  # noqa: BLE001 - re-raised in the main thread
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=(s,)) for s in seeds]
+    threads = [threading.Thread(target=worker, args=(s,), daemon=True) for s in seeds]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join()
+    join_or_fail(threads)
 
     assert not errors, errors
     for seed in seeds:
@@ -182,7 +182,7 @@ def test_concurrent_fits_on_different_devices_match_sequential_fits(cls, kwargs)
     before = mx.default_device()
     observed: dict[tuple[int, str], np.ndarray] = {}
     errors: list[BaseException] = []
-    start = threading.Barrier(len(jobs))
+    start = threading.Barrier(len(jobs), timeout=60)
 
     def worker(seed, backend):
         try:
@@ -192,11 +192,10 @@ def test_concurrent_fits_on_different_devices_match_sequential_fits(cls, kwargs)
         except BaseException as exc:  # noqa: BLE001 - re-raised in the main thread
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=job) for job in jobs]
+    threads = [threading.Thread(target=worker, args=job, daemon=True) for job in jobs]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join(timeout=120)
+    join_or_fail(threads)
 
     assert not errors, errors
     for job in jobs:

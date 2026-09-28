@@ -49,9 +49,9 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from .._common.arrays import NUMPY_FLOAT
+from .._common.arrays import _FLOAT64_FIT_ADVICE, FLOAT32_MAX, NUMPY_FLOAT
 from .._common.config import get_tuning
-from .._common.device import inference_device, use_device
+from .._common.device import use_device
 from ..exceptions import UnsupportedInputError, UnsupportedParameterError
 
 __all__ = [
@@ -242,9 +242,7 @@ def _host_integer_power(base: np.ndarray, degree: int) -> np.ndarray:
 # the float32 compute frame
 # --------------------------------------------------------------------------------------
 
-#: float32's largest finite value. Restated rather than imported from
-#: ``_common.validation``, which imports scikit-learn; this package must not.
-_FLOAT32_MAX = float(np.finfo(np.float32).max)
+_FLOAT32_MAX = FLOAT32_MAX
 
 #: float32's unit roundoff.
 _U = 2.0**-24
@@ -437,12 +435,7 @@ def check_frame_range(
             f"limit is {_FLOAT32_MAX:.3g}) and return infinity or NaN. Rescale the "
             "data.",
             reason="float32-overflow",
-            advice=(
-                "Or run under patch_sklearn(), which hands a fit on such data to "
-                "scikit-learn's float64 path."
-            )
-            if fallback_advice
-            else "",
+            advice=_FLOAT64_FIT_ADVICE if fallback_advice else "",
         )
 
 
@@ -574,8 +567,7 @@ def check_frame_resolution(spec: KernelSpec, X32: np.ndarray) -> None:
             f"variation (the limit is {_RESOLUTION_LIMIT:g}). Standardize the features, "
             "e.g. with StandardScaler.",
             reason="float32-cancellation",
-            advice="Or run under patch_sklearn(), which hands a fit on such data to "
-            "scikit-learn's float64 path.",
+            advice=_FLOAT64_FIT_ADVICE,
         )
 
 
@@ -753,6 +745,7 @@ class KernelBasis:
         weights: np.ndarray,
         *,
         backend: str,
+        device: str | None = None,
         block_rows: int | None = None,
     ) -> np.ndarray:
         """``K(Q, rows) @ weights`` for raw queries ``Q``, float64.
@@ -766,6 +759,9 @@ class KernelBasis:
             not been built yet.
         weights : ndarray of shape (n_rows, n_outputs)
         backend : {"mlx", "cpu"}
+        device : {"gpu", "cpu"}, optional
+            The MLX device to evaluate on, as the caller resolved it; by default
+            the one ``backend`` names.
 
         Notes
         -----
@@ -794,7 +790,7 @@ class KernelBasis:
         if Q32.shape[0] == 0 or rows.shape[0] == 0:
             return out
 
-        device = inference_device(backend)
+        device = _compute_device(backend, device)
         right, right_sq, reach = self._device_operand(rows, device)
         q_sq = _query_norms(Q32)
         check_query_range(self.spec, q_sq, reach)
@@ -811,6 +807,18 @@ class KernelBasis:
 # --------------------------------------------------------------------------------------
 # device evaluation
 # --------------------------------------------------------------------------------------
+
+
+def _compute_device(backend: str, device: str | None) -> str:
+    """The MLX device to evaluate on: ``device``, or else the one ``backend`` names.
+
+    The kernels read no configuration. Where a GPU-fitted model runs in a process
+    with no GPU is decided by the estimator that owns it
+    (:func:`~mlxlearn._common.device.inference_device`) and passed in as ``device``.
+    """
+    if device is not None:
+        return device
+    return "gpu" if backend == "mlx" else "cpu"
 
 
 def _block_rows(n_rows: int, n_cols: int, device: str, block_rows: int | None) -> int:
@@ -1049,6 +1057,7 @@ def kernel_matrix(
     B: np.ndarray | None = None,
     *,
     backend: str = "cpu",
+    device: str | None = None,
     block_rows: int | None = None,
 ) -> np.ndarray:
     """The dense kernel matrix ``K(A, B)``, float32.
@@ -1062,7 +1071,10 @@ def kernel_matrix(
         Defaults to ``A``, in which case the diagonal is :func:`kernel_diagonal`'s
         closed form, rounded to float32 — the value the solver's curvature uses.
     backend : {"mlx", "cpu"}, default="cpu"
-        Which MLX device evaluates the blocks.
+        Which MLX device evaluates the blocks: the GPU for ``"mlx"``.
+    device : {"gpu", "cpu"}, optional
+        The MLX device to evaluate on, as the caller resolved it, in place of the
+        one ``backend`` names.
     block_rows : int, optional
         Rows of ``A`` per block. Defaults to a memory-derived size.
 
@@ -1088,7 +1100,7 @@ def kernel_matrix(
     if n_a == 0 or n_b == 0:
         return out
 
-    device = inference_device(backend)
+    device = _compute_device(backend, device)
     rows = _block_rows(n_a, n_b, device, block_rows)
     needs_norms = spec.kernel == "rbf"
     refiner = _rbf_refiner(spec, A32, B32)
@@ -1132,6 +1144,9 @@ class KernelRows:
         Float32 C-ordered copy, already in ``spec``'s compute frame.
     spec : KernelSpec
     backend : {"mlx", "cpu"}
+    device : {"gpu", "cpu"} or None
+        The MLX device to evaluate on, as the caller resolved it; ``None`` for
+        the one ``backend`` names.
 
     Notes
     -----
@@ -1179,17 +1194,18 @@ class KernelRows:
     X: np.ndarray
     spec: KernelSpec
     backend: str
+    device: str | None = None
     _device_X: object = None  # mx.array (n, d)
     _device_sq: object = None  # mx.array (n,), only for rbf
     _tile: object = None  # f(dot, a_sq, b_sq), from _tile_transform
-    _device_kind: str = "cpu"  # the MLX device ``backend`` resolves to here
+    _device_kind: str = "cpu"  # the MLX device the rows are evaluated on
     _diagonal: object = None  # (n,) float32, every self-entry
     _refiner: object = None  # _RbfRefiner, or None where no entry can need one
 
     def __post_init__(self) -> None:
         import mlx.core as mx
 
-        self._device_kind = inference_device(self.backend)
+        self._device_kind = _compute_device(self.backend, self.device)
         self._diagonal = _self_entries(self.spec, self.X)
         self._refiner = _rbf_refiner(self.spec, self.X, self.X)
         with use_device(self._device_kind):
@@ -1297,7 +1313,9 @@ class KernelRows:
         return self._finish(host, index)
 
 
-def build_kernel_rows(X: np.ndarray, spec: KernelSpec, *, backend: str) -> KernelRows:
+def build_kernel_rows(
+    X: np.ndarray, spec: KernelSpec, *, backend: str, device: str | None = None
+) -> KernelRows:
     """Build a :class:`KernelRows` over a float32 copy of ``X``.
 
     The copy is deliberate, and forced rather than incidental: the float32
@@ -1308,4 +1326,4 @@ def build_kernel_rows(X: np.ndarray, spec: KernelSpec, *, backend: str) -> Kerne
     prepared = _host_float32(X)
     if prepared is X or np.shares_memory(prepared, X):
         prepared = prepared.copy()
-    return KernelRows(X=prepared, spec=spec, backend=backend)
+    return KernelRows(X=prepared, spec=spec, backend=backend, device=device)

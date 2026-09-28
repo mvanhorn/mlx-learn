@@ -5,7 +5,9 @@ operation, which backend ran it, and — when it did not run on MLX — why not.
 This is what makes a fallback debuggable after the fact instead of at the moment
 it happens, and it is recorded under *every* fallback policy, including
 ``"silent"``. Silencing a warning stream is a reasonable thing to want; losing the
-evidence is not.
+evidence is not. A fit's decision is recorded when it is made, so a fit that then
+fails is still on the record; a fit that revises its decision records the revision
+in the same place, so one fit is one event.
 
 The record is a bounded ring buffer. An agent harness fitting in a loop for hours
 must not accumulate an unbounded event list, and the interesting events are the
@@ -141,11 +143,17 @@ class _Recorder:
         )
         self._warned: set[tuple[str, str]] = set()
 
-    def record(self, event: BackendEvent) -> None:
+    def record(self, event: BackendEvent, replacing: BackendEvent | None = None) -> None:
         capacity = _process_tuning().diagnostics_capacity
         with self._lock:
             if self._events.maxlen != capacity:
                 self._events = deque(self._events, maxlen=capacity)
+            if replacing is not None:
+                # Newest first: the event a fit is revising is usually the last one.
+                for position in range(len(self._events) - 1, -1, -1):
+                    if self._events[position] is replacing:
+                        self._events[position] = event
+                        return
             self._events.append(event)
 
     def has_warned(self, key: tuple[str, str]) -> bool:
@@ -177,10 +185,6 @@ class _Recorder:
             self._events.clear()
             self._warned.clear()
 
-    def resize(self, capacity: int) -> None:
-        with self._lock:
-            self._events = deque(self._events, maxlen=capacity)
-
 
 _recorder = _Recorder()
 
@@ -190,10 +194,16 @@ _recorder = _Recorder()
 _PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep
 
 
-def _is_internal(filename: str) -> bool:
-    return filename.startswith(_PACKAGE_DIR) or os.path.abspath(filename).startswith(
-        _PACKAGE_DIR
-    )
+def _is_internal(frame) -> bool:
+    filename = frame.f_code.co_filename
+    if filename.startswith(_PACKAGE_DIR) or os.path.abspath(filename).startswith(_PACKAGE_DIR):
+        return True
+    # scikit-learn 1.9's callback decorator, which LogisticRegression.fit carries:
+    # scikit-learn's frame, but between mlxlearn's and the caller's. Stopping there
+    # attributed a patched fit's fallback warning to scikit-learn's module.
+    return frame.f_code.co_name == "callback_managed_method" and str(
+        frame.f_globals.get("__name__", "")
+    ).startswith("sklearn.callback")
 
 
 def external_stacklevel() -> int:
@@ -211,7 +221,7 @@ def external_stacklevel() -> int:
 def _external_frame(frame) -> tuple[int, Any]:
     # `frame` is the frame that will call warnings.warn, i.e. stacklevel 1.
     level = 1
-    while frame is not None and _is_internal(frame.f_code.co_filename):
+    while frame is not None and _is_internal(frame):
         frame = frame.f_back
         level += 1
     return level, frame
@@ -277,6 +287,7 @@ def record_event(
     shape: tuple[int, ...] | None = None,
     fallback: bool = False,
     warn: bool = False,
+    replacing: BackendEvent | None = None,
     **extra: Any,
 ) -> BackendEvent:
     """Record one dispatch decision, optionally warning about it.
@@ -288,6 +299,11 @@ def record_event(
         this ``(estimator, reason)`` pair is shown, subject to
         ``fallback_policy``. Recording happens regardless. The warning is
         attributed to the first stack frame outside mlxlearn — the user's call.
+    replacing : BackendEvent, optional
+        An event this one supersedes: the same fit's decision, made again or
+        amended. The new event takes its place in the record instead of being
+        appended, so a fit stays one event however often it revises its decision.
+        Appended as usual if ``replacing`` is no longer in the record.
 
     Returns
     -------
@@ -307,7 +323,7 @@ def record_event(
         extra=dict(extra),
     )
     if config.diagnostics:
-        _recorder.record(event)
+        _recorder.record(event, replacing)
 
     if warn and config.fallback_policy == "warn":
         message = detail or f"{estimator}.{operation} fell back to scikit-learn ({reason})."

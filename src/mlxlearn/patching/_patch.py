@@ -268,7 +268,10 @@ def unpatch_sklearn(estimators=None) -> None:
     Besides the public attribute, any ``sklearn.*`` module attribute still bound
     to the mlxlearn class — a scikit-learn module first imported while patched —
     is pointed back at the original. Names bound while patched outside
-    scikit-learn, by your code or another library, are not rewritten.
+    scikit-learn, by your code or another library, are not rewritten, and neither
+    are containers a module filled with classes as it was imported: import
+    ``sklearn.utils.estimator_checks`` before patching if you will run
+    scikit-learn's estimator checks after unpatching.
     """
     specs = resolve_names(estimators)
 
@@ -338,14 +341,20 @@ def _restore_internal_bindings(pairs: list[tuple[object, object]]) -> dict[int, 
     keyed by ``id(installed)`` — every key is alive in ``pairs`` for the whole call.
 
     The consumer imports in :func:`patch_sklearn` keep scikit-learn's own modules
-    off the mlxlearn classes, so usually this finds nothing. It is what still makes
-    unpatching complete when a scikit-learn module outside the registry's
-    ``consumers`` was first imported while patched: a consumer added in a newer
-    release, or ``sklearn.utils.estimator_checks``, whose instance generator binds
-    every estimator class. Identity, not names, decides — the same rule as tamper
-    detection — so ``from sklearn.neighbors import NearestNeighbors as NN`` is
-    caught and a third party's class is never touched. About a millisecond over the
-    few hundred ``sklearn.*`` modules a typical process has loaded.
+    off the mlxlearn classes, so usually this finds nothing. It restores the module
+    attributes of a scikit-learn module outside the registry's ``consumers`` that
+    was first imported while patched: a consumer added in a newer release, or
+    ``sklearn.utils.estimator_checks``. Identity, not names, decides — the same
+    rule as tamper detection — so ``from sklearn.neighbors import NearestNeighbors
+    as NN`` is caught and a third party's class is never touched. About a
+    millisecond over the few hundred ``sklearn.*`` modules a typical process has
+    loaded.
+
+    Module attributes only. A container such a module filled with classes as it
+    was imported keeps the mlxlearn ones: the ``INIT_PARAMS``,
+    ``PER_ESTIMATOR_CHECK_PARAMS`` and ``PER_ESTIMATOR_XFAIL_CHECKS`` tables of
+    scikit-learn's test instance generator are the known case, so its estimator
+    checks, run after unpatching, miss the stock classes' entries.
     """
     if not pairs:
         return {}

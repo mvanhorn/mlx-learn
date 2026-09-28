@@ -58,8 +58,9 @@ from sklearn.utils.validation import column_or_1d
 
 from .._common.base import BackendMixin, _public_call, mlx_guard
 from .._common.config import get_tuning
-from .._common.device import physical_memory_bytes
+from .._common.device import inference_device, physical_memory_bytes
 from .._common.validation import (
+    _safe_shape,
     check_consistent_length,
     check_float32_range,
     check_is_fitted,
@@ -109,13 +110,6 @@ _NON_FINITE_MODEL = (
 _PROBABILITY_DEPRECATED = (
     inspect.signature(_SkSVC.__init__).parameters["probability"].default == "deprecated"
 )
-
-
-def _safe_shape(X) -> tuple[int, ...] | None:
-    shape = getattr(X, "shape", None)
-    if shape is None or len(shape) != 2:
-        return None
-    return (int(shape[0]), int(shape[1]))
 
 
 def _libsvm_sample_weight(sample_weight, X: np.ndarray) -> np.ndarray | None:
@@ -218,10 +212,6 @@ class MLXSVCMixin(BackendMixin):
         "_kernel_center_",
         "_kernel_basis_",
     )
-
-    def _clear_mlx_state(self) -> None:
-        for attribute in self._mlxlearn_mlx_attrs:
-            self.__dict__.pop(attribute, None)
 
     # --------------------------------------------------------------- capability
 
@@ -528,15 +518,17 @@ class MLXSVCMixin(BackendMixin):
         n_pair = int(X_pair.shape[0])
         cache_rows = self._kernel_cache_rows(n_pair)
         k_diag = kernel_diagonal(spec, X_pair)
+        # Resolved here, where the configuration may be read; the kernels read none.
+        device = inference_device(backend)
 
         fetch_rows = None
         prefetch_rows = 0
         if cache_rows >= n_pair:
-            gram = kernel_matrix(spec, X_pair, backend=backend)
+            gram = kernel_matrix(spec, X_pair, backend=backend, device=device)
             # Rows of a materialized Gram are views, so the LRU adds no memory here.
             fetch = gram.__getitem__
         else:
-            rows = build_kernel_rows(X_pair, spec, backend=backend)
+            rows = build_kernel_rows(X_pair, spec, backend=backend, device=device)
             fetch = rows.row
             # Many rows per device round trip: a miss prefetches the near-violators
             # (on the GPU, where a call costs ~200 us however many rows it carries),
@@ -809,15 +801,17 @@ class MLXSVCMixin(BackendMixin):
         )
         # The fitted backend, sticky. A GPU-fitted model in a process without a
         # usable GPU runs the same MLX code on MLX's CPU (recorded as
-        # "gpu-unavailable"), unless device="gpu" names the GPU explicitly; the
-        # kernels resolve the device by the same rule, inference_device().
+        # "gpu-unavailable"), unless device="gpu" names the GPU explicitly. That is
+        # inference_device()'s rule, applied here and handed to the kernels, which
+        # read no configuration.
         backend = self._note_inference(operation, shape=_safe_shape(Xv))
         n_pairs = self._pair_weights_.shape[1]
         if Xv.shape[0] == 0:
             return np.empty((0, n_pairs), dtype=np.float64)
+        device = inference_device(backend)
         with mlx_guard(type(self).__name__, operation):
             decision = self._kernel_basis().combine(
-                Xv, self.support_vectors_, self._pair_weights_, backend=backend
+                Xv, self.support_vectors_, self._pair_weights_, backend=backend, device=device
             )
         decision -= self._pair_rho_
         if not np.isfinite(decision).all():
@@ -1015,34 +1009,18 @@ class SVC(MLXSVCMixin, _SkSVC):
         # or C=-1 would reach the solver instead of raising InvalidParameterError.
         self._validate_params()
         self._clear_backend()
-        self._clear_mlx_state()
-        shape = _safe_shape(X)
 
-        # Patched mode decides from the raw shape first — and, for the many-class
-        # rule, the raw labels' count. Most of what it sees is below the crossover,
-        # and everything below would otherwise be validated, range-scanned and
-        # target-checked here only for scikit-learn to do it all again: measured
-        # 1.4x-1.6x stock at 200 x 5. Only the parameter and sparsity checks run
-        # first, so a capability mismatch is still reported as one. With
-        # MLXLEARN_FORCE_BACKEND set the crossover does not apply, and a
-        # below-crossover selection in Layer 2 always resolves to scikit-learn.
-        forced = bool(get_tuning().force_backend)
-        if self._mlxlearn_allow_fallback and shape is not None and not forced:
-            below, detail = self._crossover_from_raw(shape, y)
-            if below:
-                self._select_backend(
-                    "fit",
-                    capability_check=lambda: self._check_svc_capability(X),
-                    below_crossover=True,
-                    crossover_detail=detail,
-                    shape=shape,
-                )
-                return self._fit_with_sklearn(X, y, sample_weight)
-
+        # The size is decided from the raw shape first — and, for the many-class
+        # rule, the raw labels' count — after only the parameter and sparsity
+        # checks, so a capability mismatch is still reported as one. Most of what
+        # patched mode sees is below the crossover, and everything below would
+        # otherwise be validated, range-scanned and target-checked here only for
+        # scikit-learn to do it all again: measured 1.4x-1.6x stock at 200 x 5.
         backend = self._select_backend(
             "fit",
+            shape=_safe_shape(X),
+            crossover=lambda n, d: self._crossover_from_raw((n, d), y),
             capability_check=lambda: self._check_svc_capability(X),
-            shape=shape,
         )
         if backend == "sklearn":
             return self._fit_with_sklearn(X, y, sample_weight)
@@ -1060,20 +1038,20 @@ class SVC(MLXSVCMixin, _SkSVC):
         check_consistent_length(X64, y_encoded)
         weights = _libsvm_sample_weight(sample_weight, X64)
 
-        below, detail = self._below_crossover(*X64.shape, n_classes=len(self.classes_))
-        # Below the crossover, Layer 1 runs on the MLX CPU device and Layer 2 hands
-        # the fit to scikit-learn — whatever device is configured: device="cpu"
-        # selects MLX's CPU, which is the same float32 path and no faster, not
-        # scikit-learn's. Only MLXLEARN_FORCE_BACKEND outranks the crossover.
-        if below and not forced:
-            backend = self._select_backend(
-                "fit",
-                below_crossover=True,
-                crossover_detail=detail,
-                shape=X64.shape,
-            )
-            if backend == "sklearn":
-                return self._fit_with_sklearn(X, y, sample_weight)
+        # Decided again now that the classes are known — the raw labels may not
+        # have been countable, and input with no shape before validation had no
+        # size at all. Below the crossover, Layer 1 runs on the MLX CPU device and
+        # Layer 2 hands the fit to scikit-learn — whatever device is configured:
+        # device="cpu" selects MLX's CPU, which is the same float32 path and no
+        # faster, not scikit-learn's. Only MLXLEARN_FORCE_BACKEND outranks the crossover.
+        n_classes = len(self.classes_)
+        backend = self._select_backend(
+            "fit",
+            shape=X64.shape,
+            crossover=lambda n, d: self._below_crossover(n, d, n_classes=n_classes),
+        )
+        if backend == "sklearn":
+            return self._fit_with_sklearn(X, y, sample_weight)
 
         # The data-dependent capability limits, checked only now that MLX will run.
         # Raised this late they bypass _select_backend, so they are routed through

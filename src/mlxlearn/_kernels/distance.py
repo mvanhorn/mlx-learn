@@ -38,7 +38,7 @@ from __future__ import annotations
 import functools
 import math
 import threading
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
@@ -46,7 +46,7 @@ import numpy as np
 
 from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .._common.config import get_tuning
-from .._common.device import inference_device, physical_memory_bytes, use_device
+from .._common.device import physical_memory_bytes, use_device
 from ..exceptions import UnsupportedInputError
 
 __all__ = ["NeighborIndex", "build_index", "resolve_blocks"]
@@ -220,17 +220,20 @@ def resolve_blocks(
     return BlockPlan(query_rows=int(rows), train_cols=int(cols))
 
 
-def _compute_device(backend: str) -> str:
-    """The MLX device an index built for ``backend`` runs on in this process.
+def _compute_device(backend: str, device: str | None = None) -> str:
+    """The MLX device an index built for ``backend`` runs on: ``device``, or else its own.
 
-    ``"cpu"`` is MLX's CPU. ``"mlx"`` is the GPU — unless this process has none, as
-    when a model fitted on a Mac is unpickled somewhere without Metal. MLX's CPU
-    runs the identical float32 code, so that is used rather than refusing to
-    predict, except when the configuration names the GPU explicitly. That rule is
-    :func:`~mlxlearn._common.device.inference_device`'s, shared with every other
-    kernel, so the device a query runs on and the one diagnostics report agree.
+    ``"cpu"`` is MLX's CPU and ``"mlx"`` the GPU. A process with none — a model
+    fitted on a Mac, unpickled somewhere without Metal — runs the identical float32
+    code on MLX's CPU instead, unless the configuration names the GPU. That is the
+    estimator's decision (:func:`~mlxlearn._common.device.inference_device`), made
+    where the configuration may be read and passed in as ``device``: the kernels
+    read no configuration, and the device a query runs on is the one diagnostics
+    report.
     """
-    return inference_device(backend)
+    if device is not None:
+        return device
+    return "gpu" if backend == "mlx" else "cpu"
 
 
 @functools.lru_cache(maxsize=2)
@@ -433,6 +436,10 @@ class NeighborIndex:
         input.
     backend : {"mlx", "cpu"}
         Which MLX device the index was built for.
+    device : {"gpu", "cpu"}, optional
+        Init only: the MLX device to build on, as the caller resolved it; by
+        default the one ``backend`` names. Not kept, and not pickled: each query
+        says where it runs.
     X_lo : ndarray of shape (n_samples, n_features) or None
         For wider-than-float32 input, the float32 residual ``X64 − float32(X64)``.
         Refinement and centering use ``X + X_lo``, so a float64 caller's precision
@@ -446,13 +453,14 @@ class NeighborIndex:
     X_lo: np.ndarray | None = None
     _state: _DeviceState | None = field(default=None, repr=False)
     _lock: Any = field(default_factory=threading.Lock, repr=False)
+    device: InitVar[str | None] = None
 
     # ------------------------------------------------------------------ build
 
-    def __post_init__(self) -> None:
-        self._ensure_device()
+    def __post_init__(self, device: str | None) -> None:
+        self._ensure_device(device)
 
-    def _ensure_device(self) -> _DeviceState:
+    def _ensure_device(self, device: str | None = None) -> _DeviceState:
         """Build and publish the device state. Idempotent and thread-safe.
 
         It doubles as the rebuild path after unpickling, and there the first query
@@ -471,7 +479,7 @@ class NeighborIndex:
         with self._lock:
             if self._state is None:
                 state, x_view, lo_view = _build_state(
-                    self.X, self.X_lo, self.center, self.backend
+                    self.X, self.X_lo, self.center, _compute_device(self.backend, device)
                 )
                 self.X = x_view
                 self.X_lo = lo_view
@@ -510,8 +518,8 @@ class NeighborIndex:
         self._lock = threading.Lock()
         self._state = None
         # Rebuilt lazily on the first query rather than here, so that unpickling
-        # never touches a device. On a machine without a GPU that query then runs
-        # on MLX's CPU; see _compute_device.
+        # never touches a device, and on the device that query runs on; see
+        # _compute_device.
 
     # ------------------------------------------------------------------ query
 
@@ -525,6 +533,7 @@ class NeighborIndex:
         query_block_size: int | None = None,
         train_block_size: int | None = None,
         stats: dict | None = None,
+        device: str | None = None,
     ) -> tuple[np.ndarray | None, np.ndarray]:
         """Return the ``k`` nearest training rows for each row of ``Q``.
 
@@ -547,6 +556,9 @@ class NeighborIndex:
             ``"widened_rows"`` (the first pass could not certify them) and
             ``"exact_rows"`` (nor could a wider one, so they were searched exactly).
             The kernel knows nothing of estimators, so it is the caller's to record.
+        device : {"gpu", "cpu"}, optional
+            The MLX device to search on, as the caller resolved it; by default the
+            one the index was built for (``backend``).
 
         Returns
         -------
@@ -567,7 +579,8 @@ class NeighborIndex:
         # Decided before the device build, which swaps ``X`` for a view of the
         # device copy: the caller handed us the old object.
         self_query = exclude_self and Q is self.X
-        state = self._ensure_device()
+        device = _compute_device(self.backend, device)
+        state = self._ensure_device(device)
         n_query = int(Q.shape[0])
         n_train = self.n_samples
         k = int(k)
@@ -596,7 +609,6 @@ class NeighborIndex:
 
         # Carry extra candidates so the certificate usually succeeds first time.
         k_carry = _first_pass_carry(k_search, self.n_features, n_train)
-        device = _compute_device(self.backend)
         # Budgeted for the device the query runs on, which for a GPU-fitted index
         # loaded on a GPU-less host is MLX's CPU, not the device it was built for.
         plan_backend = "mlx" if device == "gpu" else "cpu"
@@ -1206,15 +1218,14 @@ def _all_integral(mx, a, block: int = 1 << 16) -> bool:
     return True
 
 
-def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, backend: str):
-    """Upload and derive everything the device needs. Returns ``(state, X, X_lo)``.
+def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, device: str):
+    """Upload and derive everything ``device`` needs. Returns ``(state, X, X_lo)``.
 
     The returned host arrays are read-only zero-copy views of the device arrays;
     the caller swaps them in for the ones it had, which frees those.
     """
     import mlx.core as mx
 
-    device = _compute_device(backend)
     fns = _kernels(device)
     n, d = (int(s) for s in X.shape)
     with use_device(device):
@@ -1350,8 +1361,8 @@ def _split_float64(X: np.ndarray, block: int = 1 << 16) -> tuple[np.ndarray, np.
     return hi, (lo if lo.any() else None)
 
 
-def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
-    """Build a :class:`NeighborIndex` from a training matrix.
+def build_index(X: np.ndarray, *, backend: str, device: str | None = None) -> NeighborIndex:
+    """Build a :class:`NeighborIndex` from a training matrix, on ``device`` if given.
 
     float32 input is uploaded as given. The upload is the copy — the index then
     keeps a read-only view of its own device buffer, never the caller's array —
@@ -1379,12 +1390,12 @@ def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:
         X64 = np.asarray(X, dtype=np.float64)
         hi, lo = _split_float64(X64)
         center = X64.mean(axis=0)
-    index = NeighborIndex(X=hi, center=center, backend=backend, X_lo=lo)
-    _require_resolvable(index)
+    index = NeighborIndex(X=hi, center=center, backend=backend, X_lo=lo, device=device)
+    _require_resolvable(index, device)
     return index
 
 
-def _require_resolvable(index: NeighborIndex) -> None:
+def _require_resolvable(index: NeighborIndex, device: str | None) -> None:
     """Refuse, at fit, training rows whose own neighbors float32 cannot resolve.
 
     Only reachable when the span had to be scaled down: a few values far larger than
@@ -1395,7 +1406,7 @@ def _require_resolvable(index: NeighborIndex) -> None:
     ``_RESOLVED_MARGIN`` of the limit is a capability mismatch: a directly imported
     estimator raises, and a patched one falls back to scikit-learn.
     """
-    state = index._ensure_device()
+    state = index._ensure_device(device)
     n = index.n_samples
     if state.exponent <= 0 or n < 2:
         return
@@ -1405,7 +1416,7 @@ def _require_resolvable(index: NeighborIndex) -> None:
         probe = probe.astype(np.float64) + index.X_lo[rows]
     try:
         # Each row finds itself, or a duplicate, first; the second is its nearest.
-        dist, idx = index.query(probe, 2)
+        dist, idx = index.query(probe, 2, device=device)
     except UnsupportedInputError:
         unresolved = True  # a neighbor already below the limit itself
     else:

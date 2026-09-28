@@ -27,14 +27,16 @@ and therefore only ever raise. Layer 2 classes, defined in
 ``mlxlearn.patching``, set it to ``True``. That single flag is the whole
 difference between the two layers.
 
-**One fit, one event; one call, one event.** A fit may consult the selection
-logic more than once — before validation for capability, after it for the
-crossover — so the decision is *staged* on the estimator and recorded once, by
-:meth:`BackendMixin._set_backend`, when the fit completes. A public inference
-call may reach the work through other public methods (``predict`` through
-``kneighbors``, scikit-learn's ``predict`` through the overridden
-``decision_function``), so each public method is entered through a thin wrapper
-that makes the outermost call the one that records.
+**One fit, one event; one call, one event.** A fit's decision is recorded when
+it is made, fallback warning included, so a fit that then fails is still on the
+record. A fit may consult the selection logic more than once — before validation
+for capability, after it for the crossover — and each later decision takes the
+earlier one's place in the record; :meth:`BackendMixin._set_backend` commits the
+last one when the fit completes. A public inference call may reach the work
+through other public methods (``predict`` through ``kneighbors``, scikit-learn's
+``predict`` through the overridden ``decision_function``), so each public method
+is entered through a thin wrapper that makes the outermost call the one that
+records.
 """
 
 from __future__ import annotations
@@ -349,18 +351,24 @@ class BackendMixin:
         crossover_detail: str = "",
         shape: tuple[int, ...] | None = None,
         crossover: Callable[[int, int], tuple[bool, str]] | None = None,
+        handoff: Callable[[int, int], tuple[str, str] | None] | None = None,
         data_check: Callable[[], None] | None = None,
     ) -> Backend:
-        """Choose the backend for a ``fit``, staging the decision for :meth:`_set_backend`.
+        """Choose the backend for a ``fit``, and record the decision.
 
-        May be called more than once per fit; the last decision is the one
-        recorded, once, when the fit completes. The order of precedence is:
-        capability, then ``MLXLEARN_FORCE_BACKEND``, then size, then the
-        data-dependent capability checks, then the device. A by-design handoff
-        by size therefore skips ``data_check``: a patched fit below the
-        crossover whose only mismatch is data-dependent (values past float32's
-        range, say) is recorded as ``"below-crossover"``, and does not raise
-        under ``fallback_policy="raise"``.
+        May be called more than once per fit; each decision takes the previous
+        one's place in the record, and :meth:`_set_backend` commits the last. The
+        order of precedence is: capability, then ``MLXLEARN_FORCE_BACKEND``, then
+        size, then the data-dependent capability checks, then the device. A
+        by-design handoff by size therefore skips ``data_check``: a patched fit
+        below the crossover whose only mismatch is data-dependent (values past
+        float32's range, say) is recorded as ``"below-crossover"``, and does not
+        raise under ``fallback_policy="raise"``.
+
+        With ``crossover`` given and no ``shape`` — input that has none before
+        validation — the size, and so the device, cannot be decided yet: this
+        returns ``"cpu"`` provisionally, having recorded nothing, and the caller
+        decides again with the validated shape.
 
         Parameters
         ----------
@@ -385,6 +393,11 @@ class BackendMixin:
             and ``shape`` is known, the size decision is made here, from the raw
             shape, before any validation or conversion: a patched fit headed for
             scikit-learn then pays for none of mlxlearn's own input preparation.
+        handoff : callable, optional
+            ``handoff(n_samples, n_features) -> (reason, detail)`` or ``None``: a
+            by-design handoff to scikit-learn that only patched mode makes, on
+            the raw shape, after the crossover — the neighbor estimators' KD-tree
+            rule. Directly imported, the estimator runs on MLX regardless.
         data_check : callable, optional
             Data-dependent capability checks (float32 range, target type). Run
             after the size decision, and skipped when the work is going to
@@ -424,21 +437,25 @@ class BackendMixin:
             return backend
 
         detail = crossover_detail
-        if not below_crossover and crossover is not None and shape is not None and len(shape) == 2:
+        sized = shape is not None and len(shape) == 2
+        if not below_crossover and crossover is not None and sized:
             below_crossover, detail = crossover(int(shape[0]), int(shape[1]))
 
-        if below_crossover and self._mlxlearn_allow_fallback:
-            self._stage_event(
-                operation,
-                "sklearn",
-                reason="below-crossover",
-                detail=detail,
-                shape=shape,
-                fallback=True,
-                # Not a warning: dispatching a small problem to scikit-learn is
-                # the design working, not a limitation being hit.
-            )
-            return "sklearn"
+        if self._mlxlearn_allow_fallback:
+            handed = None
+            if below_crossover:
+                handed = ("below-crossover", detail)
+            elif handoff is not None and sized:
+                handed = handoff(int(shape[0]), int(shape[1]))
+            if handed is not None:
+                reason, handed_detail = handed
+                # Not a warning: dispatching this to scikit-learn is the design
+                # working, not a limitation being hit.
+                self._stage_event(
+                    operation, "sklearn", reason=reason, detail=handed_detail, shape=shape,
+                    fallback=True,
+                )
+                return "sklearn"
 
         refused = self._run_data_check(data_check, operation, shape)
         if refused is not None:
@@ -458,6 +475,9 @@ class BackendMixin:
                     shape=shape,
                 )
             check_fork_safety()
+
+        if crossover is not None and not sized:
+            return "cpu"  # provisional: the caller decides again once it has a shape
 
         if below_crossover:
             self._stage_event(operation, "cpu", reason="below-crossover", detail=detail, shape=shape)
@@ -513,14 +533,16 @@ class BackendMixin:
         is already under ``patch_sklearn()``, so what it records, warns and raises
         is the mismatch without that advice (``exc.summary``), followed by what it
         did about it.
+
+        The warning comes with the decision, before scikit-learn does any of the
+        work: a handoff decided here is final, and a user's "error" filter — the
+        documented way to assert that nothing falls back — then fails fast.
         """
-        name = type(self).__name__
         policy = get_config().fallback_policy
 
         if not self._mlxlearn_allow_fallback:
-            record_event(
-                name, operation, "cpu", reason=exc.reason, detail=str(exc), shape=shape,
-                raised=True,
+            self._stage_event(
+                operation, "cpu", reason=exc.reason, detail=str(exc), shape=shape, raised=True
             )
             raise exc
 
@@ -532,9 +554,9 @@ class BackendMixin:
                 f"this {operation} to scikit-learn. Set fallback_policy='warn' or "
                 "'silent' to allow the fallback."
             )
-            record_event(
-                name, operation, "sklearn", reason=exc.reason, detail=detail,
-                shape=shape, fallback=True, raised=True,
+            self._stage_event(
+                operation, "sklearn", reason=exc.reason, detail=detail, shape=shape,
+                fallback=True, raised=True,
             )
             raise CapabilityError(detail, reason=exc.reason) from exc
 
@@ -554,40 +576,62 @@ class BackendMixin:
     def _begin_fit(self) -> None:
         # A fit is in progress from here until _set_backend. Also set by
         # _clear_backend; repeated here so that an estimator that forgot to
-        # clear still stages rather than double-records.
+        # clear still records its decisions as one event.
         self.__dict__["_mlxlearn_fit_incomplete"] = True
 
-    def _stage_event(self, operation: str, backend: Backend, **kwargs: Any) -> None:
-        """Hold a fit decision until the fit completes, or record it now outside a fit."""
-        event = dict(
-            estimator=type(self).__name__, operation=operation, backend=backend, **kwargs
+    def _stage_event(self, operation: str, backend: Backend, **kwargs: Any) -> BackendEvent:
+        """Record a decision; during a fit, in place of the one the fit recorded before.
+
+        The fit's latest decision stays on the estimator, for :meth:`_set_backend`
+        to commit or a later decision in the same fit to replace. A fit that fails
+        after deciding therefore leaves its decision on the record — once — with
+        its fallback warning already shown.
+        """
+        state = self.__dict__
+        in_fit = state.get("_mlxlearn_fit_incomplete", False)
+        event = record_event(
+            type(self).__name__,
+            operation,
+            backend,
+            replacing=state.get("_mlxlearn_pending_event") if in_fit else None,
+            **kwargs,
         )
-        if self.__dict__.get("_mlxlearn_fit_incomplete", False):
-            self.__dict__["_mlxlearn_pending_event"] = event
-        else:
-            record_event(**event)
+        if in_fit:
+            state["_mlxlearn_pending_event"] = event
+        return event
+
+    def _amend_fit_event(self, detail: str = "", **extra: Any) -> None:
+        """Add what the work found to this fit's decision: ``detail`` appended, ``extra`` merged.
+
+        How a solver stopped, say. It goes on the fit's one event, in its place in
+        the record, rather than on a second event.
+        """
+        event = self.__dict__["_mlxlearn_pending_event"]
+        self.__dict__["_mlxlearn_pending_event"] = record_event(
+            event.estimator,
+            event.operation,
+            event.backend,
+            reason=event.reason,
+            detail=f"{event.detail} {detail}".strip(),
+            shape=event.shape,
+            fallback=event.fallback,
+            replacing=event,
+            **{**event.extra, **extra},
+        )
 
     def _set_backend(self, backend: Backend) -> None:
-        """Record the backend chosen by ``fit``. Call exactly once per fit, at its end.
+        """Commit the backend chosen by ``fit``. Call exactly once per fit, at its end.
 
-        This is the commit point: the staged decision is recorded — once, with
-        its warning if it is a fallback — and kept on the estimator as
-        ``fit_event_``.
+        The fit's decision, already recorded, is kept on the estimator as
+        ``fit_event_``, and the estimator is fitted from here on.
         """
-        pending = self.__dict__.pop("_mlxlearn_pending_event", None)
-        if pending is None or pending["backend"] != backend:
-            # A decision this mixin did not stage; record what actually happened.
-            pending = {
-                "estimator": type(self).__name__,
-                "operation": "fit",
-                "backend": backend,
-                "reason": "selected",
-                "fallback": backend == "sklearn",
-            }
-        # Recorded before the state changes: a fallback warning that a user's
-        # "error" filter turns into an exception leaves the fit incomplete, the
-        # same as fallback_policy="raise" would.
-        event = record_event(**pending)
+        event = self.__dict__.pop("_mlxlearn_pending_event", None)
+        if event is None or event.backend != backend:
+            # A decision this mixin did not make; record what actually happened.
+            event = record_event(
+                type(self).__name__, "fit", backend, fallback=backend == "sklearn",
+                replacing=event,
+            )
         self._execution_backend_ = backend
         self._fit_event_ = event
         self.__dict__.pop("_mlxlearn_fit_incomplete", None)
@@ -673,7 +717,8 @@ class BackendMixin:
         needed its exact fallback, say — and go on that one event.
 
         ``host=True`` says the call computes on the host from the fitted state
-        (scikit-learn's own ``radius_neighbors`` on an MLX-fitted index): no MLX
+        (scikit-learn's own ``radius_neighbors`` on an MLX-fitted index,
+        ``LogisticRegression``'s float64 inference on its coefficients): no MLX
         device is used, so none is resolved, none can be missing, and an
         explicit ``device="gpu"`` has nothing to refuse.
         """

@@ -21,8 +21,6 @@ import math
 import re
 import sys
 import warnings
-from contextlib import contextmanager
-from contextvars import ContextVar
 
 import numpy as np
 import sklearn
@@ -33,6 +31,7 @@ from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_config, get_tuning
 from .._common.device import inference_device
 from .._common.validation import (
+    _safe_shape,
     check_classification_targets,
     check_float32_range,
     check_is_fitted,
@@ -86,18 +85,6 @@ _SKLEARN = tuple(
 _PENALTY_DEPRECATED = (
     inspect.signature(_SkLogisticRegression.__init__).parameters["penalty"].default
     == "deprecated"
-)
-
-#: Identities of the estimators whose public inference call is in progress on this
-#: thread or task. scikit-learn's ``predict``, ``predict_proba``, ``predict_log_proba``
-#: and ``score`` call back into the overridden ``decision_function`` /
-#: ``predict_proba`` / ``predict``, so without it one public call recorded two or
-#: three diagnostics events, labelled with whichever method ran last. A
-#: ``ContextVar`` holding an immutable set is per-thread and per-task by
-#: construction, and an identity is only in it for the duration of the call that
-#: put it there — nothing here outlives a call or is keyed on data.
-_INFERENCE_IN_PROGRESS: ContextVar[frozenset[int]] = ContextVar(
-    "mlxlearn_logistic_inference", default=frozenset()
 )
 
 
@@ -290,17 +277,15 @@ class MLXLogisticMixin(BackendMixin):
                 value=self.intercept_scaling,
             )
 
-    def _check_logistic_capability(self, X, y, sample_weight=None) -> None:
-        """Raise :class:`CapabilityError` for anything the MLX path cannot serve.
+    def _check_logistic_data(self, X, y, sample_weight=None) -> None:
+        """The capability checks that have to look at the data: the fit's ``data_check``.
 
-        Everything :meth:`_check_logistic_params` checks, plus the checks that have
-        to look at the data. All of them run before :meth:`BackendMixin._select_backend`
-        makes its decision, because only a capability error raised *inside* that
-        decision becomes a Layer 2 fallback; one raised afterwards escapes as an
-        exception from a class standing in for scikit-learn's.
+        Run inside :meth:`BackendMixin._select_backend`, because only a capability
+        error raised *inside* that decision becomes a Layer 2 fallback; one raised
+        afterwards escapes as an exception from a class standing in for
+        scikit-learn's. Skipped when the fit goes to scikit-learn by size anyway.
         """
         name = type(self).__name__
-        self._check_logistic_params(X)
         # Before validate_data, so a float64 value that overflows float32 is a
         # capability limit patched mode can fall back on rather than scikit-learn's
         # generic post-conversion "contains infinity" ValueError.
@@ -368,73 +353,53 @@ class MLXLogisticMixin(BackendMixin):
         return self._below_crossover(n_samples, n_features, n_targets)
 
     def _select_fit_backend(self, X, y, sample_weight) -> tuple[str, bool]:
-        """Decide the backend for ``fit`` once. Returns ``(backend, decided)``.
+        """Decide the backend for ``fit`` from the raw input. Returns ``(backend, decided)``.
 
-        For a patched estimator on a problem below the crossover, the decision is
-        made from the raw shape after only the parameter checks: the problem is
-        going to scikit-learn regardless, and scanning ``X`` for float32 overflow,
-        copying it to float32 and validating ``y`` first — all of which
+        A patched estimator below the crossover is handed to scikit-learn on the
+        raw shape, after only the parameter checks: scanning ``X`` for float32
+        overflow, copying it to float32 and validating ``y`` first — all of which
         scikit-learn then repeats — made the handed-off fit up to 2x slower than
-        stock. Data-dependent capability limits are moot for a fit MLX will not
-        run, so they are checked only when it will.
+        stock. The data-dependent limits are ``data_check``, which runs only when
+        MLX will.
 
-        ``decided`` is False when the input has no 2-D shape to decide on (a
-        list, say); the crossover is then applied after validation.
+        ``decided`` is False when the input has no 2-D shape to decide on (a list,
+        say); the size, and the device, are then decided after validation.
         """
         shape = _safe_shape(X)
-        if shape is None:
-            backend = self._select_backend(
-                "fit",
-                capability_check=lambda: self._check_logistic_capability(X, y, sample_weight),
-                shape=None,
-            )
-            return backend, False
-
-        below, detail = self._crossover_from_raw(shape, y)
-        handed_off = below and self._mlxlearn_allow_fallback and not get_tuning().force_backend
-        if handed_off:
-            check = lambda: self._check_logistic_params(X)  # noqa: E731
-        else:
-            check = lambda: self._check_logistic_capability(X, y, sample_weight)  # noqa: E731
         backend = self._select_backend(
             "fit",
-            capability_check=check,
-            below_crossover=below,
-            crossover_detail=detail,
             shape=shape,
+            crossover=lambda n, d: self._crossover_from_raw((n, d), y),
+            capability_check=lambda: self._check_logistic_params(X),
+            data_check=lambda: self._check_logistic_data(X, y, sample_weight),
         )
-        return backend, True
+        return backend, shape is not None
 
     # ---------------------------------------------------------------- inference
 
-    @contextmanager
-    def _inference(self, operation: str, X):
-        """Record one diagnostics event per public inference call, then run it.
+    def _note_host_inference(self, operation: str, X) -> None:
+        """Record this public call's one event; the call then runs scikit-learn's code.
 
         Inference for this estimator is always scikit-learn's float64 NumPy code on
         ``coef_``, ``intercept_`` and ``classes_`` — every backend populates exactly
         those — so the event records the backend that *owns* the fitted state, with
-        ``compute="numpy-float64"`` saying what actually did the arithmetic.
+        ``compute="numpy-float64"`` saying what actually did the arithmetic. It stays
+        ``"sticky"`` for an MLX-fitted model on a GPU-less host (``host=True``): no
+        GPU was wanted, so none was missed.
 
         A model whose attributes were assigned rather than fitted — federated
         averaging, a model imported from elsewhere — has no owner. scikit-learn
         predicts from it, so mlxlearn does too, recorded as ``"external-state"``.
-        That is distinguished from a fit that started and did not complete, which
-        can leave new ``classes_`` next to the previous ``coef_`` and still raises.
+        A fit that started and did not complete, which can leave new ``classes_``
+        next to the previous ``coef_``, is not that: ``check_is_fitted`` raises.
         """
         check_is_fitted(self)
-        active = _INFERENCE_IN_PROGRESS.get()
-        if id(self) not in active:
-            self._record_inference(operation, _safe_shape(X))
-        token = _INFERENCE_IN_PROGRESS.set(active | {id(self)})
-        try:
-            yield
-        finally:
-            _INFERENCE_IN_PROGRESS.reset(token)
-
-    def _record_inference(self, operation: str, shape) -> None:
-        backend = getattr(self, "_execution_backend_", None)
-        if backend is None and not getattr(self, "_mlxlearn_fit_started", False):
+        shape = _safe_shape(X)
+        if "_execution_backend_" in self.__dict__:
+            self._note_inference(operation, shape=shape, host=True, compute="numpy-float64")
+            return
+        operation = self._claim_call_event(operation)
+        if operation is not None:
             self._backend_event(
                 operation,
                 "sklearn",
@@ -446,25 +411,6 @@ class MLXLogisticMixin(BackendMixin):
                 shape=shape,
                 compute="numpy-float64",
             )
-            return
-        backend = self._fitted_backend(operation)
-        # Why the model was fitted where it was, as BackendMixin._note_inference
-        # records it for every other estimator. The reason stays "sticky" even for
-        # an MLX-fitted model on a GPU-less host: this inference is host NumPy
-        # float64 on every backend, so no GPU was wanted and none was missed.
-        extra = {}
-        fit_event = self.__dict__.get("_fit_event_")
-        if fit_event is not None:
-            extra["fit_reason"] = fit_event.reason
-        self._backend_event(
-            operation,
-            backend,
-            reason="sticky",
-            shape=shape,
-            fallback=backend == "sklearn",
-            compute="numpy-float64",
-            **extra,
-        )
 
 
 class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
@@ -597,10 +543,6 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self._validate_params()
 
         self._clear_backend()
-        # Distinguishes "a fit started here" from "coef_ was assigned from outside"
-        # for inference; see MLXLogisticMixin._inference. Deliberately not a
-        # trailing-underscore name, which check_is_fitted would read as fitted state.
-        self._mlxlearn_fit_started = True
 
         backend, decided = self._select_fit_backend(X, y, sample_weight)
         if backend == "sklearn":
@@ -631,20 +573,14 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
             )
 
         if not decided:
-            below, detail = self._below_crossover(
-                *X_checked.shape, n_targets=1 if n_classes == 2 else n_classes
+            n_targets = 1 if n_classes == 2 else n_classes
+            backend = self._select_backend(
+                "fit",
+                shape=X_checked.shape,
+                crossover=lambda n, d: self._below_crossover(n, d, n_targets),
             )
-            # No backend != "cpu" exemption: device never overrides the
-            # crossover, and _select_backend lets MLXLEARN_FORCE_BACKEND outrank it.
-            if below:
-                backend = self._select_backend(
-                    "fit",
-                    below_crossover=True,
-                    crossover_detail=detail,
-                    shape=X_checked.shape,
-                )
-                if backend == "sklearn":
-                    return self._fit_with_sklearn(X, y, sample_weight)
+            if backend == "sklearn":
+                return self._fit_with_sklearn(X, y, sample_weight)
 
         self._mirror_fit_warnings()
         weights = self._resolve_weights(X_checked, y_checked, y_encoded, sample_weight)
@@ -746,9 +682,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         (:meth:`BackendMixin.__sklearn_is_fitted__`), rather than predicting from
         new ``classes_`` beside the previous ``coef_``.
         """
-        state = self.__dict__
-        state.pop("_mlxlearn_fit_started", None)
-        state.pop("_mlxlearn_fit_incomplete", None)
+        self.__dict__.pop("_mlxlearn_fit_incomplete", None)
         try:
             super().fit(X, y, sample_weight)
         except BaseException:
@@ -764,12 +698,13 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         a model that stopped at max_iter was indistinguishable from one that
         reached the tolerance.
 
-        The stop is recorded on the fit's own diagnostics event, which
-        :meth:`_set_backend` commits next: its ``detail`` gains the explanation and
-        its ``extra`` the ``stop_reason``, ``n_iter``, ``n_fev``, ``grad_max_abs``,
-        ``tol`` and ``at_resolution_floor``. As an event of its own it broke "one
-        fit, one event": it became ``get_last_backend_event()`` in place of the
-        fit's, and counted as a second piece of work in ``diagnostics_summary()``.
+        The stop is recorded on the fit's own diagnostics event
+        (:meth:`_amend_fit_event`), which :meth:`_set_backend` commits next: its
+        ``detail`` gains the explanation and its ``extra`` the ``stop_reason``,
+        ``n_iter``, ``n_fev``, ``grad_max_abs``, ``tol`` and ``at_resolution_floor``.
+        As an event of its own it broke "one fit, one event": it became
+        ``get_last_backend_event()`` in place of the fit's, and counted as a second
+        piece of work in ``diagnostics_summary()``.
         """
         if solution.converged:
             return
@@ -809,10 +744,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                 "starting point; check the data for extreme values, or scale it."
             )
 
-        # The decision _select_backend staged, on every path that reaches the solver.
-        pending = self.__dict__["_mlxlearn_pending_event"]
-        pending["detail"] = f"{pending.get('detail', '')} {detail}".lstrip()
-        pending.update(
+        self._amend_fit_event(
+            detail,
             stop_reason=solution.stop_reason,
             n_iter=solution.n_iter,
             n_fev=solution.n_fev,
@@ -859,10 +792,10 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     # shapes. Reimplementing them in MLX would trade float64 exactness for nothing:
     # the work is one (n, d) x (d, K) matmul, far below any crossover. So these
     # overrides add only the sticky-backend bookkeeping — one diagnostics event per
-    # public call, see MLXLogisticMixin._inference — and then defer. The ancestor
-    # did reimplement them, in float32, with `score >= 0` where scikit-learn uses
-    # `score > 0`, so its predict and its decision_function could disagree on the
-    # decision boundary.
+    # public call, see MLXLogisticMixin._note_host_inference — and then defer. The
+    # ancestor did reimplement them, in float32, with `score >= 0` where scikit-learn
+    # uses `score > 0`, so its predict and its decision_function could disagree on
+    # the decision boundary.
 
     def decision_function(self, X):
         """Confidence scores, ``X @ coef_.T + intercept_``.
@@ -876,8 +809,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         scores : ndarray of shape (n_samples,) or (n_samples, n_classes)
             One-dimensional for binary problems.
         """
-        with self._inference("decision_function", X):
-            return super().decision_function(X)
+        self._note_host_inference("decision_function", X)
+        return super().decision_function(X)
 
     def predict(self, X):
         """Predict class labels.
@@ -891,8 +824,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         y : ndarray of shape (n_samples,)
             Labels drawn from ``classes_``.
         """
-        with self._inference("predict", X):
-            return super().predict(X)
+        self._note_host_inference("predict", X)
+        return super().predict(X)
 
     def predict_proba(self, X):
         """Predict class probabilities.
@@ -906,8 +839,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         p : ndarray of shape (n_samples, n_classes)
             float64, rows sum to 1, columns ordered by ``classes_``.
         """
-        with self._inference("predict_proba", X):
-            return super().predict_proba(X)
+        self._note_host_inference("predict_proba", X)
+        return super().predict_proba(X)
 
     def predict_log_proba(self, X):
         """Predict the logarithm of class probabilities.
@@ -920,8 +853,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         -------
         log_p : ndarray of shape (n_samples, n_classes)
         """
-        with self._inference("predict_log_proba", X):
-            return super().predict_log_proba(X)
+        self._note_host_inference("predict_log_proba", X)
+        return super().predict_log_proba(X)
 
     def score(self, X, y, sample_weight=None):
         """Mean accuracy on the given data and labels.
@@ -936,8 +869,8 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         -------
         score : float
         """
-        with self._inference("score", X):
-            return super().score(X, y, sample_weight=sample_weight)
+        self._note_host_inference("score", X)
+        return super().score(X, y, sample_weight=sample_weight)
 
 
 class _CallbackBridge:
@@ -1052,9 +985,3 @@ def _check_classification_target(y: np.ndarray) -> None:
         )
     check_classification_targets(y)
 
-
-def _safe_shape(X) -> tuple[int, ...] | None:
-    shape = getattr(X, "shape", None)
-    if shape is None or len(shape) != 2:
-        return None
-    return (int(shape[0]), int(shape[1]))
