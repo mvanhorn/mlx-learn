@@ -371,8 +371,12 @@ def solve_c_svc(
         delta_j = new_j - old_j
         alpha[i] = new_i
         alpha[j] = new_j
-        yg += (delta_i * y_i) * row_i
-        yg += (delta_j * y_j) * row_j
+        # The float32 kernel row is widened explicitly. NumPy 2 promotes a float64
+        # scalar times a float32 array to float64 on its own, but NumPy 1.x's
+        # value-based casting keeps the product in float32 and then adds it into the
+        # float64 gradient, losing the accumulation precision this solver relies on.
+        yg += np.multiply(row_i, delta_i * y_i, dtype=np.float64)
+        yg += np.multiply(row_j, delta_j * y_j, dtype=np.float64)
 
         for t in (i, j):
             is_upper = alpha[t] >= C[t]
