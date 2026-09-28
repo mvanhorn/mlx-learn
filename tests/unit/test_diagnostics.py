@@ -65,18 +65,44 @@ def test_diagnostics_can_be_turned_off():
         assert mlxlearn.get_backend_diagnostics() == []
 
 
-def test_ring_buffer_is_bounded():
-    """An agent harness fitting in a loop for hours must not accumulate forever."""
-    mlxlearn.clear_backend_diagnostics()
-    with tuning_context(diagnostics_capacity=8):
-        from mlxlearn._common.diagnostics import _recorder
+def test_ring_buffer_is_bounded(monkeypatch):
+    """An agent harness fitting in a loop for hours must not accumulate forever.
 
-        _recorder.resize(8)
-        for i in range(50):
-            record_event(f"E{i}", "fit", "mlx")
-        events = mlxlearn.get_backend_diagnostics()
+    The capacity is process-wide, set through the environment; the autouse
+    fixture's reset_config restores the default after the monkeypatch is undone.
+    """
+    monkeypatch.setenv("MLXLEARN_DIAGNOSTICS_CAPACITY", "8")
+    mlxlearn.reset_config()
+    for i in range(50):
+        record_event(f"E{i}", "fit", "mlx")
+    events = mlxlearn.get_backend_diagnostics()
     assert len(events) == 8
     assert events[-1].estimator == "E49"
+
+
+def test_tuning_context_cannot_resize_the_shared_buffer():
+    """One thread shrinking a buffer every thread shares would drop their events."""
+    with tuning_context(diagnostics_capacity=8):
+        for i in range(20):
+            record_event(f"E{i}", "fit", "mlx")
+    assert len(mlxlearn.get_backend_diagnostics()) == 20
+
+
+def test_capacity_returns_to_the_default_after_a_reset(monkeypatch):
+    """The old test resized the recorder by hand and leaked capacity 8 into the session."""
+    from mlxlearn._common.config import Tuning
+    from mlxlearn._common.diagnostics import _recorder
+
+    monkeypatch.setenv("MLXLEARN_DIAGNOSTICS_CAPACITY", "4")
+    mlxlearn.reset_config()
+    record_event("A", "fit", "mlx")
+    assert _recorder._events.maxlen == 4
+
+    monkeypatch.delenv("MLXLEARN_DIAGNOSTICS_CAPACITY")
+    mlxlearn.reset_config()
+    record_event("B", "fit", "mlx")
+    assert _recorder._events.maxlen == Tuning().diagnostics_capacity
+    assert [e.estimator for e in mlxlearn.get_backend_diagnostics()] == ["A", "B"]
 
 
 def test_summary_counts_by_estimator_operation_and_backend():
