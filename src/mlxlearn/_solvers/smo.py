@@ -99,7 +99,7 @@ class SMOConfig:
         fixed cost per call that a batch amortizes — which the solver cannot see.
     shrinking : bool
         LIBSVM's shrinking heuristic; see the module docstring. Off by default,
-        which runs the plain loop over every sample.
+        which never sets a sample aside.
     """
 
     tol: float = 1e-3
@@ -436,91 +436,7 @@ def solve_c_svc(
         fetch_rows=fetch_rows,
         prefetch=config.prefetch_rows,
     )
-    if config.shrinking:
-        return _solve_shrinking(y, C, k_diag, cache, config)
-
-    alpha = np.zeros(n, dtype=np.float64)
-    # ∇ = −e at α = 0, so yg = y ⊙ ∇ = −y.
-    yg = -y.copy()
-    positive = y > 0.0
-    tau = float(config.tau)
-    tol = float(config.tol)
-
-    # I_up and I_low as LIBSVM derives them from the single alpha status. They are
-    # maintained incrementally rather than rebuilt: an SMO update moves exactly two
-    # coordinates, so recomputing n memberships every iteration does n/2 times the
-    # work the algorithm needs, and at n = 2000 that alone dominated the loop.
-    upper, lower = _bound_status(alpha, C)
-    up_set = np.where(positive, ~upper, ~lower)
-    low_set = np.where(positive, ~lower, ~upper)
-
-    n_iter = 0
-    converged = False
-    violation = 0.0
-
-    while n_iter < config.max_iter:
-        if not up_set.any() or not low_set.any():
-            # No violating pair exists at all; LIBSVM reports this as convergence.
-            converged = True
-            violation = 0.0
-            break
-
-        candidates_i = np.where(up_set, -yg, -np.inf)
-        i = _last_argmax(candidates_i)
-        gmax = float(candidates_i[i])
-        candidates_j = np.where(low_set, yg, -np.inf)
-        gmax2 = float(candidates_j.max())
-        violation = gmax + gmax2
-        if not math.isfinite(violation):
-            # Every sample is in I_up or I_low, so a NaN or infinite gradient
-            # anywhere surfaces here. Without this test the NaN comparisons below
-            # found no eligible j and reported convergence.
-            break
-
-        # Only evaluated on a miss that prefetches, and bound to this
-        # iteration's extremes so the two fetches below rank the same way.
-        priority = partial(_violation_rank, candidates_i, gmax, candidates_j, gmax2)
-        row_i = cache.get(i, priority)
-        grad_diff = gmax + yg
-        quad = k_diag[i] + k_diag - 2.0 * row_i
-        # LIBSVM substitutes TAU only when the coefficient is non-positive; a
-        # clamp with maximum() would also rewrite small positive coefficients and
-        # silently change which j gets selected.
-        quad = np.where(quad > 0.0, quad, tau)
-        eligible = low_set & (grad_diff > 0.0)
-        if not eligible.any():
-            converged = True
-            break
-        objective_gain = -(grad_diff * grad_diff) / quad
-        j = _last_argmin(np.where(eligible, objective_gain, np.inf))
-
-        if violation < tol:
-            converged = True
-            break
-
-        n_iter += 1
-
-        row_j = cache.get(j, priority)
-        y_i = y[i]
-        y_j = y[j]
-        old_i = alpha[i]
-        old_j = alpha[j]
-        new_i, new_j = _pair_update(
-            y_i, y_j, C[i], C[j], old_i, old_j, y_i * yg[i], y_j * yg[j],
-            k_diag[i] + k_diag[j] - 2.0 * float(row_i[j]), tau,
-        )
-
-        alpha[i] = new_i
-        alpha[j] = new_j
-        # The float32 kernel row is widened explicitly (see _widened); every
-        # gradient update in this module, shrinking included, goes through it.
-        yg += _widened(row_i, (new_i - old_i) * y_i)
-        yg += _widened(row_j, (new_j - old_j) * y_j)
-
-        for t in (i, j):
-            _update_sets(t, alpha[t] >= C[t], alpha[t], positive, up_set, low_set)
-
-    return _finish(alpha, C, yg, positive, n_iter, converged, violation)
+    return _solve(y, C, k_diag, cache, config)
 
 
 def _finish(
@@ -680,20 +596,23 @@ def _pair_update(
     return new_i, new_j
 
 
-def _solve_shrinking(
+def _solve(
     y: np.ndarray,
     C: np.ndarray,
     k_diag: np.ndarray,
     cache: _RowCache,
     config: SMOConfig,
 ) -> SMOState:
-    """:func:`solve_c_svc` with LIBSVM's shrinking; same contract, same optimum.
+    """The SMO loop behind :func:`solve_c_svc`, shrinking when the config asks.
 
-    The loop is the plain one run over *compact copies* of the active samples'
-    arrays, indexed by position in ``active`` — an ascending array of sample
-    indices, so "last index wins" still means the last sample. The full-length
-    arrays are the record of truth and are written back whenever the active set
-    changes. Besides the gradient, one more vector is kept for every sample:
+    There is one loop, whether or not samples are ever set aside, so the numerics
+    that decide LIBSVM parity exist once. It runs over *compact copies* of the
+    active samples' arrays, indexed by position in ``active`` — an ascending array
+    of sample indices, so "last index wins" still means the last sample. With every
+    sample active, which is always the case without shrinking, the copies are the
+    full arrays themselves. The full-length arrays are the record of truth and are
+    written back whenever the active set changes. Once shrinking has run, one more
+    vector is kept for every sample:
 
     ``ygbar_t = Σ_{s at upper bound} C_s y_s K_ts`` — LIBSVM's ``G_bar`` in the
     ``yg`` convention, updated with a full row whenever a sample enters or leaves
@@ -712,11 +631,17 @@ def _solve_shrinking(
     n = int(y.shape[0])
     tau = float(config.tau)
     tol = float(config.tol)
+    shrinking = bool(config.shrinking)
 
     alpha = np.zeros(n, dtype=np.float64)
+    # ∇ = −e at α = 0, so yg = y ⊙ ∇ = −y.
     yg = -y.copy()
     ygbar: np.ndarray | None = None  # built at the first shrinking pass
     positive = y > 0.0
+    # I_up and I_low as LIBSVM derives them from the single alpha status. They are
+    # maintained incrementally rather than rebuilt: an SMO update moves exactly two
+    # coordinates, so recomputing n memberships every iteration does n/2 times the
+    # work the algorithm needs, and at n = 2000 that alone dominated the loop.
     upper, lower = _bound_status(alpha, C)
     up_set = np.where(positive, ~upper, ~lower)
     low_set = np.where(positive, ~lower, ~upper)
@@ -748,13 +673,15 @@ def _solve_shrinking(
             # pass ``period + 1``. A pass here that shrinks does not also select,
             # so the counter restarts one higher to keep ``period`` selections
             # between shrinks, as LIBSVM has.
-            counter -= 1
-            if counter == 0:
-                counter = period + 1
-                event = "shrink"
-                break
+            if shrinking:
+                counter -= 1
+                if counter == 0:
+                    counter = period + 1
+                    event = "shrink"
+                    break
 
             if not a_up.any() or not a_low.any():
+                # No violating pair exists at all; LIBSVM reports this as convergence.
                 violation = 0.0
                 event = "optimal"
                 break
@@ -765,9 +692,14 @@ def _solve_shrinking(
             gmax2 = float(candidates_j.max())
             violation = gmax + gmax2
             if not math.isfinite(violation):
+                # Every sample is in I_up or I_low, so a NaN or infinite gradient
+                # anywhere surfaces here. Without this test the NaN comparisons below
+                # found no eligible j and reported convergence.
                 event = "non-finite"
                 break
 
+            # Only evaluated on a miss that prefetches, and bound to this
+            # iteration's extremes so the two fetches below rank the same way.
             priority = partial(
                 _violation_rank, candidates_i, gmax, candidates_j, gmax2,
                 None if whole else active, n,
@@ -777,6 +709,9 @@ def _solve_shrinking(
             row_i = full_i if whole else full_i[active]
             grad_diff = gmax + a_yg
             quad = a_kd[ii] + a_kd - 2.0 * row_i
+            # LIBSVM substitutes TAU only when the coefficient is non-positive; a
+            # clamp with maximum() would also rewrite small positive coefficients and
+            # silently change which j gets selected.
             quad = np.where(quad > 0.0, quad, tau)
             eligible = a_low & (grad_diff > 0.0)
             if not eligible.any():
@@ -805,6 +740,8 @@ def _solve_shrinking(
             )
             a_alpha[ii] = new_i
             a_alpha[jj] = new_j
+            # The float32 kernel row is widened explicitly (see _widened); every
+            # gradient update in this module goes through it.
             a_yg += _widened(row_i, (new_i - old_i) * y_i)
             a_yg += _widened(row_j, (new_j - old_j) * y_j)
 

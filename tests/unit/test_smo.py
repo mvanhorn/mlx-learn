@@ -13,6 +13,8 @@ numerics can be checked on their own, and this is where that happens:
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pytest
 from sklearn.datasets import make_classification
@@ -70,6 +72,28 @@ def _solve(y, K32, C, *, fetch_rows=True, **config):
         fetch_rows=source.rows if fetch_rows else None,
     )
     return state, source
+
+
+def _integer_problem(n, d, seed, kernel):
+    """Integer features, so the kernel is exact however it is computed.
+
+    ``RandomState`` is NumPy's frozen legacy stream and an integer Gram leaves no
+    rounding for a BLAS build to decide, so this problem is the same bits on every
+    NumPy — which is what lets a test pin the solve itself, not just its optimum.
+    """
+    rs = np.random.RandomState(seed)
+    X = rs.randint(-4, 5, size=(n, d), dtype=np.int64)
+    y = np.where(X @ rs.randint(-3, 4, size=d, dtype=np.int64) > 0, 1.0, -1.0)
+    flip = rs.random_sample(n) < 0.1
+    y[flip] = -y[flip]
+    G = (X @ X.T).astype(np.float64)
+    K = G if kernel == "linear" else (G / 4.0 + 1.0) ** 3
+    return y, K.astype(np.float32)
+
+
+def _pin(state: SMOState):
+    digest = hashlib.sha256(np.ascontiguousarray(state.alpha, dtype="<f8").tobytes())
+    return state.n_iter, state.stop_reason, state.rho.hex(), digest.hexdigest()[:16]
 
 
 def _dual(coef, K64):
@@ -286,6 +310,50 @@ def test_prefetched_rows_own_their_memory_and_capacity_holds():
     before = len(cache)
     cache.get(1, lambda: scores)
     assert len(cache) == before
+
+
+# ----------------------------------------------------------------- pinned paths
+
+#: ``(kernel, n, d, seed, C, per-sample boxes, max_iter)`` to
+#: ``(n_iter, stop_reason, rho, alpha digest)``.
+_PINNED_PLAIN = {
+    ("linear", 300, 4, 0, 1.0, False, 10_000_000):
+        (2371, "converged", "-0x1.a6a4c80d1eb72p-4", "56f8203634578a6f"),
+    ("poly", 300, 4, 1, 0.05, False, 10_000_000):
+        (4062, "converged", "0x1.619fa2b81d7a8p-1", "391564d06a4cbdc2"),
+    ("linear", 400, 5, 2, 0.5, True, 10_000_000):
+        (6506, "converged", "0x1.61ce468977635p-3", "df9242d8db0db65c"),
+    ("linear", 1200, 5, 4, 0.5, False, 10_000_000):
+        (8520, "converged", "0x1.43b864c24f4d2p-4", "df4a1e65c7bb0651"),
+    ("linear", 1200, 6, 7, 1.0, True, 1800):
+        (1800, "max_iter", "0x1.170d1115c9b5dp-3", "ee14dfc2877d5cce"),
+}
+
+
+def _pinned_solve(case, **config):
+    kernel, n, d, seed, C, per_sample, max_iter = case
+    y, K32 = _integer_problem(n, d, seed, kernel)
+    Cs = np.full(n, C)
+    if per_sample:
+        Cs = C * np.random.RandomState(seed + 100).randint(2, 9, size=n, dtype=np.int64) / 4.0
+    state, _ = _solve(y, K32, Cs, max_iter=max_iter, **config)
+    return state
+
+
+@pytest.mark.parametrize("cache_rows", [None, 2])
+@pytest.mark.parametrize("case", list(_PINNED_PLAIN), ids=lambda case: "-".join(map(str, case[:5])))
+def test_the_non_shrinking_path_is_pinned(case, cache_rows):
+    """``shrinking=False`` takes exactly the steps it always has, bit for bit.
+
+    The pins were taken from the plain loop before the shrinking loop absorbed it,
+    so they are what shows the two were the same loop, and what notices when the
+    statements they share change. Nothing on this path reduces through BLAS and the
+    kernel is exact, so the pins hold on every NumPy and BLAS build (checked on
+    NumPy 1.23 with OpenBLAS and 2.5 with Accelerate). ``n = 1200`` runs past the
+    1000-iteration shrinking period, where an ungated shrink would move the path.
+    """
+    config = {} if cache_rows is None else {"cache_rows": cache_rows}
+    assert _pin(_pinned_solve(case, **config)) == _PINNED_PLAIN[case]
 
 
 # ------------------------------------------------------------------- shrinking
