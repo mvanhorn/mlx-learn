@@ -139,14 +139,15 @@ among unit-scale ones — it returned wrong neighbor sets without a word: 290 of
 embeddings, with or without a far-out training row — every query certifies on the first pass,
 and the certificate is host arithmetic on one number per query. Where the old margin failed,
 correctness costs the second pass. Measured on 50 000 training rows and 4096 queries (2048
-for the last case), against the old (wrong) query time: 1.5× for 1000 clusters of spread
-1e-3 at 32 features, 1.7× for `make_blobs(cluster_std=0.01)` at 16, 1.6× for the 0–1e4
-column at 16, and 2.2× for two clusters at 0 and 1000 at 4 features. That last case needs
-the exact search for every query — direct differences against every training row — so its
-cost grows with the number of features: 2.8× at 16, 5× at 64. So does a tie at the k-th
-distance, which the test above counts as uncertain: a training row repeated more than
-about `k + 4` times sends every query whose k-th neighbor is one of its copies to the
-wider pass, 1.5× the old time for 20 copies of each row at 16 features. The old answer
+for the last case), `k=10`, against 0.1.0a2's (wrong) query time on an M4 Max: 1.7× for
+1000 clusters of spread 1e-3 at 32 features, 3.0× for `make_blobs(cluster_std=0.01)` at
+16, 1.6× for the 0–1e4 column at 16, and 2.4× for two clusters at 0 and 1000 at 4
+features. That last case needs the exact search for every query — direct differences
+against every training row — so its cost grows with the number of features: 3.0× at 16,
+5.3× at 64. So does a tie at the k-th distance, which the test above counts as uncertain:
+a training row repeated more than about `k + 4` times sends every query whose k-th
+neighbor is one of its copies to the wider pass, 1.3× the old time for 20 copies of each
+row at 16 features. The old answer
 there was right on the GPU only because MLX's GPU partition happens to keep the lowest
 indices among equal values; on the CPU it was not. Binary and small-integer data got
 *faster*, because it no longer goes through the identity at all. A far-out row is not

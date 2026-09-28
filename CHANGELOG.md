@@ -30,8 +30,9 @@ come first under **Changed**.
   float64 mean — carried, like each row, as a float32 value plus a float32 residual — so
   data whose spread is comparable to a float32 rounding of its mean (timestamps a few
   seconds apart) certifies on the first pass, where a float32-rounded mean sent every
-  query to the second: 172 → 38 ms at 50 000 rows and 4096 queries. (preliminary;
-  re-measured before release)
+  query to the second. Such data now costs what data without the offset does: 37 ms for
+  4096 queries against 50 000 rows (two features, spread 5, around 1.7e9 or around 0;
+  see **Performance** for how it was measured).
 - Rows tied at the k-th distance now follow the documented `(distance, index)` order:
   `kneighbors(k)` is a prefix of `kneighbors(k + m)`, results no longer depend on block
   sizes, and GPU and CPU agree wherever distances are exact (binary, integer and one-hot
@@ -372,12 +373,29 @@ come first under **Changed**.
   `KNeighborsRegressor`: the neighbor search does not depend on `y`, and votes and averages
   are taken per output. The Layer 1 tags now advertise multi-output (and, for the
   classifier, multi-label) targets.
-- **Patched low-dimensional KNN goes to scikit-learn's KD-tree.** Under `patch_sklearn()`,
-  fits with `algorithm="auto"` where scikit-learn would build a KD-tree are handed to it
-  when `n_samples >= 512 * 2**n_features` (diagnostics reason `"tree-wins"`, private
-  tuning knob `MLXLEARN_KNN_TREE_DENSITY`). Before, low-dimensional data such as
-  200 000 × 3 ran up to 100× slower than stock. A directly imported class still searches
-  by brute force.
+- **Patched dispatch thresholds re-measured, and three rules reshaped.** Measured against
+  scikit-learn 1.9.0 and 1.7.2 on an M4 Max ([`docs/benchmarks.md`](docs/benchmarks.md)),
+  each threshold now sends a problem to MLX only where MLX won or tied against both, in
+  every configuration measured at that shape.
+  - Neighbor estimators need at least 4 096 rows **and** 4 194 304 elements (was 256 rows
+    **or** 2 048 elements), and patched mode hands every fit with fewer than 16 features
+    to scikit-learn, at any size: to its KD-tree where `algorithm="auto"` would build one
+    (diagnostics reason `"tree-wins"`), to its brute force otherwise. The private knob is
+    `knn_min_features` (`MLXLEARN_KNN_MIN_FEATURES`). Below 4 096 rows a 4096-query batch
+    ran 0.25×–0.8× of stock at every width measured, short wide training sets included,
+    and a KD-tree answered single-row queries faster than an MLX call at every size
+    measured up to 12 features. Before, a patched fit and 1 000-row predict at
+    200 000 × 3 ran at 0.40× of stock (see **Performance**). A directly imported class
+    still searches by brute force.
+  - `LogisticRegression` needs at least 60 000 rows and 100 000 element-ops (was 20 000
+    rows and 2·10⁷), and a binary fit also at least 100 000 rows and at most 32 features
+    (`logreg_binary_min_samples`, `logreg_binary_max_features`). Binary fits on wide data
+    are slower on MLX at every size measured, and the old rule sent them there while
+    keeping tall, narrow binary fits, which win, from it.
+  - `SVC` needs at least 128 features (`svc_min_features`), 1 024 rows and 250 000
+    elements (was 2 048 rows and 10⁶ elements, with no width floor). Below 128 features
+    rbf and poly fits at C=10 are slower on MLX, and narrow fits past the kernel cache
+    are at C=1 too.
 - **Patched fits below the crossover are decided from `X.shape`**, before any data scan or
   copy, for all three estimator families, and record a single event. A consequence: a
   sub-crossover fit whose only mismatch is data-dependent — values past 3.4e38, or for
@@ -389,7 +407,7 @@ come first under **Changed**.
 - **`set_config` is process-wide** and `config_context` is context-local (see **Fixed**).
 - Patched `SVC` routes one-vs-one problems with many small classes to scikit-learn: the
   mean pair's work, `(2n/K) · n_features`, must also clear a new private
-  `svc_min_pair_work` threshold (default 250 000, `MLXLEARN_SVC_MIN_PAIR_WORK`). The class
+  `svc_min_pair_work` threshold (250 000, `MLXLEARN_SVC_MIN_PAIR_WORK`). The class
   count comes from the raw labels, so such a handoff, too, is decided before any scan or
   copy of `X`.
 - A callable `weights` in `KNeighborsClassifier` and `KNeighborsRegressor` is served on the
@@ -401,7 +419,8 @@ come first under **Changed**.
   address, raise `UnsupportedInputError` at `fit`, which `patch_sklearn()` hands to
   scikit-learn.
 - The logistic crossover's work proxy counts one weight vector per class
-  (`n × d × n_targets`). The threshold values are unchanged.
+  (`n × d × n_targets`). Whether a fit is binary is read from the raw labels in two
+  vectorized passes, not a sort, and only when it can change the decision.
 - `metric_params={"p": ...}` with `metric="minkowski"` is accepted and resolved as
   scikit-learn resolves it, with its `SyntaxWarning`. Other `metric_params` still raise.
 - The neighbor estimators validate `X` and queries as float64 or float32, keeping float64
@@ -533,7 +552,8 @@ come first under **Changed**.
   - a neighbor query that needed the certificate's second pass or its exact search
     reports how many rows did in its event's `extra` (`search="certificate-fallback"`,
     `widened_rows`, `exact_rows`).
-- Private tuning knobs `knn_tree_density`, `svc_min_pair_work` and
+- Private tuning knobs `knn_min_features`, `logreg_binary_min_samples`,
+  `logreg_binary_max_features`, `svc_min_features`, `svc_min_pair_work` and
   `mlx_cache_release_fraction`, each with its `MLXLEARN_*` variable.
 - Internal validation and array helpers: `validate_float32_input`,
   `require_nonnegative_weights`, `finite_range` and `ValueRange`, and
@@ -610,93 +630,88 @@ come first under **Changed**.
 
 ### Performance
 
-Every number here is an interleaved A/B measurement by the change's author on a shared
-M4 Max, against the 0.1.0a2 code unless the entry names another baseline. They are
-preliminary; the benchmarks and crossovers are re-measured on fixed hardware before
-release.
+Measured on an Apple M4 Max (16 cores, 128 GiB), macOS 26.6.2, with MLX 0.32.2, Python
+3.13.3, NumPy 2.5.2 and scikit-learn 1.9.0, and nothing else benchmarking: fresh
+processes alternating between 0.1.0a2 and this release, three of each (two for the
+slowest SVC fits), at least 7 timed calls per process after warm-up (3 for those fits),
+each call after a garbage collection as [`docs/benchmarks.md`](docs/benchmarks.md)
+describes; medians. Against 0.1.0a2 unless an entry names another baseline. Where
+patched dispatch now sends each problem is under **Changed**.
 
 - Neighbor queries on the GPU use two-stage segmented selection and fused tile
-  expressions: large queries are 2.0–2.4× faster — 100 000 × 32 with 20 000 queries from
-  956 to 403 ms, 200 000 × 64 with 4096 queries from 485 to 205 ms, and `k=200` from 246
-  to 154 ms. The tile expressions are compiled on the GPU only; MLX's CPU device runs the
-  same expressions eagerly, so a first fit on a cold kernel cache (a fresh machine, a CI
-  runner, after an MLX upgrade) does not wait on MLX's C compiler — about 3 s for a
-  200 × 5 fit and predict when they were compiled there, 0.03 s now. (preliminary;
-  re-measured before release)
-- Binary and small-integer data takes an exact integer path, about 1.7× faster. The index
-  build is faster only at very large n (about 1.1–1.5× at 2 000 000 × 64); below about
-  50 000 rows it is still slower than 0.1.0a2 (GPU 1 000 × 32: 0.28 against 0.16 ms; MLX
-  CPU 20 000 × 32: 1.0 against 0.57 ms), the cost of the span check, the certificate's
-  sorted norms and the integer path. (preliminary; re-measured before release)
+  expressions: 100 000 × 32 with 20 000 queries went from 953 to 337 ms, 200 000 × 64
+  with 4096 queries from 446 to 153 ms, and `k=200` (100 000 × 32, 4096 queries) from
+  237 to 149 ms. The tile expressions are compiled on the GPU only; MLX's CPU device runs
+  the same expressions eagerly, so a first fit on a cold kernel cache does not wait on
+  MLX's C compiler.
+- Binary and small-integer data takes an exact integer path: 100 000 binary rows × 64
+  with 4096 queries, 197 → 112 ms.
+- The index build is slower than 0.1.0a2 at every size measured — 1 000 × 32 on the GPU
+  0.79 → 1.05 ms, 50 000 × 32 3.3 → 4.1 ms, 2 000 000 × 64 207 → 222 ms, and 20 000 × 32
+  on MLX's CPU device 1.7 → 2.5 ms. It does more than 0.1.0a2's did: the span check, the
+  certificate's sorted norms, the integer-path check and, for float64 input, a float32
+  residual. The residual and the translated copy stay on the device, so a float64 index
+  holds 3.0× the float32 data there (3.5–4.2× at the peak of the build); 0.1.0a2 held one
+  copy, 1.0×, on the device and its others on the host.
 - Peak device memory per neighbor query stays near the budget instead of reaching about
-  7× it: 7 409 MiB → 762 MiB at 50 000 × 768 with `k=1000`. (preliminary; re-measured
-  before release)
+  7× it: 7 427 → 896 MiB at 50 000 × 768 with `k=1000` and 4096 queries.
 - Certification costs a second pass where the first pass cannot prove its answer — where
-  the old margin was wrong, and at exact ties at the k-th distance, such as a row repeated
-  more than about `k + 4` times: 1.5–2.2× the old query time on the cases in
-  [`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1 at 4–32 features. The exact search's
-  share grows with the number of features (two clusters: 5× at 64). No second pass on
-  ordinary data. (preliminary; re-measured before release)
-- Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3 fit and predict went from
-  0.12× to 0.99–1.00× of stock. (preliminary; re-measured before release)
-- `radius_neighbors` and `radius_neighbors_graph` on an MLX-fitted `NearestNeighbors`
-  hand scikit-learn a float32 query and run at stock speed; they took about 5× as long.
-  (preliminary; re-measured before release)
-- Neighbor votes use a single `np.bincount`: 2–3× faster and bitwise identical.
-  (preliminary; re-measured before release)
+  the old margin was wrong, and at exact ties at the k-th distance. On the cases in
+  [`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1, 50 000 rows, 4096 queries, `k=10`:
+  1.6–3.0× the old query time at 4–32 features, and 5.3× for two clusters at 64
+  features, where every query takes the exact search. No second pass on ordinary data:
+  Gaussian 50 000 × 16 went from 85 to 37 ms.
+- Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
+  predict, went from 0.40× to 1.00× of stock.
+- `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32
+  query: 28.3 → 6.7 ms for 1 000 queries against 20 000 × 16.
+- Neighbor votes use a single `np.bincount`, bitwise identical. End to end, with the
+  faster search, `KNeighborsClassifier.predict` on 20 000 queries against 100 000 × 16 and
+  50 classes went from 997 to 381 ms.
 - `LogisticRegression`'s L-BFGS bookkeeping (two-loop recursion, inner products,
   curvature test, `max|g|`) runs in NumPy float64 on the host, so each objective
   evaluation costs one device synchronization instead of 12–33 blocking round trips per
-  iteration. Forced-GPU fits are 1.7–8× faster with iteration counts unchanged, and the
-  solver alone 2–11× faster. The binary gradient on the GPU uses a contiguous `Xᵀ`,
-  avoiding MLX's slow vector–matrix path: binary fits are 1.1× (20 000 × 1 024) to 2.9×
-  (2 000 000 × 16) faster than the same solver without it. (preliminary; re-measured
-  before release)
+  iteration, and the binary gradient on the GPU uses a contiguous `Xᵀ`. Fits forced onto
+  the GPU are 1.9–4.2× faster with iteration counts unchanged: 20 000 × 16 20.0 → 4.8 ms,
+  60 000 × 128 46.7 → 16.1 ms, 20 000 × 1 024 71.5 → 38.6 ms, 2 000 000 × 16 362 → 110 ms.
 - `SVC` fits no longer fall off a cliff once a one-vs-one subproblem exceeds the
   kernel-cache Gram cutoff (about 7 240 rows at the default `cache_size=200`): on a cache
   miss, kernel rows are fetched many per GPU round trip, together with the rows closest to
-  becoming the next working pair. rbf fits at 8 000 × 128 are 2.4× faster, 12 000 × 128
-  1.9×, and 16 000 × 64/256 1.5–1.8×, with results unchanged. (preliminary; re-measured
-  before release)
-- Shrinking, now honored and on by default, is a further 1.2–1.8× on those fits in the
-  solver's own A/B; with prefetch, 2.0–3.0× at 8 000–16 000 rows and 1.5× at 32 000 × 64.
-  Measured through `SVC`, off against on: rbf 1.02–1.37× (1.17× at 8 000 × 64, 1.37× at
-  16 000 × 32, 1.02× at 4 000 × 256), poly 0.97×. It can cost on the linear kernel, as
-  LIBSVM's own shrinking does: at 2 000 × 20, `C=1` is 1.58× faster, but `C=10` runs at
-  0.72× on MLX's CPU and 0.91× on the GPU, where LIBSVM's iterations double too (442 000
-  against 223 000). Patched dispatch never sends the linear kernel to MLX.
-  (preliminary; re-measured before release)
+  becoming the next working pair, and shrinking (below) is on. rbf fits went from 1.17 to
+  0.45 s at 8 000 × 128, 1.95 to 0.83 s at 12 000 × 128, 2.60 to 1.23 s at 16 000 × 64 and
+  4.81 to 1.88 s at 16 000 × 256, with results unchanged.
+- Shrinking, now honored and on by default: measured through `SVC`, off against on, rbf
+  1.00–1.20× (1.15× at 8 000 × 64, 1.20× at 16 000 × 32, 1.00× at 4 000 × 256) and poly
+  1.00× at 8 000 × 64. It can cost on the linear kernel, as LIBSVM's own shrinking does: at
+  2 000 × 20, `C=1` is 1.27× faster but `C=10` runs at 0.89× on the GPU. Patched dispatch
+  never sends the linear kernel to MLX.
 - `SVC` inference: the rbf kernel tile is one fused GPU kernel, bit-identical to the
   unfused evaluation, and `decision_function`/`predict` overlap the device with the
-  float64 host contraction, in one tile loop shared with the kernel helpers. GPU predict
-  is 1.2–1.5× faster and CPU predict 1.0–1.16×, with decision values bit-identical; with
-  the support vectors kept on the device, single-row `predict` at 4 000 × 256 went from
-  0.50 to 0.25 ms and 16 rows from 0.62 to 0.35 ms. (preliminary; re-measured before
-  release)
+  float64 host contraction. On the GPU at 4 000 × 256, `predict` on 1 row went from 1.09
+  to 0.83 ms, on 16 rows from 1.18 to 0.91 ms and on 4 000 rows from 7.4 to 6.4 ms.
 - The `SVC` rbf entries recomputed in float64 (see **Fixed**) cost nothing on ordinary
-  data, which never opens that path. Where every entry within a cluster needs it — two
-  clusters of 2 000 or 5 000 rows each — a fit takes 2.6–3× as long as without it,
-  1.4–1.7× scikit-learn's time; 40 clusters at 2 400 × 512 on the GPU fit in 0.14 s,
-  against 0.05 s without it and 0.39 s for scikit-learn. (preliminary; re-measured before
-  release)
-- Many-class `SVC` under `patch_sklearn()`: at 2048 × 512, `K=64` went from 0.23× to 1.00×
-  of stock, and `K=8` stays on MLX at about 1.6×. (preliminary; re-measured before
-  release)
-- Patched fits below the crossover pay less before handing the work to scikit-learn:
-  KNN 1.16× of the stock fit instead of 1.52×, `LogisticRegression` 1.00–1.08× instead of
-  1.2–1.6×, `SVC` 1.12× instead of 1.47× at 200 × 5. (preliminary; re-measured before
-  release)
-- The float32 range check is about 3.8× faster and allocates no temporaries on finite
-  input: 19 ms instead of 72 ms at 128 000 × 768, with peak extra memory near 0 instead
-  of 1.6 GiB. `NearestNeighbors` fit on float64 input at 128 000 × 768 went from 169 ms to
-  98 ms. (preliminary; re-measured before release)
-- Costs: `patch_sklearn()` with every estimator takes about 90 ms longer on a cold start
-  because of the consumer imports (patching only `SVC`, `KNeighborsClassifier` or
-  `KNeighborsRegressor` costs nothing extra), and `unpatch_sklearn()`'s sweep about 1 ms.
-  Where the buffer-cache release triggers — machines with less memory — repeated
-  same-shape large queries pay reallocation: a repeated 150 000 × 64 query with 6 000
-  queries measured 470 → 618 ms with the release forced on every call.
-  (preliminary; re-measured before release)
+  data, which never opens that path; data where every entry within a cluster needs it
+  pays for the recomputation.
+- Many-class `SVC` under `patch_sklearn()`: at 2048 × 512, `K=64` went from 0.25× to 1.00×
+  of stock, and `K=8` stays on MLX at 1.40×.
+- Patched fits below the crossover pay less before handing the work to scikit-learn: at
+  200 × 5, a patched fit took 1.11× the stock fit's time for KNN (was 1.35×), 1.09× for
+  `LogisticRegression` (was 1.22×) and 1.11× for `SVC` (was 1.36×).
+- The float32 range check is 3.8× faster and allocates no temporaries on finite input:
+  19 ms instead of 73 ms at 128 000 × 768, with peak extra memory near 0 instead of
+  1.6 GiB. A `NearestNeighbors` fit on that float64 input still takes as long as before
+  (143 → 150 ms): the rest of the index build does more (above).
+- Costs: `patch_sklearn()` with every estimator imports five scikit-learn packages that
+  bind the estimators at import time, so that they keep the stock classes. In a process
+  that has already imported the estimator modules that takes 121 ms on Python 3.13 with
+  scikit-learn 1.9.0, and 100–102 ms on Python 3.10 with scikit-learn 1.7.2 and 1.7.0;
+  from a fresh process, importing mlxlearn and patching everything took 937 ms against
+  827 ms for patching only `SVC`, `KNeighborsClassifier` and `KNeighborsRegressor`, which
+  costs 18 ms more than importing those three scikit-learn modules alone (fresh
+  processes, operating-system file cache warm, median of 21). `unpatch_sklearn()`'s sweep
+  takes about 1 ms. Where the buffer-cache release triggers — machines with less memory —
+  repeated same-shape large queries pay reallocation: a repeated 150 000 × 64 query with
+  6 000 queries took 168 ms with the release forced on every call against 162 ms without.
 
 ## [0.1.0a2] — 2026-09-02
 

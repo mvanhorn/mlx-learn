@@ -85,9 +85,9 @@ def fit(self, X, y):
 `MLXLEARN_FORCE_BACKEND`, then size, then the data checks, then the device. The order is
 the point. "We cannot do this at all" outranks "this is small", so a capability mismatch
 is always reported as one. And when patched mode is about to hand a fit to scikit-learn
-by size, or by a rule of its own passed as `handoff=` (the neighbor estimators' KD-tree
-rule), the decision comes from `X.shape` alone, before any validation, scan or copy —
-scikit-learn validates the data itself, and scanning it first made patched fits slower
+by size, or by a rule of its own passed as `handoff=` (the neighbor estimators'
+narrow-data rule), the decision comes from `X.shape` alone, before any validation, scan or
+copy — scikit-learn validates the data itself, and scanning it first made patched fits slower
 than the stock ones they replaced. Input with no shape before validation (a list)
 gets a provisional `"cpu"`, with nothing recorded and no device resolved, and the fit
 decides again once validation has given it a shape. The three 0.1.0 estimators all
@@ -286,9 +286,10 @@ python -m benchmarks.run --profile published --report bench/published.md
 python -m benchmarks.gate --results bench/results.json
 ```
 
-`smoke` is small enough for a laptop and still clears every `Tuning` threshold once;
-`full` is the regression grid; `published` holds the cases `docs/benchmarks.md` reports,
-with the settings they were measured under (Layer 1, forced onto MLX).
+`smoke` is small enough for a laptop and still lands on both sides of every `Tuning`
+threshold (`tests/tooling` checks that it does); `full` is the regression grid;
+`published` holds the cases `docs/benchmarks.md` reports, with the settings they were
+measured under (Layer 1, forced onto MLX).
 
 Each result records the backend the mlxlearn side ran on, and the gate judges those
 decisions — the configured `Tuning` — rather than a crossover inferred from the run it is

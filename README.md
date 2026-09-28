@@ -236,29 +236,21 @@ after it.
 ## Performance
 
 "Never slower than scikit-learn" is the design goal. The shipped *gate* is measurable: on
-each benchmarked workload class, patched dispatch shows no statistically significant
-regression against stock scikit-learn. Crossover points are measured per algorithm and per
-operation, published in [`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md), and wired into the
-dispatch thresholds — small problems are handed to scikit-learn on purpose.
+each benchmarked workload, patched dispatch shows no statistically significant regression
+against stock scikit-learn. Crossover points are measured per estimator, against both ends
+of the supported scikit-learn range, published in [`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md), and wired into the
+dispatch thresholds: patched dispatch uses MLX only where it measured faster or even, and
+hands everything else to scikit-learn on purpose.
 
-What that means in practice for 0.1.0a2, on an M4 Max. Changes since then — see the
-Unreleased section of the [changelog](https://github.com/tabulai/mlx-learn/blob/main/CHANGELOG.md) —
-move several of these numbers, and they are re-measured before the next release:
-
-<!-- perf-phase: re-measure every row on a quiet machine. Since 0.1.0a2: KNN queries are
-2.0-2.4x faster on large batches, while the index build is faster only at very large n and
-still slower than 0.1.0a2 below ~50 000 rows; LogisticRegression's per-iteration cost
-was 12-33 host syncs in the L-BFGS bookkeeping (not line-search evaluations) and is now one
-sync per evaluation, so the "slower below 1 024 features" row and its crossover need new
-numbers; SVC fits past the kernel-cache Gram cutoff gained row prefetch and shrinking. The
-LogisticRegression row's causal pointer to docs/benchmarks.md is a misdiagnosis to rewrite. -->
+Measured on an M4 Max (MLX 0.32.2, scikit-learn 1.9.0; thresholds checked against 1.7.2
+too), for the problems patched dispatch sends to MLX:
 
 | | |
 |---|---|
-| **Neighbor queries** | **2.9×–17×** from ~250 samples up, against scikit-learn's brute-force search. This is the reason to use mlxlearn. On low-dimensional data that is dense for its dimension (about `n ≥ 512·2^d`, `d ≤ 15`), scikit-learn's default KD-tree beats any brute-force scan; patched dispatch hands those fits to it, while a directly imported estimator always searches by brute force. |
-| Neighbor `fit` | 0.17×–0.36×. mlxlearn uploads to the device; scikit-learn stores a reference. The first query repays it several times over. |
-| `SVC` | **2.93× on wide data** (4 000 × 256, rbf), but slower than LIBSVM on narrow data — 0.47× at 4 000 × 32, worse below. `kernel="linear"` is never dispatched to the GPU. Width decides, and patched dispatch routes accordingly. |
-| `LogisticRegression` | **Slower than scikit-learn below 1 024 features**, by a lot. The crossover is set high so patched dispatch hands those to scikit-learn; see [`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md) for why and what would change it. |
+| **Neighbor queries** | **1.2×–3.8× for single rows, 1.4×–7.4× for 4096-query batches**, against scikit-learn's brute-force search, from 16 features, 4 096 training rows and about 4 million elements up — wide data such as embeddings. Below that stock scikit-learn is faster for some query batch a fit cannot foresee, and with at most 15 features its KD-tree answers a single row in 0.3–1.2 ms against 1–2 ms for an MLX call; patched dispatch hands all of those fits to it. |
+| Neighbor `fit` | 0.06×–0.09× of stock brute force, which stores a reference where mlxlearn uploads and prepares the index. Repaid after roughly 300–900 queries. |
+| `SVC` | **1.2×–4.3× from 128 features** up to 8 000 rows (rbf, poly and sigmoid, C of 1 and 10), **8×–17×** at 16 000–32 000 × 256. Narrower data is slower on MLX at C = 10 or past the kernel cache, so patched dispatch keeps it on LIBSVM; `kernel="linear"` never leaves it. |
+| `LogisticRegression` | **Multinomial: 1.3×–13× from 60 000 rows. Binary: 1.1×–4.5× on tall, narrow data** (100 000 rows or more, at most 32 features). Binary fits on wider data are slower on MLX — 0.46×–0.85× at 256–1 024 features — and go to scikit-learn. |
 
 Reproduce them from a clone of the repository (the benchmarks are not in the wheel):
 
