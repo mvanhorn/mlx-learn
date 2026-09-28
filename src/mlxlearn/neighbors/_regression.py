@@ -20,7 +20,9 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
     Parameters
     ----------
     n_neighbors : int, default=5
-    weights : {"uniform", "distance"}, default="uniform"
+    weights : {"uniform", "distance"} or callable, default="uniform"
+        A callable is applied to the neighbor distances as in scikit-learn; see
+        :class:`~mlxlearn.neighbors.KNeighborsClassifier`.
     algorithm : {"auto", "brute"}, default="auto"
         See :class:`~mlxlearn.neighbors.KNeighborsClassifier` for how ``"auto"``
         is dispatched on low-dimensional data under ``patch_sklearn()``.
@@ -42,6 +44,10 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
     Multi-output targets are accelerated, and a column-vector ``y`` of shape
     ``(n_samples, 1)`` gives predictions of shape ``(n_queries, 1)``, as it does
     in scikit-learn.
+
+    A ``y`` of strings raises ``ValueError`` at ``fit`` on the MLX path.
+    scikit-learn stores it and fails in ``predict`` instead; it is never parsed
+    into numbers.
 
     Examples
     --------
@@ -95,7 +101,7 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
             with self._inference("predict"):
                 return super().predict(X)
 
-        dist, idx = self._query_indices(X, "predict", need_distance=self.weights == "distance")
+        dist, idx = self._query_indices(X, "predict", need_distance=self.weights != "uniform")
         weights = compute_weights(dist, self.weights)
 
         # The same arithmetic, in the same order, as scikit-learn's predict.

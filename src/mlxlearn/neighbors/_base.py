@@ -157,15 +157,6 @@ class MLXNeighborsMixin(BackendMixin):
                 value=self.metric_params,
             )
 
-        weights = getattr(self, "weights", "uniform")
-        if callable(weights):
-            raise UnsupportedParameterError(
-                f"{name} does not implement a callable weights "
-                "function on the MLX path.",
-                parameter="weights",
-                value=weights,
-            )
-
         if data:
             check_float32_range(X)
 
@@ -272,6 +263,7 @@ class MLXNeighborsMixin(BackendMixin):
         self._validate_params()
         self._forget_fit()
 
+        X = _as_array(X)
         shape = _safe_shape(X)
         if shape is not None:
             handoff = self._sklearn_by_design(*shape)
@@ -298,6 +290,13 @@ class MLXNeighborsMixin(BackendMixin):
                 stacklevel=3,
             )
         _reject_string_data(X)
+        if target == "regression":
+            # Stock scikit-learn stores a string target as given and fails in
+            # predict; the float64 copy _fit_targets makes would parse "1.5"
+            # instead, so under patch_sklearn() whether string targets worked
+            # depended on the size of the data. Refused here, in scikit-learn's
+            # words for string data.
+            y = _reject_string_data(y)
         if target is None:
             X_checked = validate_data(
                 self, X, accept_sparse=False, dtype=_INPUT_DTYPES,
@@ -326,7 +325,8 @@ class MLXNeighborsMixin(BackendMixin):
         # translates and splits float64 itself and refuses a span float32 cannot hold.
 
         if shape is None:
-            # The input had no shape to read before validation (a list, say), so
+            # The input had no shape to read before validation (an array-like
+            # without a shape attribute, say; lists were converted above), so
             # the size rules run now. No ``backend != "cpu"`` exemption: device
             # never overrides the crossover, and _select_backend already lets
             # MLXLEARN_FORCE_BACKEND outrank it.
@@ -430,7 +430,8 @@ class MLXNeighborsMixin(BackendMixin):
         Returns
         -------
         neigh_dist : ndarray of shape (n_queries, n_neighbors)
-            Euclidean distances, float64, ascending. Only when
+            Euclidean distances, or squared Euclidean distances for
+            ``metric="sqeuclidean"``, float64, ascending. Only when
             ``return_distance=True``.
         neigh_ind : ndarray of shape (n_queries, n_neighbors)
             Training indices, int64, ordered by ``(distance, index)``.
@@ -441,7 +442,9 @@ class MLXNeighborsMixin(BackendMixin):
         :class:`~mlxlearn.exceptions.SparseInputError`. Under ``patch_sklearn()``
         it is answered by scikit-learn's brute-force search instead, which reads
         the fitted state directly — the one inference call that is not served by
-        the fitted backend, and it is recorded as a fallback.
+        the fitted backend, and it is recorded as a fallback. That search runs
+        against the float32 training copy, so its distances carry the float32
+        rounding of the training data (``docs/fp32_policy.md`` §3.4).
         """
         check_is_fitted(self)
         if self._fitted_backend("kneighbors") == "sklearn":
@@ -471,13 +474,14 @@ class MLXNeighborsMixin(BackendMixin):
                 self._handle_capability_error(
                     exc, self._claim_call_event(operation) or operation, shape=_safe_shape(X)
                 )
+                X = _sparse_query_for_sklearn(X, self._fit_X.dtype)
                 with self._inference(operation, record=False):
                     return super().kneighbors(X, n_neighbors, return_distance)
 
         if query_is_train:
             Q = self._index_.X
         else:
-            _reject_string_data(X)
+            X = _reject_string_data(X)
             # A float64 query stays float64 and is range-checked once validated (one
             # min/max pass), so a value float32 cannot hold is an
             # UnsupportedInputError, not an infinity inside the kernel. A float32
@@ -626,7 +630,23 @@ def _safe_shape(X) -> tuple[int, ...] | None:
     return (int(shape[0]), int(shape[1]))
 
 
-def _reject_string_data(X) -> None:
+def _as_array(X):
+    """A list or tuple converted to an ndarray, once; anything else as given.
+
+    ``validate_data`` makes the same conversion. Making it first is what lets the
+    string check, the range check and the size rules read the array rather than
+    each converting the list again. A ragged list is left for ``validate_data``
+    to report in scikit-learn's words.
+    """
+    if isinstance(X, (list, tuple)):
+        try:
+            return np.asarray(X)
+        except ValueError:
+            return X
+    return X
+
+
+def _reject_string_data(X):
     """Refuse string data the way scikit-learn's neighbor estimators do.
 
     They validate with ``dtype="numeric"``, which rejects arrays of strings and
@@ -635,19 +655,40 @@ def _reject_string_data(X) -> None:
     1.5 instead — so the MLX path accepted input stock scikit-learn rejects, and
     under ``patch_sklearn()`` whether it did depended on the size of the data.
     Object arrays are left alone: scikit-learn converts those as well.
+
+    Returns ``X``, a list or tuple converted to an ndarray (:func:`_as_array`),
+    so the validation after this check does not convert it a second time.
     """
+    X = _as_array(X)
     dtype = getattr(X, "dtype", None)
-    if dtype is None and isinstance(X, (list, tuple)):
-        try:
-            dtype = np.asarray(X).dtype
-        except ValueError:
-            # Ragged input. validate_data reports it in scikit-learn's words.
-            return
     if isinstance(dtype, np.dtype) and dtype.kind in "USV":
         raise ValueError(
             "dtype='numeric' is not compatible with arrays of bytes/strings."
             "Convert your data to numeric values explicitly instead."
         )
+    return X
+
+
+def _sparse_query_for_sklearn(X, dtype):
+    """A sparse query in the training copy's dtype, for scikit-learn's brute force.
+
+    scikit-learn's search requires the query and the training copy to share a
+    dtype. A float64 query against the float32 copy fell to a chunked
+    pairwise-distance path several times slower than stock, which cannot compute
+    ``"sqeuclidean"`` on sparse input at all and raised ``TypeError``. The cast is
+    one pass over the stored values, range-checked first, so a value float32
+    cannot hold is an ``UnsupportedInputError`` as it is for a dense query.
+
+    A pandas frame of sparse columns is handed over as it is: pandas casts it by
+    densifying it. So is complex data, which scikit-learn rejects in its words.
+    """
+    if not hasattr(X, "tocsr"):
+        return X
+    X = X.tocsr()  # the format scikit-learn converts the query to anyway
+    if X.dtype != dtype and X.dtype.kind in "biuf":
+        check_float32_range(X.data, fallback_advice=False)
+        X = X.astype(dtype)
+    return X
 
 
 def compute_weights(dist: np.ndarray | None, weights) -> np.ndarray | None:
@@ -662,13 +703,24 @@ def compute_weights(dist: np.ndarray | None, weights) -> np.ndarray | None:
     scikit-learn — any row containing a zero distance is replaced by the 0/1
     indicator of its zero entries: coincident points get all the weight and every
     other neighbor gets none.
+
+    A callable gets the distances ``kneighbors`` returns and gives back the
+    weights, as in scikit-learn. Weighting is host code on distances the search
+    has already returned, so there is nothing about a callable for the MLX path
+    to refuse. A row whose weights are all zero is the classifier's to reject;
+    scikit-learn's regressor returns NaN for it.
     """
     if weights in (None, "uniform"):
         return None
-    if weights != "distance":
-        raise ValueError(f"weights not recognized: should be 'uniform' or 'distance', got {weights!r}")
     if dist is None:
-        raise ValueError("weights='distance' requires neighbor distances.")
+        raise ValueError(f"weights={weights!r} requires neighbor distances.")
+    if callable(weights):
+        return np.asarray(weights(dist), dtype=np.float64)
+    if weights != "distance":
+        raise ValueError(
+            "weights not recognized: should be 'uniform', 'distance', or a callable "
+            f"function; got {weights!r}"
+        )
 
     with np.errstate(divide="ignore"):
         w = 1.0 / np.asarray(dist, dtype=np.float64)
@@ -677,12 +729,6 @@ def compute_weights(dist: np.ndarray | None, weights) -> np.ndarray | None:
     rows_with_coincident = np.any(coincident, axis=1)
     if np.any(rows_with_coincident):
         w[rows_with_coincident] = coincident[rows_with_coincident].astype(np.float64)
-
-    if np.any(np.all(w == 0, axis=1)):
-        raise ValueError(
-            "All neighbors of some sample are getting zero weights. Please modify "
-            "'weights' to avoid this case if you are using a user-defined function."
-        )
     return w
 
 

@@ -347,7 +347,6 @@ def test_input_layout_does_not_change_results(transform, rng):
         ({"metric_params": {"w": [1.0]}}, "metric_params"),
         ({"metric_params": {"p": 2, "w": [1.0]}}, "metric_params"),
         ({"metric": "euclidean", "metric_params": {"p": 2}}, "metric_params"),
-        ({"weights": lambda d: d}, "weights"),
     ],
 )
 def test_unsupported_parameters_raise_precisely(kwargs, parameter, small_classification_data):
@@ -705,6 +704,218 @@ def test_layer1_mlx_fit_still_raises_on_sparse_queries(rng):
         model.predict(sparse.csr_matrix(Q))
     with pytest.raises(SparseInputError, match="kneighbors received sparse input"):
         model.kneighbors(sparse.csr_matrix(Q))
+
+
+@pytest.mark.parametrize("metric", ["euclidean", "sqeuclidean"])
+def test_sparse_queries_reach_sklearns_search_in_the_training_dtype(metric, monkeypatch, rng):
+    """The sparse query used to reach scikit-learn as float64, against float32.
+
+    scikit-learn's search needs one dtype on both sides. With two it fell to a
+    pairwise path several times slower than stock, which cannot compute
+    'sqeuclidean' on sparse input: predict, kneighbors and radius_neighbors all
+    raised TypeError where stock scikit-learn answers.
+    """
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y, Q = _sparse_query_problem(rng)
+    Qs = sparse.csr_matrix(Q)
+    kwargs = {"n_neighbors": 5, "metric": metric}
+    ref = sk_neighbors.KNeighborsClassifier(algorithm="brute", **kwargs).fit(X, y)
+    model = patched.KNeighborsClassifier(**kwargs).fit(X, y)
+    assert model.execution_backend_ != "sklearn"
+
+    atol = 1e-4  # squared distances around 30, from float32 training data
+    np.testing.assert_array_equal(model.predict(Qs), ref.predict(Q))
+    np.testing.assert_allclose(model.predict_proba(Qs), ref.predict_proba(Q))
+    assert_neighbor_parity(*model.kneighbors(Qs), *ref.kneighbors(Q), atol=atol)
+    graph = model.kneighbors_graph(Qs, mode="distance")
+    assert abs(graph - ref.kneighbors_graph(Q, mode="distance")).max() <= atol
+
+    reg = patched.KNeighborsRegressor(**kwargs).fit(X, y.astype(float))
+    ref_reg = sk_neighbors.KNeighborsRegressor(algorithm="brute", **kwargs).fit(X, y.astype(float))
+    np.testing.assert_allclose(reg.predict(Qs), ref_reg.predict(Q))
+
+    # Radius queries are scikit-learn's code in both layers, so Layer 1 serves a
+    # sparse one too, as an ordinary call.
+    radius = 30.0 if metric == "sqeuclidean" else 5.5
+    ref_nn = sk_neighbors.NearestNeighbors(radius=radius, algorithm="brute", metric=metric).fit(X)
+    for cls in (NearestNeighbors, patched.NearestNeighbors):
+        nn = cls(radius=radius, metric=metric).fit(X)
+        mlxlearn.clear_backend_diagnostics()
+        _assert_radius_parity(nn.radius_neighbors(Qs), ref_nn.radius_neighbors(Q), radius, atol=atol)
+        assert [(e.operation, e.reason, e.fallback) for e in _events()] == [
+            ("radius_neighbors", "sticky", False)
+        ]
+
+    seen = []
+    original = sk_neighbors.KNeighborsClassifier.kneighbors
+
+    def spy(self, X=None, *args, **kwargs):
+        seen.append(X.dtype)
+        return original(self, X, *args, **kwargs)
+
+    monkeypatch.setattr(sk_neighbors.KNeighborsClassifier, "kneighbors", spy)
+    model.kneighbors(Qs)
+    model.kneighbors(Qs.astype(np.float32))
+    assert seen == [model._fit_X.dtype] * 2 == [np.dtype(np.float32)] * 2
+
+
+def test_sparse_query_float32_cannot_hold_is_an_unsupported_input_error(rng):
+    """As a dense query's is; the cast would otherwise turn it into infinity."""
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y, Q = _sparse_query_problem(rng)
+    Q[0, 0] = 1e300
+    model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    with pytest.raises(UnsupportedInputError) as excinfo:
+        model.predict(sparse.csr_matrix(Q))
+    assert excinfo.value.reason == "float32-overflow"
+    with pytest.raises(UnsupportedInputError):
+        NearestNeighbors(radius=1.0).fit(X).radius_neighbors(sparse.csr_matrix(Q))
+
+
+@pytest.mark.parametrize(
+    "make_query",
+    [lambda Q: Q, lambda Q: Q.T.copy().T, lambda Q: Q.astype(np.float32)],
+    ids=["float64", "fortran", "float32"],
+)
+@pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors], ids=_layer_id)
+def test_radius_neighbors_keeps_feature_names_like_sklearn(cls, make_query, rng):
+    """The float32 cast used to turn a DataFrame query into a bare array.
+
+    scikit-learn validates the query again, so a correctly named DataFrame warned
+    that it had no feature names, and an array warned twice where stock warns once.
+    """
+    pd = pytest.importorskip("pandas")
+    X = rng.normal(size=(2000, 16))
+    Q = make_query(rng.normal(size=(20, 16)))
+    columns = [f"f{i}" for i in range(16)]
+    frame, query = pd.DataFrame(X, columns=columns), pd.DataFrame(Q, columns=columns)
+    ref = sk_neighbors.NearestNeighbors(radius=4.5, algorithm="brute").fit(frame)
+    model = cls(radius=4.5).fit(frame)
+    assert model.execution_backend_ != "sklearn"
+
+    # UserWarning only: NumPy's matmul on some BLAS builds raises spurious
+    # RuntimeWarnings, which say nothing about the query's feature names.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        _assert_radius_parity(model.radius_neighbors(query), ref.radius_neighbors(query), 4.5)
+        model.radius_neighbors_graph(query)
+
+    for fitted in (model, ref):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", UserWarning)
+            fitted.radius_neighbors(Q)
+        assert [str(w.message) for w in caught if issubclass(w.category, UserWarning)] == [
+            f"X does not have valid feature names, but {type(fitted).__name__} was "
+            "fitted with feature names"
+        ]
+        with pytest.raises(ValueError, match="feature names should match"):
+            fitted.radius_neighbors(query.rename(columns={"f0": "g0"}))
+
+
+@pytest.mark.parametrize("cls", [KNeighborsRegressor, patched.KNeighborsRegressor], ids=_layer_id)
+def test_regressor_refuses_a_string_target(cls, rng):
+    """A float64 copy of y parsed "1.5" as 1.5. Stock stores it and fails in predict,
+    so under patch_sklearn() whether string targets worked depended on the size."""
+    X = rng.normal(size=(600, 16))
+    y = rng.normal(size=600)
+    for strings in (y.astype(str), y.astype(str).tolist(), y.astype(bytes)):
+        with pytest.raises(ValueError, match="bytes/strings"):
+            cls().fit(X, strings)
+    assert cls().fit(X, y.astype(object)).execution_backend_ != "sklearn"
+
+
+class _CountedRow:
+    """A row that counts how often NumPy reads it, which is once per conversion of its list."""
+
+    def __init__(self, values, reads):
+        self._values, self._reads = values, reads
+
+    def __array__(self, dtype=None, copy=None):
+        self._reads.append(None)
+        return self._values if dtype is None else self._values.astype(dtype)
+
+    def __getitem__(self, i):
+        return self._values[i]
+
+    def __len__(self):
+        return len(self._values)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_list_input_is_converted_once(backend, rng):
+    """The string check converted a list just to read its dtype, then validation
+    converted it again, and fit's range check a third time."""
+    X = rng.normal(size=(600, 16))
+    y = rng.integers(0, 2, 600)
+    reads = []
+    rows = [_CountedRow(row, reads) for row in X]
+    queries = rows[:10]
+
+    with tuning_context(force_backend=backend):
+        model = KNeighborsClassifier(n_neighbors=3).fit(rows, y)
+    assert model.execution_backend_ == backend
+    assert len(reads) == len(rows)
+    for method in (model.kneighbors, model.predict):
+        reads.clear()
+        method(queries)
+        assert len(reads) == len(queries)
+
+    nn = NearestNeighbors(radius=4.0).fit(X)
+    reads.clear()
+    nn.radius_neighbors(queries)
+    assert len(reads) == len(queries)
+
+    reference = KNeighborsClassifier(n_neighbors=3).fit(X, y)
+    np.testing.assert_array_equal(model.kneighbors(queries)[1], reference.kneighbors(X[:10])[1])
+
+
+@pytest.mark.parametrize(
+    "estimator, method",
+    [
+        ("KNeighborsClassifier", "predict"),
+        ("KNeighborsClassifier", "predict_proba"),
+        ("KNeighborsRegressor", "predict"),
+    ],
+)
+@pytest.mark.parametrize("layer", ["L1", "L2"])
+def test_callable_weights_match_sklearn(estimator, method, layer, rng):
+    """Weighting is host code on the distances the search returns, so a callable is
+    served on MLX. It used to be refused at fit, and set after an MLX fit it made
+    predict raise "weights not recognized" where stock scikit-learn predicts."""
+    X = rng.normal(size=(2000, 16))
+    y = (X[:, 0] + X[:, 1] > 0).astype(int)
+    if estimator == "KNeighborsRegressor":
+        y = X[:, 0] + rng.normal(scale=0.1, size=2000)
+    Q = np.vstack([X[:5], rng.normal(size=(40, 16))])
+
+    def weights(dist):
+        return np.exp(-dist)
+
+    cls = getattr(patched if layer == "L2" else mlxlearn.neighbors, estimator)
+    ref = getattr(sk_neighbors, estimator)(n_neighbors=7, weights=weights).fit(X, y)
+    model = cls(n_neighbors=7, weights=weights).fit(X, y)
+    refit = cls(n_neighbors=7).fit(X, y).set_params(weights=weights)
+    for fitted in (model, refit):
+        assert fitted.execution_backend_ != "sklearn"
+        np.testing.assert_allclose(getattr(fitted, method)(Q), getattr(ref, method)(Q), atol=1e-6)
+
+
+def test_all_zero_callable_weights_behave_like_sklearn(rng):
+    """The classifier has no vote to take and raises; the regressor returns NaN."""
+    X = rng.normal(size=(600, 16))
+    y = (X[:, 0] > 0).astype(int)
+
+    def zero(dist):
+        return np.zeros_like(dist)
+
+    for cls in (KNeighborsClassifier, sk_neighbors.KNeighborsClassifier):
+        clf = cls(weights=zero).fit(X, y)
+        for method in (clf.predict, clf.predict_proba):
+            with pytest.raises(ValueError, match="getting zero weights"):
+                method(X[:3])
+    for cls in (KNeighborsRegressor, sk_neighbors.KNeighborsRegressor):
+        with np.errstate(invalid="ignore"):
+            assert np.isnan(cls(weights=zero).fit(X, y.astype(float)).predict(X[:3])).all()
 
 
 @pytest.mark.parametrize(

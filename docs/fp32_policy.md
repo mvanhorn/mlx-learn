@@ -412,13 +412,19 @@ rounded to float32:
   kernel's input by a power of two (§2.4).
 
 What stays bounded by float32 is the *spread* of the data around that offset — 24 bits of
-it — and any input that arrives as float32. `radius_neighbors` and
-`radius_neighbors_graph` on an MLX-fitted `NearestNeighbors` are scikit-learn's own code
-run on the fitted state: they compute against the index's float32 training copy, without
-its residual, with the query cast to float32 to match. That is what keeps them at stock
-speed, and it gives them the float32 rounding of the training data described here. A
-float64 query float32 cannot hold is therefore an `UnsupportedInputError`, as it is for
-`kneighbors`.
+it — and any input that arrives as float32. The exception is `radius_neighbors` and
+`radius_neighbors_graph` on an MLX-fitted `NearestNeighbors`, which are scikit-learn's own
+code run on the fitted state: they compute against the index's float32 training copy —
+the input rounded as given, neither translated nor refined by its residual — with the
+query cast to float32 to match. That is what keeps them at stock speed, and it bounds
+their precision by the data's raw magnitude, not its spread: Unix timestamps round to
+128-second steps there and UTM northings to half-metre ones, so points within about that
+step of the radius can land on the wrong side of it. Subtract such an offset before
+fitting, or use stock scikit-learn. A sparse query that scikit-learn's brute force answers
+on an MLX-fitted model — to the radius methods in both layers, and to `kneighbors` and the
+predictions built on it under `patch_sklearn()` — is cast to float32 and computed against
+the same copy. A float64 query float32 cannot hold is therefore an `UnsupportedInputError`,
+as it is for `kneighbors`.
 
 The rule this yields: mlxlearn's accuracy claims are relative to the float32 representation
 of the input after its exact float64 translation and scaling — for float32 input, the input

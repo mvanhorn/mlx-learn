@@ -108,8 +108,8 @@ sparse) and for float64 values beyond float32's range
 | Estimator | Since | Accelerated path | Falls back for |
 |---|---|---|---|
 | `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force search, `metric` in `euclidean`, `l2`, `sqeuclidean`, or `minkowski` at `p=2`; `metric_params={"p": ...}` resolved as scikit-learn resolves it | any other metric, including `minkowski` at `p != 2`; `algorithm="kd_tree"`/`"ball_tree"`; `metric_params` other than Minkowski's `p` (a weight vector `w`, another metric's parameters); a prebuilt `KDTree`, `BallTree` or fitted estimator passed as `X`; training data spanning more than `FLOAT32_MAX / 8` from its mean |
-| `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output | as above, plus callable `weights` |
-| `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output | as above, plus callable `weights` |
+| `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output; callable `weights` | as above |
+| `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output; callable `weights` | as above |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized, binary and multinomial; scikit-learn 1.9 callbacks (`set_callbacks`) are driven on this path | `l1`/`elasticnet` however spelled; non-`lbfgs` solvers; `dual=True`; `warm_start=True`; `multi_class` other than `"deprecated"`/`"auto"` (1.7 only); `intercept_scaling != 1` with `fit_intercept=True`; multi-label or multi-output `y`; negative `sample_weight`; under `patch_sklearn()` on scikit-learn 1.9, `array_api_dispatch=True` |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32 |
 
@@ -122,18 +122,22 @@ gamma=0.0)` fits, since the linear kernel never reads `gamma`.
 backend in the README). A query float32 cannot represent is therefore an error at
 inference in both layers, not a fallback — for the neighbor estimators and `SVC`, which
 evaluate queries in float32; `LogisticRegression` predicts with scikit-learn's float64
-code. The one exception: under `patch_sklearn()`, a sparse query to a neighbor estimator
-fitted on MLX is answered by scikit-learn's brute-force search, which reads the fitted
-state directly; it is recorded as a fallback and honors `fallback_policy`. Directly
-imported, it raises `SparseInputError`.
+code. The one exception: under `patch_sklearn()`, a sparse query to `kneighbors`,
+`kneighbors_graph`, `predict` or `predict_proba` of a neighbor estimator fitted on MLX is
+answered by scikit-learn's brute-force search on the fitted state, with the query cast to
+float32 to match the training copy, whose rounding its distances carry; it is recorded as
+a fallback and honors `fallback_policy`. Directly imported, it raises `SparseInputError`.
 
 `radius_neighbors` and `radius_neighbors_graph` are not accelerated. On an MLX-fitted
 `NearestNeighbors` they run scikit-learn's own code at stock speed — a float32 query
 against the float32 training copy — so their distances carry the float32 rounding of the
-training data ([`fp32_policy.md`](fp32_policy.md) §3.4), and a float64 query float32
-cannot hold raises `UnsupportedInputError`, as `kneighbors` does. They are host code, so
-they need no GPU on a GPU-fitted model. Stated here rather than left for a profiler to
-reveal.
+training data at its raw magnitude — unlike `kneighbors`, they do not translate float64
+input by its mean, so a large constant offset costs them precision
+([`fp32_policy.md`](fp32_policy.md) §3.4) — and a float64 query float32 cannot hold raises
+`UnsupportedInputError`, as `kneighbors` does. They are host code, so they need no GPU on
+a GPU-fitted model, and they take a sparse query in both layers, as scikit-learn does,
+recorded as an ordinary call rather than a fallback. Stated here rather than left for a
+profiler to reveal.
 
 ### Handed to scikit-learn by size (patched only)
 

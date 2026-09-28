@@ -23,8 +23,10 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
     Parameters
     ----------
     n_neighbors : int, default=5
-    weights : {"uniform", "distance"}, default="uniform"
-        A callable is not implemented on the MLX path.
+    weights : {"uniform", "distance"} or callable, default="uniform"
+        A callable takes the array of neighbor distances and returns weights of
+        the same shape, as in scikit-learn; it runs on the host, on the float64
+        distances :meth:`kneighbors` returns.
     algorithm : {"auto", "brute"}, default="auto"
         See Notes for how ``"auto"`` is dispatched under ``patch_sklearn()``.
     leaf_size : int, default=30
@@ -155,8 +157,8 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
             with self._inference("predict"):
                 return super().predict(X)
 
-        dist, idx = self._query_indices(X, "predict", need_distance=self.weights == "distance")
-        weights = compute_weights(dist, self.weights)
+        dist, idx = self._query_indices(X, "predict", need_distance=self.weights != "uniform")
+        weights = _check_nonzero_weights(compute_weights(dist, self.weights))
         if not self.outputs_2d_:
             winners = weighted_mode(self._y[idx], weights, len(self.classes_))
             return self.classes_.take(winners)
@@ -187,12 +189,26 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
                 return super().predict_proba(X)
 
         dist, idx = self._query_indices(
-            X, "predict_proba", need_distance=self.weights == "distance"
+            X, "predict_proba", need_distance=self.weights != "uniform"
         )
-        weights = compute_weights(dist, self.weights)
+        weights = _check_nonzero_weights(compute_weights(dist, self.weights))
         if not self.outputs_2d_:
             return class_probabilities(self._y[idx], weights, len(self.classes_))
         return [
             class_probabilities(self._y[idx, k], weights, len(classes_k))
             for k, classes_k in enumerate(self.classes_)
         ]
+
+
+def _check_nonzero_weights(weights: np.ndarray | None) -> np.ndarray | None:
+    """Refuse a query whose neighbors all have zero weight, as scikit-learn's classifier does.
+
+    Only a callable can produce one, and there is no vote to take for it.
+    """
+    if weights is not None and np.any(np.all(weights == 0, axis=1)):
+        raise ValueError(
+            "All neighbors of some sample is getting zero weights. "
+            "Please modify 'weights' to avoid this case if you are "
+            "using a user-defined function."
+        )
+    return weights
