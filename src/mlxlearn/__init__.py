@@ -43,11 +43,13 @@ from ._common.diagnostics import (
     diagnostics_summary,
     get_backend_diagnostics,
     get_last_backend_event,
+    reset_fallback_warnings,
 )
 from .exceptions import (
     BackendExecutionError,
     CapabilityError,
     DeviceError,
+    InvalidInputError,
     MLXLearnError,
     MLXLearnFallbackWarning,
     MLXLearnPatchWarning,
@@ -83,6 +85,7 @@ __all__ = [
     "get_backend_diagnostics",
     "get_last_backend_event",
     "clear_backend_diagnostics",
+    "reset_fallback_warnings",
     "diagnostics_summary",
     "BackendEvent",
     # environment
@@ -94,6 +97,7 @@ __all__ = [
     "UnsupportedParameterError",
     "UnsupportedInputError",
     "SparseInputError",
+    "InvalidInputError",
     "DeviceError",
     "BackendExecutionError",
     "MLXLearnFallbackWarning",

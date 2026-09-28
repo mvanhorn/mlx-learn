@@ -280,3 +280,53 @@ def test_prefetch_is_offered_only_where_a_call_is_expensive():
     if gpu_available():
         gpu = build_kernel_rows(X, KernelSpec(kernel="linear"), backend="mlx")
         assert gpu.prefetch_rows > 0
+
+
+# --------------------------------------------------------------- a host with no GPU
+
+
+def test_mlx_work_on_a_gpu_less_host_runs_on_the_mlx_cpu(monkeypatch, data):
+    """backend="mlx" names a fitted backend, not a device; inference_device() decides.
+
+    Each kernel used to map "mlx" straight to the GPU, so a GPU-fitted model loaded
+    where no GPU works raised DeviceError under device="auto" — the setting that
+    asks for exactly this degradation. The answer is the CPU backend's, bit for bit:
+    the same float32 code, the same (eager) tile transform, the same blocking.
+    """
+    from mlxlearn import config_context
+    from mlxlearn._kernels.kernels import KernelBasis
+    from mlxlearn.exceptions import DeviceError
+
+    A, B = data
+    spec = KernelSpec(kernel="rbf", gamma=0.08)
+    weights = np.random.default_rng(3).normal(size=(B.shape[0], 4))
+    expected = {
+        "matrix": kernel_matrix(spec, A, B, backend="cpu"),
+        "combine": kernel_combine(spec, A, B, weights, backend="cpu"),
+        "rows": build_kernel_rows(B, spec, backend="cpu").rows([0, 5, 9]),
+        "basis": KernelBasis(spec).combine(A, B, weights, backend="cpu"),
+    }
+
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    for device in ("auto", "cpu"):
+        with config_context(device=device):
+            rows = build_kernel_rows(B, spec, backend="mlx")
+            assert rows.prefetch_rows == 0  # the CPU's policy, not the GPU's
+            actual = {
+                "matrix": kernel_matrix(spec, A, B, backend="mlx"),
+                "combine": kernel_combine(spec, A, B, weights, backend="mlx"),
+                "rows": rows.rows([0, 5, 9]),
+                "basis": KernelBasis(spec).combine(A, B, weights, backend="mlx"),
+            }
+        for name, value in expected.items():
+            np.testing.assert_array_equal(actual[name], value, err_msg=name)
+
+    with config_context(device="gpu"):
+        for call in (
+            lambda: kernel_matrix(spec, A, B, backend="mlx"),
+            lambda: kernel_combine(spec, A, B, weights, backend="mlx"),
+            lambda: build_kernel_rows(B, spec, backend="mlx"),
+            lambda: KernelBasis(spec).combine(A, B, weights, backend="mlx"),
+        ):
+            with pytest.raises(DeviceError, match="fitted on the MLX GPU"):
+                call()

@@ -297,10 +297,11 @@ class MLXSVCMixin(BackendMixin):
                 raise UnsupportedParameterError(
                     f"{name} does not implement gamma={gamma_value!r} with "
                     f"kernel={self.kernel!r}; the MLX kernels require a strictly "
-                    "positive gamma. scikit-learn accepts it, so under patch_sklearn() "
-                    "this falls back rather than failing.",
+                    "positive gamma.",
                     parameter="gamma",
                     value=gamma_value,
+                    advice="scikit-learn accepts it, so under patch_sklearn() this "
+                    "falls back rather than failing.",
                 )
 
     def _below_crossover(

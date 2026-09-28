@@ -38,6 +38,7 @@ from .._common.validation import (
     check_sample_weight,
     compute_class_weight,
     require_dense,
+    require_nonnegative_weights,
     require_supported_params,
     type_of_target,
     validate_data,
@@ -308,18 +309,9 @@ class MLXLogisticMixin(BackendMixin):
                 reason="multi-label-target",
             )
 
-        if sample_weight is not None:
-            weights = np.asarray(sample_weight)
-            # Anything non-numeric is left for validation to reject with
-            # scikit-learn's own message.
-            if weights.dtype.kind in "biuf" and np.any(weights < 0):
-                raise UnsupportedInputError(
-                    "sample_weight contains negative values. mlxlearn's solvers "
-                    "require non-negative weights, because a negative weight makes "
-                    "the objective non-convex. scikit-learn accepts them, so under "
-                    "patch_sklearn() this falls back rather than failing.",
-                    reason="negative-sample-weight",
-                )
+        # Anything that does not read as numbers is left for validation to reject
+        # with scikit-learn's own message.
+        require_nonnegative_weights(sample_weight, estimator=name)
 
     def _below_crossover(
         self, n_samples: int, n_features: int, n_targets: int = 1

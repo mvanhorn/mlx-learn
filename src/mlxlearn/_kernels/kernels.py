@@ -177,10 +177,11 @@ def resolve_gamma(gamma, X: np.ndarray, *, kernel: str | None = None) -> float:
         # propagated straight through mlx_guard and broke Layer 2 too.
         raise UnsupportedParameterError(
             f"mlxlearn does not implement gamma={value!r}; the MLX kernels require a "
-            "strictly positive gamma. scikit-learn accepts it, so under "
-            "patch_sklearn() this falls back rather than failing.",
+            "strictly positive gamma.",
             parameter="gamma",
             value=value,
+            advice="scikit-learn accepts it, so under patch_sklearn() this falls back "
+            "rather than failing.",
         )
     return value
 
@@ -322,19 +323,20 @@ def frame_spec(spec: KernelSpec, scale: float) -> KernelSpec:
     if not abs(gamma) <= _FLOAT32_MAX:
         raise UnsupportedParameterError(
             f"gamma={spec.gamma!r} is {gamma:.3g} once folded into mlxlearn's float32 "
-            "compute frame, which float32 cannot represent. scikit-learn evaluates the "
-            "kernel in float64 and can serve it, so under patch_sklearn() this falls "
-            "back rather than failing.",
+            "compute frame, which float32 cannot represent.",
             parameter="gamma",
             value=spec.gamma,
+            advice="scikit-learn evaluates the kernel in float64 and can serve it, so "
+            "under patch_sklearn() this falls back rather than failing.",
         )
     if not abs(spec.coef0) <= _FLOAT32_MAX:
         raise UnsupportedParameterError(
             f"coef0={spec.coef0!r} is not finite in float32, where mlxlearn evaluates "
-            "the kernel. scikit-learn evaluates it in float64, so under patch_sklearn() "
-            "this falls back rather than failing.",
+            "the kernel.",
             parameter="coef0",
             value=spec.coef0,
+            advice="scikit-learn evaluates it in float64, so under patch_sklearn() this "
+            "falls back rather than failing.",
         )
     return replace(spec, gamma=gamma)
 
@@ -370,7 +372,9 @@ def apply_frame(X, center: np.ndarray | None, scale: float) -> np.ndarray:
     return out
 
 
-def check_frame_range(spec: KernelSpec, X32: np.ndarray, *, name: str = "X") -> None:
+def check_frame_range(
+    spec: KernelSpec, X32: np.ndarray, *, name: str = "X", fallback_advice: bool = True
+) -> None:
     """Raise when float32 kernel arithmetic on mapped rows ``X32`` could overflow.
 
     ``rbf`` evaluates ``‖a‖² + ‖b‖² − 2⟨a, b⟩``, at most four times the largest
@@ -381,6 +385,8 @@ def check_frame_range(spec: KernelSpec, X32: np.ndarray, *, name: str = "X") -> 
     catches is a linear-kernel fit with ``‖x‖² > 3.4e38``, and an inference query
     so far outside the training extent that the training-derived scale cannot hold
     it. Values past ``3.4e38`` themselves are rejected earlier, on the raw input.
+    ``fallback_advice=False`` leaves out the ``patch_sklearn()`` advice, which only
+    a fit can act on.
 
     Raises
     ------
@@ -400,10 +406,15 @@ def check_frame_range(spec: KernelSpec, X32: np.ndarray, *, name: str = "X") -> 
         raise UnsupportedInputError(
             f"{name} has a row whose squared norm is {largest:.3g} in mlxlearn's float32 "
             f"compute frame, so the {spec.kernel!r} kernel would overflow float32 (the "
-            f"limit is {_FLOAT32_MAX:.3g}) and return infinity or NaN. Rescale the data, "
-            "or run under patch_sklearn() to have a fit handled by scikit-learn's "
-            "float64 path.",
+            f"limit is {_FLOAT32_MAX:.3g}) and return infinity or NaN. Rescale the "
+            "data.",
             reason="float32-overflow",
+            advice=(
+                "Or run under patch_sklearn(), which hands a fit on such data to "
+                "scikit-learn's float64 path."
+            )
+            if fallback_advice
+            else "",
         )
 
 
@@ -452,10 +463,10 @@ class KernelBasis:
         self._lock = threading.Lock()
         self._operand = None
 
-    def prepare(self, X, *, name: str = "X") -> np.ndarray:
+    def prepare(self, X, *, name: str = "X", fallback_advice: bool = True) -> np.ndarray:
         """``X`` mapped into this basis's float32 frame, range-checked."""
         mapped = apply_frame(X, self.center, self.scale)
-        check_frame_range(self.spec, mapped, name=name)
+        check_frame_range(self.spec, mapped, name=name, fallback_advice=fallback_advice)
         return mapped
 
     def _device_operand(self, rows: np.ndarray, device: str) -> tuple:
@@ -466,7 +477,7 @@ class KernelBasis:
             if self._operand is None:
                 import mlx.core as mx
 
-                prepared = self.prepare(rows, name="support_vectors_")
+                prepared = self.prepare(rows, name="support_vectors_", fallback_advice=False)
                 with use_device(device):
                     right = mx.array(prepared, dtype=mx.float32)
                     if self.spec.kernel == "rbf":
@@ -510,7 +521,8 @@ class KernelBasis:
         """
         import mlx.core as mx
 
-        Q32 = self.prepare(Q)
+        # Inference: the fitted backend is sticky, so there is no fallback to advise.
+        Q32 = self.prepare(Q, fallback_advice=False)
         W = np.asarray(weights, dtype=np.float64)
         out = np.zeros((Q32.shape[0], W.shape[1]), dtype=np.float64)
         if Q32.shape[0] == 0 or rows.shape[0] == 0:

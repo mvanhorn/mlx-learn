@@ -34,6 +34,7 @@ EXPECTED_ALL = sorted(
         "get_backend_diagnostics",
         "get_last_backend_event",
         "clear_backend_diagnostics",
+        "reset_fallback_warnings",
         "diagnostics_summary",
         "BackendEvent",
         # environment
@@ -45,6 +46,7 @@ EXPECTED_ALL = sorted(
         "UnsupportedParameterError",
         "UnsupportedInputError",
         "SparseInputError",
+        "InvalidInputError",
         "DeviceError",
         "BackendExecutionError",
         "MLXLearnFallbackWarning",

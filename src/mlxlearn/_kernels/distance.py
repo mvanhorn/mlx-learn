@@ -510,12 +510,13 @@ class NeighborIndex:
         # Carry extra candidates so the certificate usually succeeds first time.
         k_carry = _first_pass_carry(k_search, self.n_features, n_train)
         device = _compute_device(self.backend)
-        # Blocked for the device the query runs on, which for a GPU-fitted index
+        # Budgeted for the device the query runs on, which for a GPU-fitted index
         # loaded on a GPU-less host is MLX's CPU, not the device it was built for.
+        plan_backend = "mlx" if device == "gpu" else "cpu"
         plan = resolve_blocks(
             n_query,
             n_train,
-            backend="mlx" if device == "gpu" else "cpu",
+            backend=plan_backend,
             k_search=k_carry,
             query_block_size=query_block_size,
             train_block_size=train_block_size,
@@ -531,6 +532,7 @@ class NeighborIndex:
             k_search=k_search,
             k_carry=k_carry,
             segmented=device == "gpu",
+            plan_backend=plan_backend,
             train_block_size=train_block_size,
             counts={"rows": n_query, "widened_rows": 0, "exact_rows": 0},
         )
@@ -562,6 +564,7 @@ class _Search:
     k_search: int
     k_carry: int
     segmented: bool
+    plan_backend: str  # "mlx" or "cpu": whose memory budget the blocks follow
     train_block_size: int | None
     counts: dict
 
@@ -719,7 +722,7 @@ class _Search:
         # the GPU, so unevaluated chunks all hold their temporaries at once — lazy
         # chunking alone measured 3.2 GB against a 1 GiB budget.
         gather = _REFINE_WORKSET_FACTOR * k_carry * self.index.n_features * 4
-        chunk = max(1, _distance_budget_bytes(self.index.backend) // max(gather, 1))
+        chunk = max(1, _distance_budget_bytes(self.plan_backend) // max(gather, 1))
         if chunk < n_rows:
             # Finish selection first, so its temporaries are gone before the
             # first chunk's gather is allocated.
@@ -792,7 +795,7 @@ class _Search:
             plan = resolve_blocks(
                 qb.n,
                 n_train,
-                backend=self.index.backend,
+                backend=self.plan_backend,
                 k_search=k_wide,
                 train_block_size=self.train_block_size,
             )
@@ -839,11 +842,11 @@ class _Search:
         n_train = self.index.n_samples
         d = self.index.n_features
         k_search = self.k_search
-        budget = _distance_budget_bytes(self.index.backend)
+        budget = _distance_budget_bytes(self.plan_backend)
 
         if integer:
             plan = resolve_blocks(
-                qb.n, n_train, backend=self.index.backend, k_search=k_search,
+                qb.n, n_train, backend=self.plan_backend, k_search=k_search,
                 train_block_size=self.train_block_size,
             )
             rows, cols = plan.query_rows, plan.train_cols

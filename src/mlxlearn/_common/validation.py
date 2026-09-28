@@ -119,9 +119,9 @@ def require_dense(X: Any, *, estimator: str, operation: str = "fit") -> None:
         convert = "X.sparse.to_dense()" if _is_pandas(X) else "X.toarray()"
         raise SparseInputError(
             f"{estimator}.{operation} received sparse input, but mlxlearn's MLX "
-            f"kernels are dense. Convert with {convert} to use mlxlearn, or run "
-            "under patch_sklearn() to have sparse input handled by scikit-learn "
-            "automatically."
+            f"kernels are dense. Convert with {convert} to use mlxlearn.",
+            advice="Under patch_sklearn(), sparse input is handed to scikit-learn "
+            "automatically.",
         )
 
 
@@ -162,6 +162,14 @@ def require_supported_params(
             )
 
 
+#: The Layer 1 advice for data float32 cannot hold: at ``fit`` a patched estimator
+#: hands such data to scikit-learn's float64 path.
+_FLOAT64_FIT_ADVICE = (
+    "Or run under patch_sklearn(), which hands a fit on such data to scikit-learn's "
+    "float64 path."
+)
+
+
 def _negative_weight_error(estimator: str | None) -> UnsupportedInputError:
     # A capability error, not a plain ValueError. scikit-learn accepts negative
     # sample weights; mlxlearn's logistic solver does not, because a negative weight
@@ -173,9 +181,10 @@ def _negative_weight_error(estimator: str | None) -> UnsupportedInputError:
     return UnsupportedInputError(
         f"{where}sample_weight contains negative values. mlxlearn's solvers require "
         "non-negative weights, because a negative weight makes the objective "
-        "non-convex. scikit-learn accepts them, so under patch_sklearn() this "
-        "falls back rather than failing.",
+        "non-convex.",
         reason="negative-sample-weight",
+        advice="scikit-learn accepts them, so under patch_sklearn() this falls back "
+        "rather than failing.",
     )
 
 
@@ -344,7 +353,7 @@ def _input_range(X: Any, *, need_range: bool) -> ValueRange | None:
 
 
 def check_float32_range(
-    X: Any, *, name: str = "X", need_range: bool = False
+    X: Any, *, name: str = "X", need_range: bool = False, fallback_advice: bool = True
 ) -> ValueRange | None:
     """Reject values that are finite as given but would become infinite in float32.
 
@@ -376,6 +385,10 @@ def check_float32_range(
     need_range : bool, default=False
         Scan data that cannot overflow too, so the range is always returned when
         there is one. For callers that go on to :func:`check_squared_float32_range`.
+    fallback_advice : bool, default=True
+        Advise running under ``patch_sklearn()``, whose fallback to scikit-learn's
+        float64 path exists only at ``fit``. Inference cannot fall back — the
+        fitted backend is sticky, in both layers — so it passes ``False``.
 
     Returns
     -------
@@ -394,9 +407,9 @@ def check_float32_range(
             f"{name} contains a value of magnitude {value_range.magnitude:.3g}, which "
             f"is finite in float64 but infinite in float32 (the limit is "
             f"{FLOAT32_MAX:.3g}). mlxlearn computes in float32 and will not silently "
-            "convert it to infinity. Rescale the data, or run under patch_sklearn() to "
-            "have this handled by scikit-learn's float64 path.",
+            "convert it to infinity. Rescale the data.",
             reason="float32-overflow",
+            advice=_FLOAT64_FIT_ADVICE if fallback_advice else "",
         )
     return value_range
 
@@ -494,15 +507,19 @@ def validate_float32_input(
         reset = operation == "fit"
     dtypes = dtype if isinstance(dtype, (tuple, list)) else (dtype,)
     wide = any(np.dtype(d).itemsize > np.dtype(NUMPY_FLOAT).itemsize for d in dtypes)
+    advice = operation == "fit"  # only a fit has a scikit-learn path to fall back to
     if not range_checked:
         require_dense(X, estimator=type(estimator).__name__, operation=operation)
         if not wide:
-            check_float32_range(X)
+            check_float32_range(X, fallback_advice=advice)
     validated = validate_data(
         estimator, X, y, accept_sparse=False, dtype=dtype, reset=reset, **check_params
     )
     if wide and not range_checked:
-        check_float32_range(validated[0] if isinstance(validated, tuple) else validated)
+        check_float32_range(
+            validated[0] if isinstance(validated, tuple) else validated,
+            fallback_advice=advice,
+        )
     return validated
 
 

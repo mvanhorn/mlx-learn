@@ -34,12 +34,12 @@ from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.validation import (
     SparseInputError,
-    check_finite_float32,
     check_float32_range,
     check_is_fitted,
     require_dense,
     require_supported_params,
     validate_data,
+    validate_float32_input,
 )
 from .._kernels.distance import build_index
 from ..exceptions import CapabilityError, UnsupportedInputError, UnsupportedParameterError
@@ -116,9 +116,9 @@ class MLXNeighborsMixin(BackendMixin):
             raise UnsupportedInputError(
                 f"{name}.fit received a prebuilt {type(X).__name__} as X. mlxlearn "
                 "builds its own index from an array and cannot reuse a scikit-learn "
-                "tree or fitted estimator. Pass the training array instead, or run "
-                "under patch_sklearn() to have this handled by scikit-learn.",
+                "tree or fitted estimator. Pass the training array instead.",
                 reason="prebuilt-index",
+                advice="Under patch_sklearn(), scikit-learn handles a prebuilt index.",
             )
         require_dense(X, estimator=name)
 
@@ -319,7 +319,11 @@ class MLXNeighborsMixin(BackendMixin):
                 y_numeric=target == "regression",
                 reset=True,
             )
-        check_finite_float32(X_checked)
+        # No second pass over X here. The capability check has already range-checked
+        # the raw input (_select_backend runs it before anything else), validation
+        # keeps float64 as float64 and float32 as float32 — rejecting non-finite
+        # values in either — so nothing is cast to float32 before build_index, which
+        # translates and splits float64 itself and refuses a span float32 cannot hold.
 
         if shape is None:
             # The input had no shape to read before validation (a list, say), so
@@ -454,8 +458,11 @@ class MLXNeighborsMixin(BackendMixin):
                 # Layer 1 raises here. Layer 2 answers with scikit-learn's brute
                 # force, which reads the state _fit_neighbors populated for it —
                 # scikit-learn serves this query, so raising would break code that
-                # works unpatched. fallback_policy still applies.
-                self._handle_capability_error(exc, operation, shape=_safe_shape(X))
+                # works unpatched. fallback_policy still applies. The fallback is
+                # this call's one event, named after the method the caller invoked.
+                self._handle_capability_error(
+                    exc, self._claim_call_event(operation) or operation, shape=_safe_shape(X)
+                )
                 with self._inference(operation, record=False):
                     return super().kneighbors(X, n_neighbors, return_distance)
 
@@ -463,15 +470,23 @@ class MLXNeighborsMixin(BackendMixin):
             Q = self._index_.X
         else:
             _reject_string_data(X)
-            Q = validate_data(self, X, accept_sparse=False, dtype=_INPUT_DTYPES, reset=False)
-            check_finite_float32(Q)
+            # A float64 query stays float64 and is range-checked once validated (one
+            # min/max pass), so a value float32 cannot hold is an
+            # UnsupportedInputError, not an infinity inside the kernel. A float32
+            # query is finite once validated and is not scanned again.
+            Q = validate_float32_input(self, X, operation=operation, dtype=_INPUT_DTYPES)
         k = self._check_n_neighbors_bound(n_neighbors, query_is_train, n_queries=Q.shape[0])
 
-        with self._inference(operation, shape=Q.shape):
-            with mlx_guard(type(self).__name__, operation):
-                dist, idx = self._index_.query(
-                    Q, k, return_distance=return_distance, exclude_self=query_is_train
-                )
+        stats: dict = {}
+        with mlx_guard(type(self).__name__, operation):
+            dist, idx = self._index_.query(
+                Q, k, return_distance=return_distance, exclude_self=query_is_train, stats=stats
+            )
+        # Recorded once the search has run, so the call's one event can also say how
+        # it was served (_search_diagnostics). Nothing above makes a nested public
+        # call, so there is nothing for the _inference guard to silence.
+        detail, extra = _search_diagnostics(stats)
+        self._record_inference(operation, shape=Q.shape, detail=detail, **extra)
         if not return_distance:
             return idx
         if self.effective_metric_ == "sqeuclidean":
@@ -514,6 +529,18 @@ class MLXNeighborsMixin(BackendMixin):
 
     # ------------------------------------------------------------------ helpers
 
+    def _record_inference(
+        self,
+        operation: str,
+        *,
+        shape: tuple[int, ...] | None = None,
+        detail: str = "",
+        **extra,
+    ) -> None:
+        """Record this public call's one event, unless an enclosing call already has."""
+        if not _EVENT_RECORDED.get():
+            self._note_inference(operation, shape=shape, detail=detail, **extra)
+
     @contextmanager
     def _inference(
         self,
@@ -531,8 +558,8 @@ class MLXNeighborsMixin(BackendMixin):
         backend fitted the model. ``record=False`` only silences nested calls, for
         a caller that has already recorded the decision itself.
         """
-        if record and not _EVENT_RECORDED.get():
-            self._note_inference(operation, shape=shape)
+        if record:
+            self._record_inference(operation, shape=shape)
         token = _EVENT_RECORDED.set(True)
         try:
             yield
@@ -549,6 +576,32 @@ class MLXNeighborsMixin(BackendMixin):
         """
         dist, idx = self._kneighbors(operation, X, return_distance=True)
         return (dist if need_distance else None), idx
+
+
+def _search_diagnostics(stats: dict) -> tuple[str, dict]:
+    """``(detail, extra)`` for a query event from ``NeighborIndex.query``'s ``stats``.
+
+    Empty for the ordinary case, where the first float32 pass certified every row.
+    Otherwise the event says how many rows needed the wider candidate search and how
+    many the exact one: the answer is the same, but the time is not, and a slow
+    ``kneighbors`` on near-duplicate or tied data is explained by exactly this.
+    """
+    widened = int(stats.get("widened_rows", 0))
+    exact = int(stats.get("exact_rows", 0))
+    if not (widened or exact):
+        return "", {}
+    rows = int(stats.get("rows", 0))
+    detail = (
+        f"{widened} of {rows} query rows could not be certified by the first float32 "
+        "pass and were searched again with more candidates"
+        + (f"; {exact} of them needed the exact search" if exact else "")
+        + ". The neighbors returned are exact either way."
+    )
+    return detail, {
+        "search": "certificate-fallback",
+        "widened_rows": widened,
+        "exact_rows": exact,
+    }
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:

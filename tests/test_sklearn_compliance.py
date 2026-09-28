@@ -138,9 +138,9 @@ def test_layer2_passes_sklearn_checks(estimator_class, force_backend):
 
 
 #: ``check_param_validation`` is not among the checks ``check_estimator`` yields;
-#: scikit-learn runs it from its own test suite only. The neighbors classes join
-#: once they validate their parameters on the MLX path too.
-PARAM_VALIDATION = [LogisticRegression, SVC, patched.LogisticRegression, patched.SVC]
+#: scikit-learn runs it from its own test suite only. Every estimator, both layers:
+#: the neighbor classes call ``_validate_params()`` on the MLX path as well.
+PARAM_VALIDATION = [*LAYER1, *LAYER2]
 
 
 @pytest.mark.parametrize("force_backend", [None, "cpu"], ids=["default", "cpu"])
