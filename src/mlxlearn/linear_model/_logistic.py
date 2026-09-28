@@ -674,6 +674,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                     n_features=X_checked.shape[1],
                 )
 
+        callback_error = None
         try:
             with mlx_guard(type(self).__name__, "fit"):
                 solution = solve_logistic(
@@ -687,8 +688,16 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         except BackendExecutionError as exc:
             if bridge is None or bridge.error is None or exc.original is not bridge.error:
                 raise
-            # The user's callback raised, not MLX: re-raise exactly that.
-            raise bridge.error from None
+            callback_error = bridge.take_error()
+        if callback_error is not None:
+            # The user's callback raised, not MLX: re-raise exactly that. Outside
+            # the handler, which would replace its own __cause__ and __context__
+            # with the BackendExecutionError, and without keeping it in this frame,
+            # which its traceback holds.
+            try:
+                raise callback_error
+            finally:
+                callback_error = None
 
         if bridge is not None:
             bridge.close()
@@ -931,8 +940,10 @@ class _CallbackBridge:
         self._y = y
         self._metadata = metadata
         self._backend = backend
-        #: What the last per-iteration hook raised, if it did not return.
+        #: What the last per-iteration hook raised, if it did not return, and the
+        #: traceback it had as it left the bridge.
         self.error: BaseException | None = None
+        self._traceback = None
         self._iteration = self._begin(
             np.zeros((n_targets, n_features)), np.zeros(n_targets)
         )
@@ -965,7 +976,19 @@ class _CallbackBridge:
             returned = True
         finally:
             # Only noted: whatever was raised propagates untouched from here.
-            self.error = None if returned else sys.exc_info()[1]
+            self.error, self._traceback = (None, None) if returned else sys.exc_info()[1:]
+
+    def take_error(self) -> BaseException:
+        """Hand over what a hook raised, with the traceback it left the bridge with.
+
+        Past the bridge it also picked up ``mlx_guard``'s generator frame, whose
+        caller's frame holds the exception itself: a reference cycle that kept the
+        failed fit's frames, device copy of ``X`` included, alive until the garbage
+        collector next ran, rather than until the caller let go of the exception.
+        """
+        error, traceback = self.error, self._traceback
+        self.error = self._traceback = None
+        return error.with_traceback(traceback)
 
     def close(self):
         self._iteration.call_on_fit_task_end(estimator=self._estimator)

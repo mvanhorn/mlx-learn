@@ -1079,6 +1079,77 @@ def test_a_callback_error_is_raised_as_itself(backend, error):
     assert excinfo.value is error
 
 
+class _CallbackFailure(Exception):
+    pass
+
+
+class _ChainingRecorder(_Recorder):
+    """Raises from the per-iteration hook with an explicit cause, or inside a handler."""
+
+    def __init__(self, chain):
+        super().__init__()
+        self.chain = chain
+
+    def on_fit_task_end(self, estimator, context, **kwargs):
+        super().on_fit_task_end(estimator, context, **kwargs)
+        if self.hooks["end"] != 2:
+            return
+        if self.chain == "cause":
+            raise _CallbackFailure("from the callback") from OSError("root cause")
+        try:
+            {}["missing"]
+        except KeyError:
+            raise _CallbackFailure("from the callback")  # noqa: B904
+
+
+@pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
+@pytest.mark.parametrize("chain", ["cause", "context"])
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_callback_error_keeps_its_chain_and_lets_the_fit_go(backend, chain):
+    """Its own ``__cause__`` and ``__context__`` survive, as with scikit-learn, and
+    the failed fit's MLX arrays are freed without waiting for the garbage collector.
+
+    It was re-raised inside the handler for the ``BackendExecutionError`` around it,
+    which replaced both with that error; and its traceback ran through
+    ``mlx_guard``'s generator frame, whose caller's frame held the error itself, a
+    cycle that kept the solver's frame and its device copy of ``X`` alive.
+    """
+    import gc
+
+    import mlx.core as mx
+
+    if backend == "mlx" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    active_memory = getattr(mx, "get_active_memory", None) or mx.metal.get_active_memory
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((50_000, 16), dtype=np.float32)
+    y = (X[:, 0] > 0).astype(np.int64)
+    model = LogisticRegression().set_callbacks(_ChainingRecorder(chain))
+
+    gc.collect()
+    gc.disable()
+    try:
+        before = active_memory()
+        with tuning_context(force_backend=backend):
+            try:
+                model.fit(X, y)
+            except _CallbackFailure as error:
+                # Types only: a raised context's traceback holds the fit's frames
+                # for as long as it is referenced, cycle or not.
+                chained = (
+                    type(error.__cause__), type(error.__context__), error.__suppress_context__
+                )
+        held = active_memory() - before
+    finally:
+        gc.enable()
+
+    assert held < X.nbytes // 2, f"{held} bytes of MLX memory outlived the failed fit"
+    if chain == "cause":
+        assert chained == (OSError, type(None), True)
+    else:
+        assert chained == (type(None), KeyError, False)
+
+
 @pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
 @pytest.mark.parametrize("tuning", [{}, _NO_CROSSOVER], ids=["below", "above"])
 def test_patched_callbacks_fire_on_both_sides_of_the_crossover(tuning):
