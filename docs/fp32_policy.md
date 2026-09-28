@@ -54,7 +54,8 @@ training data's span around its mean, `SVC` by its kernel frame (§2.4), with th
 folded back into `gamma`. Scaling by a power of two is exact, so data already in range is
 unchanged bit for bit, and data around `1e19` and `1e-20` is served (both are tested).
 What still does not fit raises `"float32-overflow"`: neighbor training data spanning more
-than `FLOAT32_MAX / 8` from its mean, and a linear-kernel `SVC` row whose squared norm
+than `FLOAT32_MAX / 8` from its mean, or spanning so far beyond the gaps between its rows
+that no scale holds both (§2.1), and a linear-kernel `SVC` row whose squared norm
 exceeds float32 — the linear kernel has no `gamma` to absorb a scale. mlxlearn also
 defines a squared-range guard with a second reason slug, `"float32-underflow"`, for a
 path that cannot rescale; every 0.1.x estimator rescales, so none of them raises it.
@@ -97,7 +98,12 @@ and then it proves the selection right:
    coordinates — costs nothing. The translated rows are then scaled by a power of two, which
    is exact, so that data around 1e19, whose squares overflow float32, and data around
    1e-20, whose squares underflow it (the GPU flushes those to zero), both come back into
-   range.
+   range. Only as far as that: ordinary data is not scaled at all, and a large span is
+   scaled down just until its squares, with room for queries 2²⁰ times farther out, stop
+   overflowing. Scaling down shrinks the gaps between neighbors too. Normalizing every span
+   to 1, as mlxlearn once did, let a single unmasked fill value of 1e20 among unit-scale
+   rows push their squared gaps below float32's normal range, and the GPU answered every
+   query with zeros.
 2. **Over-selection.** The identity selects `k + margin` candidates per query, the margin
    growing with `k` and with the number of features.
 3. **Refinement.** The candidates' distances are recomputed directly as `Σ(t − q)²` from the
@@ -132,14 +138,26 @@ correctness costs the second pass. Measured on 50 000 training rows and 4096 que
 for the last case): 1.5× the old (wrong) query time for 1000 clusters of spread 1e-3, 1.7×
 for `make_blobs(cluster_std=0.01)`, 1.6× for the 0–1e4 column, and 2.3× for two clusters at 0
 and 1000, which needs the exact search for every query. Binary and small-integer data got
-*faster*, because it no longer goes through the identity at all. When a call needed the
-wider pass or the exact search, its diagnostics event says for how many rows.
+*faster*, because it no longer goes through the identity at all. A far-out row is not
+ordinary once it moves the mean itself — a fill value of 1e10 among a few thousand
+unit-scale rows does: every translated norm then carries the shift, the noise band
+outgrows the gaps, and every query takes the exact search. When a call needed the wider
+pass or the exact search, its diagnostics event says for how many rows.
 
 What scaling cannot bring into range is refused (§1): refinement subtracts two translated
 coordinates in float32, so training data spanning more than `FLOAT32_MAX / 8` (about
 4.3e37) from its mean is a capability mismatch at `fit` — an `UnsupportedInputError`
 directly imported, a fallback to scikit-learn under `patch_sklearn()` — and a query too far
-from the training data for the scale chosen at `fit` is an error at inference.
+from the training data for the scale chosen at `fit` is an error at inference. So is
+training data whose span dwarfs the gaps between its rows — a fill value of 1e30, or the
+NetCDF default of 9.97e36, left among unit-scale rows: no power of two keeps the span's
+squares finite and the gaps' squares out of the underflow range (below 2⁻⁹⁶, on the scaled
+axis) at once. When the span has to be scaled down, a sample of 64 training rows is
+searched at `fit`, and if their own nearest neighbors come within 2¹⁰ of that limit, the
+fit is refused the same way. A query that still lands nearer a training row than the limit
+is an error at inference, never a distance of zero; an exact duplicate of a training row
+is the one exception. Both devices refuse the same data, and within the limit both answer
+it to float32 rounding.
 
 **What remains.** Exact means exact with respect to the refined float32 distances. Two
 training rows whose true distances from a query differ by less than float32 can resolve

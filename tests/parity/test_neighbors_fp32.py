@@ -14,11 +14,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from sklearn.datasets import make_blobs, make_classification
+from sklearn.neighbors import KNeighborsRegressor as SkKNeighborsRegressor
 from sklearn.neighbors import NearestNeighbors as SkNearestNeighbors
 
+from mlxlearn._common.config import tuning_context
 from mlxlearn._kernels.distance import build_index
-from mlxlearn.exceptions import UnsupportedInputError
+from mlxlearn.exceptions import MLXLearnFallbackWarning, UnsupportedInputError
 from mlxlearn.neighbors import NearestNeighbors
+from mlxlearn.patching import _estimators as patched
 from tests._helpers import assert_neighbor_parity, assert_ties_break_on_smallest_index
 
 BACKENDS = ["mlx", "cpu"]
@@ -404,6 +407,88 @@ def test_magnitudes_whose_squares_leave_float32(backend, scale):
 
     np.testing.assert_array_equal(idx, ref_idx)
     np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+def _with_a_fill_row(rng, fill, n=2000, d=4):
+    """Unit-scale rows and one row of an unmasked fill value, as float32."""
+    X = rng.normal(size=(n, d)).astype(np.float32)
+    X[123] = fill
+    return X
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("fill", [1e18, 1e20], ids=["1e18", "CMIP-fill-1e20"])
+def test_one_fill_value_does_not_erase_the_other_rows_distances(backend, fill, rng):
+    """One huge value used to set the scale for everyone.
+
+    The span was normalized into [0.5, 1), which scaled every unit-scale gap down
+    by the fill value and squared it below float32's normal range: from about 1e18
+    the GPU returned every distance as zero and the neighbors in index order, the
+    CPU followed from about 1e21, and nothing was raised. The scale-down now stops
+    where the squares stop overflowing.
+    """
+    X = _with_a_fill_row(rng, fill)
+    Q = rng.normal(size=(100, 4)).astype(np.float32)
+
+    dist, idx = build_index(X, backend=backend).query(Q, 5)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("fill", [1e30, 9.97e36], ids=["1e30", "NetCDF-fill"])
+def test_a_fill_value_float32_cannot_resolve_beside_is_refused_at_fit(backend, fill, rng):
+    """No scale holds both a 1e37 span and unit gaps in float32: refused, not zeros.
+
+    It is found at fit, where patched mode can still fall back.
+    """
+    with pytest.raises(UnsupportedInputError, match="resolve") as raised:
+        build_index(_with_a_fill_row(rng, fill), backend=backend)
+    assert raised.value.reason == "float32-overflow"
+    assert "scikit-learn" in raised.value.advice
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_query_nearer_than_the_scale_resolves_is_rejected(backend, rng):
+    """What fit could not rule out is still never answered with an underflowed zero.
+
+    An exact duplicate of a training row is the one neighbor that legitimately has
+    distance zero there.
+    """
+    X = _with_a_fill_row(rng, 1e20)
+    index = build_index(X, backend=backend)
+
+    _, idx = index.query(X[:3], 1)
+    np.testing.assert_array_equal(idx[:, 0], [0, 1, 2])
+    with pytest.raises(UnsupportedInputError, match="resolve") as raised:
+        index.query(X[:3].astype(np.float64) + 1e-9, 1)
+    assert raised.value.reason == "float32-overflow"
+
+
+def test_a_patched_fit_on_fill_values_is_served_or_falls_back(rng):
+    """Under patch_sklearn(): a 1e20 fill value is served on MLX and agrees with
+    scikit-learn; a 9.97e36 one falls back at fit instead of predicting from zeros."""
+    X = _with_a_fill_row(rng, 1e20, n=3000, d=8).astype(np.float64)
+    y = X[:, 0] + rng.normal(scale=0.1, size=len(X))
+    Q = rng.normal(size=(200, 8))
+    expected = SkKNeighborsRegressor(n_neighbors=5).fit(X, y).predict(Q)
+    no_handoff = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_tree_density": 0}
+
+    with tuning_context(**no_handoff):
+        served = patched.KNeighborsRegressor(n_neighbors=5).fit(X, y)
+        assert served.execution_backend_ == "mlx"
+        np.testing.assert_allclose(served.predict(Q), expected, rtol=1e-6, atol=1e-6)
+
+        X[123] = 9.97e36
+        with pytest.warns(MLXLearnFallbackWarning, match="resolve"):
+            fallen = patched.KNeighborsRegressor(n_neighbors=5).fit(X, y)
+    assert fallen.execution_backend_ == "sklearn"
+    assert fallen.fit_event_.reason == "float32-overflow"
+    np.testing.assert_array_equal(
+        fallen.predict(Q), SkKNeighborsRegressor(n_neighbors=5).fit(X, y).predict(Q)
+    )
 
 
 def _timestamps(rng, n):
