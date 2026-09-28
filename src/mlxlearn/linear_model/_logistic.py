@@ -74,10 +74,13 @@ _SUPPORTED_PENALTIES = ("l2", None)
 #: else gets the multinomial loss", which is what this implementation does.
 _SUPPORTED_MULTI_CLASS = ("deprecated", "auto")
 
-#: ``(major, minor)`` of the installed scikit-learn. Only the fit-time warnings are
-#: version-gated on it; capability is decided on resolved values (see
+#: ``(major, minor, patch)`` of the installed scikit-learn. Only the fit-time
+#: warnings are version-gated on it; capability is decided on resolved values (see
 #: :meth:`MLXLogisticMixin._effective_penalty`), never on version numbers.
-_SKLEARN = tuple(int(part) for part in re.match(r"(\d+)\.(\d+)", sklearn.__version__).groups())
+_SKLEARN = tuple(
+    int(part or 0)
+    for part in re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", sklearn.__version__).groups()
+)
 
 #: Whether ``penalty`` is a deprecated sentinel on the installed scikit-learn (1.8+).
 _PENALTY_DEPRECATED = (
@@ -166,10 +169,12 @@ class MLXLogisticMixin(BackendMixin):
                     UserWarning,
                 ))
             if getattr(self, "multi_class", "deprecated") == "auto":
+                # 1.7.0 and 1.7.1 announce the removal for 1.7; 1.7.2 moved it to 1.8.
+                removal = "1.7" if _SKLEARN < (1, 7, 2) else "1.8"
                 emitted.append((
                     "'multi_class' was deprecated in version 1.5 and will be removed in "
-                    "1.8. From then on, it will always use 'multinomial'. Leave it to "
-                    "its default value to avoid this warning.",
+                    f"{removal}. From then on, it will always use 'multinomial'. Leave "
+                    "it to its default value to avoid this warning.",
                     FutureWarning,
                 ))
         else:  # scikit-learn 1.8, 1.9

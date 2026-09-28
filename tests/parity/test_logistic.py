@@ -1066,11 +1066,13 @@ def _warning_grid():
 
 
 def _fit_warnings(estimator, X, y):
+    # The whole message: a 40-character prefix hid the removal version, which
+    # scikit-learn 1.7.2 changed from 1.7 to 1.8.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         estimator.fit(X, y)
     return Counter(
-        (w.category.__name__, str(w.message)[:40])
+        (w.category.__name__, str(w.message))
         for w in caught
         if w.category in (FutureWarning, UserWarning)
     )
