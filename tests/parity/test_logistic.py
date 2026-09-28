@@ -128,6 +128,25 @@ def test_parity_across_regularization(C, n_classes):
     _assert_parity(mlx, ref, X, y, C=C)
 
 
+def test_a_wide_problem_agrees_on_the_objective_then_on_probabilities_at_tight_tol():
+    """docs/fp32_policy.md §3: the probability tolerance at default ``tol`` is the grid's.
+
+    On a wide problem above the crossover, where lbfgs stops moves the
+    probabilities by up to 5e-3 at default ``tol`` — scikit-learn's own lbfgs and
+    newton-cg differ as much — so the objective is what agrees there; at
+    ``tol=1e-6`` every axis does.
+    """
+    X, y = make_classification(25_000, 1_000, random_state=2)
+    for tol in (1e-4, 1e-6):
+        mlx = LogisticRegression(tol=tol, max_iter=1000).fit(X, y)
+        ref = SkLogisticRegression(tol=tol, max_iter=1000).fit(X, y)
+        assert _objective(mlx, X, y, C=1.0) == pytest.approx(
+            _objective(ref, X, y, C=1.0), rel=OBJECTIVE_RTOL
+        )
+    assert mlx.fit_event_.reason == "selected"
+    _assert_parity(mlx, ref, X, y, C=1.0)
+
+
 @pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("n_classes", [2, 5])
 def test_parity_without_intercept(n_classes, backend):
