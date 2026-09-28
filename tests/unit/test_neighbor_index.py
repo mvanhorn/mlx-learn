@@ -136,17 +136,23 @@ def test_the_distance_tile_is_budgeted_as_a_working_set():
     assert plan.query_rows * plan.train_cols * 4 * distance._TILE_WORKSET_FACTOR <= budget
 
 
-def test_query_peak_memory_stays_near_the_budget(rng):
+@pytest.mark.parametrize("backend", ["mlx", "cpu"])
+def test_query_peak_memory_stays_near_the_budget(backend, rng):
     """Large ``k`` on wide data: the refinement gather used to be unbudgeted.
 
     Before, the peak was about 7× the budget from the tile alone, and the
-    ``(rows, k, d)`` gather came on top — 7.4 GB at k=1000, d=768.
+    ``(rows, k, d)`` gather came on top — 7.4 GB at k=1000, d=768. Here it was
+    20× the budget.
     """
     budget = 16 * MiB
     X = rng.normal(size=(8000, 256)).astype(np.float32)
     Q = rng.normal(size=(512, 256)).astype(np.float32)
-    with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
-        index = build_index(X, backend="mlx")
+    with tuning_context(
+        distance_block_bytes=budget,
+        distance_block_bytes_max=budget,
+        cpu_distance_block_bytes=budget,
+    ):
+        index = build_index(X, backend=backend)
         index.query(Q[:8], 200)
         mx.eval(mx.zeros(1))
         mx.clear_cache()
