@@ -7,6 +7,20 @@ is no meaningful mlxlearn without it. The package will import on other platforms
 CPU path will run, but nothing there is tested or supported, and no bug filed against it
 will be treated as a bug.
 
+CI runs on GitHub's Apple silicon runners with a working Metal device, and requires one:
+the workflows set `MLXLEARN_REQUIRE_GPU=1`, under which the test suite refuses to start
+without a GPU instead of skipping the tests that need it (`tests/_gpu.py`). On a machine
+without one, a plain `pytest` skips those tests, each with a reason.
+
+### Processes and `fork`
+
+MLX is not fork-safe. Once a process has loaded MLX or scikit-learn's estimators — the
+first `fit` or `predict`, or `patch_sklearn()` — a child created by `fork()` without `exec`
+crashes on its first MLX call, on the CPU device too. Supported: the `spawn` start method
+(the macOS default), `forkserver`, and scikit-learn's `n_jobs` (joblib's `loky` workers are
+spawned). Not supported: an explicit `fork` context, `os.fork()`, Celery's prefork pool,
+and gunicorn `--preload` of an app that has already used mlxlearn.
+
 ## Python and scikit-learn
 
 The matrix is **paired**, not a cross product. scikit-learn 1.8+ requires Python ≥ 3.11, so
@@ -22,6 +36,18 @@ a naive cross product would schedule combinations that cannot resolve.
 | 3.12 | 1.9.x | ✅ | |
 | 3.13 | 1.8.x | ✅ | |
 | 3.13 | 1.9.x | ✅ | development pair |
+| 3.14 | 1.9.x | ✅ | |
+
+Two more jobs test the edges of the declared ranges rather than points inside them:
+
+- **Minimum versions** (every PR). Python 3.10 with every floor `pyproject.toml` declares —
+  NumPy 1.23.5, scikit-learn 1.7.0, MLX 0.31.2, and the test extra's — installed exactly
+  from `.github/constraints/minimum-versions.txt`, then checked to be what was installed.
+  A floor nobody installs is a guess; this leg is what makes each one a tested claim.
+- **Upstream pre-releases** (weekly, `.github/workflows/upstream-prereleases.yml`). The
+  next scikit-learn and NumPy from the scientific-python nightly wheels, and any MLX
+  pre-release, installed past the declared caps on purpose. It gates nothing; it is the
+  early warning that says whether lifting a cap will be a version bump or a porting job.
 
 `pyproject.toml` declares `scikit-learn>=1.7,<1.10`. The upper bound is deliberate: mlxlearn
 subclasses scikit-learn estimators, so a major change to their constructor signatures or
@@ -46,15 +72,21 @@ now covers them against whichever version is installed rather than pinning the p
 
 ## MLX
 
-`mlx>=0.29,<1.0`. The floor is asserted in CI at runtime as well as in the metadata, so a
-resolver that quietly picks an older wheel fails loudly rather than producing subtly
-different numerics.
+`mlx>=0.31.2,<1.0`. 0.31.2 is the first release on which fitting from several threads at
+once does not abort the process: `test_concurrent_fits_match_sequential_fits` in
+`tests/unit/test_invariants.py` crashed on every earlier release tried (0.29.0, 0.29.4,
+0.30.6, 0.31.0 and 0.31.1) and passes on 0.31.2. The floor is
+installed and checked in CI (the minimum-versions job) as well as declared in the metadata,
+so a resolver that quietly picks an older wheel fails loudly.
 
-Development is on MLX 0.31.2.
+Development is on MLX 0.32.
 
 ## NumPy
 
-`numpy>=1.23.5`. Both NumPy 1.x and 2.x work.
+`numpy>=1.23.5`. Both NumPy 1.x and 2.x work, and the minimum-versions job holds that to
+the floor. It is not automatic: NumPy 1.x keeps `float64 scalar * float32 array` in
+float32 where NumPy 2 promotes it, which once cost the SVC solver's float64 gradient its
+precision on 1.x only. Mixed-precision arithmetic in the CPU paths states its dtype.
 
 ## Estimators
 

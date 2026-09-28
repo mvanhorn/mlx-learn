@@ -7,6 +7,11 @@ pip install -e ".[dev]"
 pytest
 ```
 
+`pytest` runs the fast suite. Tests marked `slow` are deselected by default (`addopts` in
+`pyproject.toml`); `pytest -m slow` runs just those, and `pytest -m ""` runs everything. CI
+runs the slow tests in a job of their own on every PR, so deselecting them locally never
+means nobody runs them.
+
 ## Layout
 
 ```
@@ -21,9 +26,14 @@ tests/  benchmarks/  docs/  tools/  phase0/
 
 The layering is enforced, not merely described:
 
-- A `_solvers` module that imports `sklearn` or reads `get_config()` is a bug. Solvers take
-  arrays and a frozen config dataclass and return a frozen state dataclass, so the numerics
-  can be tested without constructing an estimator.
+- A `_solvers` or `_kernels` module that imports `sklearn`, reads the user's configuration
+  (`get_config`, `set_config`, `config_context`), or imports an estimator package fails the
+  `layering` gate in `tools/compliance.py`. Solvers take arrays and a frozen config
+  dataclass and return a frozen state dataclass, so the numerics can be tested without
+  constructing an estimator. `_kernels` may read `get_tuning()` for block sizes, which are
+  private typed knobs, not user configuration. The gate is static, so an indirect read —
+  `use_device(None)` resolving the configured device — is still on the reviewer: solvers
+  pass their config's device explicitly.
 - A `sklearn._*` import outside `patching/` fails CI. Inside `patching/` it must be on an
   explicit allowlist in `tools/compliance.py`, which is currently empty.
 - Layer 1 raises on a capability mismatch. Layer 2 falls back. The whole difference is
@@ -109,28 +119,62 @@ unweighted Euclidean distances anyway. A wrong answer delivered quickly is the w
 outcome available.
 
 **No `mx.random.seed`.** It is process-global and belongs to the application, not to a
-library it imported. Use explicit keys through `_common/rng.py`.
+library it imported. Use explicit keys through `_common/rng.py`. The `layering` gate rejects
+any `*.random.seed` — MLX's, NumPy's or the standard library's — anywhere in the package.
 
 ## Compliance
 
 ```bash
-python tools/compliance.py
+python tools/compliance.py                     # all gates
+python tools/compliance.py licenses --json     # some gates; stdout is pure JSON
 ```
 
-Five mechanical gates — branding, private imports, upstream headers, dependency licenses,
-and layout — run on every push.
+Six mechanical gates — branding, private imports, upstream headers, dependency licenses,
+layout, and layering — run on every push. The license gate walks the whole runtime
+dependency closure as installed, not only the direct dependencies, and parses SPDX
+expressions rather than matching substrings; a package whose metadata cannot be read
+mechanically needs a reviewed entry in `LICENSE_OVERRIDES`, with a reason.
+
+## Testing
+
+- **GPU.** Tests that need a working Metal device either carry `@pytest.mark.gpu` or reach
+  the GPU implicitly and fail with `DeviceError` without one. On a machine with no GPU,
+  both are skipped with a reason rather than failing by the dozen. CI sets
+  `MLXLEARN_REQUIRE_GPU=1`, under which a missing GPU stops the session instead, so a
+  runner that loses Metal cannot skip its way to green. The policy is `tests/_gpu.py`.
+- **Doctests** run as their own CI step: `pytest --doctest-modules src/mlxlearn`.
+- **`tests/tooling/`** tests the repository's tooling — this file's gates, the benchmark
+  harness and gate, the workflows' pins — and is left out of the sdist with the tooling.
+- **`tools/check_environment.py`** prints the versions and device a CI job is testing and
+  fails if they are not what the job claims: unmet requirements, a stale install whose
+  metadata disagrees with `mlxlearn.__version__`, or (`--constraints`) a pinned floor that
+  did not install exactly.
 
 ## Benchmarks
 
 ```bash
 python -m benchmarks.run --profile smoke
 python -m benchmarks.run --profile full --output bench/results.json --report bench/report.md
+python -m benchmarks.run --profile published --report bench/published.md
 python -m benchmarks.gate --results bench/results.json
 ```
 
-Shared CI runners do correctness only. Absolute timings come from the nightly job on fixed
-self-hosted Apple hardware, because a timing gate on a shared, throttled, heterogeneous
-runner measures the runner.
+`smoke` is small enough for a laptop and still clears every `Tuning` threshold once;
+`full` is the regression grid; `published` holds the cases `docs/benchmarks.md` reports,
+with the settings they were measured under (Layer 1, forced onto MLX).
+
+Each result records the backend the mlxlearn side ran on, and the gate judges those
+decisions — the configured `Tuning` — rather than a crossover inferred from the run it is
+judging: a problem `Tuning` sends to MLX that loses, and a patched handoff whose own
+overhead loses, both fail. A difference counts only when the medians are three standard
+errors apart, each estimated from a real interquartile range.
+
+Shared CI runners do correctness only: CI runs the smoke profile with one iteration, which
+checks the harness, the gate, and the result schema, and can never be significant.
+Absolute timings come from the nightly job on fixed self-hosted Apple hardware, because a
+timing gate on a shared, throttled, heterogeneous runner measures the runner. Its schedule
+waits for the repository variable `MLXLEARN_BENCH_RUNNER` to be `true`, which says the
+`mlxlearn-bench` runner exists; a manual dispatch always runs.
 
 Everything is `mx.eval`-synchronized — MLX is lazy, so an unsynchronized benchmark times
 how long it took to *schedule* the work — warmed up, reported as a median with its spread,
@@ -142,8 +186,16 @@ sides equally rather than whichever ran second.
 1. Every gate green; `python -m benchmarks.run --profile full` re-run and
    `docs/benchmarks.md` refreshed.
 2. `CHANGELOG.md` updated.
-3. Version bumped in `pyproject.toml`.
-4. Tag `vX.Y.Z`. The release workflow builds, verifies that the tag matches the package
-   version and that the wheel is `py3-none-any`, and publishes through PyPI Trusted
-   Publishing from a `pypi` environment that requires manual approval. No API token is
-   stored in this repository, and a tag push alone cannot publish.
+3. Version bumped in `src/mlxlearn/__init__.py` — the only place it lives. `pyproject.toml`
+   reads it (`dynamic = ["version"]`), statically, so a build never imports MLX. After a
+   bump, reinstall (`pip install -e .`): an editable install's metadata is frozen at
+   install time and otherwise keeps reporting the old version.
+4. README links stay absolute (`https://github.com/tabulai/mlx-learn/...`): the README is
+   also the PyPI page, where a relative link is a 404. `tests/tooling/` checks this.
+5. Tag `vX.Y.Z`. The release workflow runs the whole CI workflow on the tagged commit,
+   builds, checks that the wheel is `py3-none-any`, installs it into a clean environment,
+   and requires the wheel's filename, its metadata, `mlxlearn.__version__` and the tag to
+   agree. Only then does it publish, through PyPI Trusted Publishing from a `pypi`
+   environment that requires manual approval. No API token is stored in this repository.
+   Publishing takes both a `v*` tag push and that approval; a manual run of the workflow
+   is a dry run that never publishes.

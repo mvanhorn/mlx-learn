@@ -31,7 +31,7 @@ The numerical library is fully usable and fully tested with the patching mechani
 
 ## Status
 
-**`0.1.0a2` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.0a2` — alpha.** The API may change. See [CHANGELOG.md](https://github.com/tabulai/mlx-learn/blob/main/CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -47,11 +47,12 @@ The numerical library is fully usable and fully tested with the patching mechani
 ## Requirements
 
 - macOS on Apple silicon (arm64)
-- Python 3.10 – 3.13
-- scikit-learn ≥ 1.7, MLX ≥ 0.29
+- Python 3.10 – 3.14
+- scikit-learn ≥ 1.7, MLX ≥ 0.31.2
 
 Python 3.10 is supported with scikit-learn 1.7.x; scikit-learn 1.8+ requires Python ≥ 3.11.
-CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix.md).
+CI tests only valid pairs, plus every declared minimum version at once — see
+[`docs/support_matrix.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/support_matrix.md).
 
 ## Install
 
@@ -104,8 +105,9 @@ mlxlearn.get_last_backend_event()           # what the last fit/predict actually
 mlxlearn.get_backend_diagnostics()          # everything recorded this session
 ```
 
-**Sticky backend.** The backend is chosen during `fit` and recorded as
-`estimator._execution_backend_` (`"mlx"`, `"cpu"`, or `"sklearn"`). Every subsequent
+**Sticky backend.** The backend is chosen during `fit` and exposed as
+`estimator.execution_backend_` (`"mlx"`, `"cpu"`, or `"sklearn"`; like any fitted attribute,
+it raises `AttributeError` before `fit`). Every subsequent
 `predict` / `predict_proba` / `transform` / `kneighbors` uses the backend the model was
 fitted with. A model fitted on MLX can never wander into scikit-learn inference with
 incompatible state. A new `fit` clears state and may pick a different backend.
@@ -129,12 +131,39 @@ Crossover thresholds, block sizes, and solver tuning are private, typed, and ove
 only through `MLXLEARN_*` environment variables for CI and debugging. They are not part of
 the public API.
 
+## Processes, memory, and pickles
+
+**Do not `fork` after using mlxlearn.** MLX, like Metal underneath it, is not fork-safe.
+Once a process has loaded MLX or scikit-learn's estimators — the first `fit` or `predict`
+does, and so does `patch_sklearn()` — a child it creates with a bare `fork()` crashes on
+its first MLX call, `device="cpu"` included, or hangs inside a `multiprocessing` pool. The
+safe patterns are the defaults: Python's `spawn` start method (the macOS default) and
+`forkserver`, and scikit-learn's `n_jobs`, whose `loky` workers are spawned. What breaks
+is choosing `fork` explicitly — `multiprocessing.get_context("fork")`, `os.fork()`,
+Celery's prefork pool (use `solo`, `threads`, or spawned workers), or gunicorn `--preload`
+of an app that has already fitted or loaded a model (load it in each worker instead).
+
+**Release MLX's buffer cache in long-running processes.** MLX keeps freed device buffers in
+a process-wide cache for reuse, and by default lets that cache grow to nearly the whole
+memory limit. The cache belongs to the process, not to a model, so deleting a model does
+not shrink it, and a service or a notebook that queries differently sized data can hold
+several GiB of idle memory. Call `mlx.core.clear_cache()` after large jobs, or bound the
+cache once at startup with `mlx.core.set_cache_limit(n_bytes)`. Both act on the whole
+process, including any other MLX work in it, which pays in re-allocation, not correctness.
+
+**Pickles need mlxlearn to load.** Every model mlxlearn fits is an mlxlearn object — under
+`patch_sklearn()` too, where its repr shows the scikit-learn name — and a `pickle` or
+`joblib` file of it names mlxlearn's classes. Loading one therefore needs mlxlearn (and so
+MLX) installed, even when `execution_backend_` is `"sklearn"`. For an artifact that stock
+scikit-learn can load anywhere, call `unpatch_sklearn()` and construct the final model
+after it.
+
 ## Performance
 
 "Never slower than scikit-learn" is the design goal. The shipped *gate* is measurable: on
 each benchmarked workload class, patched dispatch shows no statistically significant
 regression against stock scikit-learn. Crossover points are measured per algorithm and per
-operation, published in [`docs/benchmarks.md`](docs/benchmarks.md), and wired into the
+operation, published in [`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md), and wired into the
 dispatch thresholds — small problems are handed to scikit-learn on purpose.
 
 What that means in practice for 0.1.0a2, on an M4 Max:
@@ -144,39 +173,41 @@ What that means in practice for 0.1.0a2, on an M4 Max:
 | **Neighbor queries** | **2.9×–17×** from ~250 samples up. This is the reason to use mlxlearn. |
 | Neighbor `fit` | 0.17×–0.36×. mlxlearn uploads to the device; scikit-learn stores a reference. The first query repays it several times over. |
 | `SVC` | **2.93× on wide data** (4 000 × 256, rbf), but slower than LIBSVM on narrow data — 0.47× at 4 000 × 32, worse below. `kernel="linear"` never uses MLX. Width decides, and patched dispatch routes accordingly. |
-| `LogisticRegression` | **Slower than scikit-learn below 1 024 features**, by a lot. The crossover is set high so patched dispatch hands those to scikit-learn; see [`docs/benchmarks.md`](docs/benchmarks.md) for why and what would change it. |
+| `LogisticRegression` | **Slower than scikit-learn below 1 024 features**, by a lot. The crossover is set high so patched dispatch hands those to scikit-learn; see [`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md) for why and what would change it. |
 
-Reproduce them:
+Reproduce them from a clone of the repository (the benchmarks are not in the wheel):
 
 ```bash
-python -m benchmarks.run --profile smoke
+python -m benchmarks.run --profile published --report bench/published.md
 ```
 
 ## Precision
 
 MLX computes in float32 on the GPU. mlxlearn's parity tests are written to float32
 tolerances, and the cases where float32 makes strict scikit-learn equivalence impossible
-are enumerated — not waved away — in [`docs/fp32_policy.md`](docs/fp32_policy.md).
+are enumerated — not waved away — in [`docs/fp32_policy.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/fp32_policy.md).
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest
+pytest              # the fast suite; tests marked slow are deselected by default
+pytest -m slow      # just those; `pytest -m ""` runs everything
 ```
 
 Contributor rules, the estimator gate checklist, and the compliance checks are in
-[`docs/development.md`](docs/development.md).
+[`docs/development.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/development.md).
 
 ## Provenance
 
 mlxlearn succeeds a private research fork of an Intel-maintained scikit-learn accelerator.
 That history is not carried here: this repository was bootstrapped from an audited
 allowlist, and no source file was copied. The audit, the recorded behavioral baseline of
-the ancestor, and the authorship attestation are in [`phase0/`](phase0/). Full lineage,
-disclaimers, and third-party notices are in [`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md) and
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+the ancestor, and the authorship attestation are in [`phase0/`](https://github.com/tabulai/mlx-learn/tree/main/phase0).
+Full lineage, disclaimers, and third-party notices are in
+[`ACKNOWLEDGMENTS.md`](https://github.com/tabulai/mlx-learn/blob/main/ACKNOWLEDGMENTS.md) and
+[`THIRD_PARTY_NOTICES.md`](https://github.com/tabulai/mlx-learn/blob/main/THIRD_PARTY_NOTICES.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/tabulai/mlx-learn/blob/main/LICENSE).
