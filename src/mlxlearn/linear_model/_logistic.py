@@ -30,7 +30,8 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression as _SkLogisticRegression
 
 from .._common.base import BackendMixin, mlx_guard
-from .._common.config import get_tuning
+from .._common.config import get_config, get_tuning
+from .._common.device import inference_device
 from .._common.validation import (
     check_classification_targets,
     check_float32_range,
@@ -647,6 +648,14 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         # "unpenalized" here exactly as it does there.
         C = math.inf if self._effective_penalty() is None else float(self.C)
 
+        # "mlx" is the MLX GPU backend. A fit forced onto it in a process with no
+        # GPU runs the same float32 code on MLX's CPU, as the other estimators'
+        # kernels do (inference_device) — unless device="gpu" was named, which
+        # use_device then refuses.
+        device = "cpu"
+        if backend == "mlx":
+            device = "gpu" if get_config().device == "gpu" else inference_device(backend)
+
         tuning = get_tuning()
         config = LogisticConfig(
             C=C,
@@ -655,7 +664,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
             max_iter=int(self.max_iter),
             history_size=tuning.lbfgs_history,
             max_line_search=tuning.lbfgs_max_line_search,
-            device="gpu" if backend == "mlx" else "cpu",
+            device=device,
         )
 
         callback_ctx = bridge = None

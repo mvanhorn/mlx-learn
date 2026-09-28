@@ -886,6 +886,40 @@ def test_backends_agree():
     assert _objective(cpu, X, y, C=1.0) == pytest.approx(_objective(gpu, X, y, C=1.0), rel=1e-8)
 
 
+def test_a_forced_mlx_fit_without_a_gpu_runs_on_mlxs_cpu(monkeypatch):
+    """As the other estimators' forced fits do, unless ``device="gpu"`` was named.
+
+    The forced backend was mapped straight to ``device="gpu"``, so on a host
+    with no GPU the fit raised "device='gpu' was requested ... use device='auto'"
+    under a configured ``"auto"`` or ``"cpu"`` that asked for nothing of the kind.
+    """
+    from mlxlearn.exceptions import DeviceError
+    from mlxlearn.linear_model import _logistic
+
+    devices = []
+    original = _logistic.solve_logistic
+
+    def spy(*args, config, **kwargs):
+        devices.append(config.device)
+        return original(*args, config=config, **kwargs)
+
+    monkeypatch.setattr(_logistic, "solve_logistic", spy)
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    X, y = _data(n_samples=400)
+    for device in ("auto", "cpu"):
+        with mlxlearn.config_context(device=device), tuning_context(force_backend="mlx"):
+            try:
+                model = LogisticRegression().fit(X, y)
+            except DeviceError as exc:  # which tests/_gpu.py would report as a skip
+                pytest.fail(f"device={device!r}: {exc}")
+        assert (model.execution_backend_, model.fit_event_.reason) == ("mlx", "forced")
+    assert devices == ["cpu", "cpu"]
+
+    with mlxlearn.config_context(device="gpu"), tuning_context(force_backend="mlx"):
+        with pytest.raises(DeviceError, match="device='gpu' was requested"):
+            LogisticRegression().fit(X, y)
+
+
 def test_fit_is_a_pure_function_of_its_arguments():
     """No warm start, no continuation cache.
 
