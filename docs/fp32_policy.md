@@ -206,14 +206,18 @@ never a label.
 **Shrinking.** `shrinking=True`, scikit-learn's default, runs LIBSVM's shrinking
 heuristic: samples pinned at a bound are set aside between gradient reconstructions. The
 optimum and the stopping test are unchanged — the test is evaluated over every sample
-before the solver may stop — but, as in LIBSVM, the path to the optimum can change, and
-with it where inside `tol` the solver stops. Measured: decisions and iteration counts
-bit-identical with and without it on eleven benchmarked rbf fits, and rbf and poly fits
-through `SVC` bit-identical too. The linear kernel is where the path moves, as it does in
-LIBSVM: at 2 000 × 20 the decision values moved by up to 5.9e-3 at `C=10` and 1.4e-3 at
-`C=1`, with the same labels and the same number of support vectors, and a solver-level
-comparison found a largest `|Δα|` of 7e-4 with the objective identical to 1e-6. The
-tolerances in §3 hold either way.
+before the solver may stop — but, as in LIBSVM, the path to the optimum can change on
+every kernel, and with it where inside `tol` the solver stops. It moves by the same order
+as LIBSVM's own shrinking on the same data, more as `C` grows, and most on the flat duals
+of the polynomial and linear kernels. Measured through `SVC`, LIBSVM's movement on the
+same data in brackets: at 2 000 × 10 the decision values moved by up to 4.5e-3 (3.8e-3)
+for poly at `C=1` and 2.3e-2 (3.2e-2) at `C=10`, while rbf fits were often bit-identical
+and moved by at most 6.2e-4 (7.5e-4) at `C=10` and `C=100`; at 2 000 × 20, linear fits
+moved by up to 6.3e-3 (1.6e-2) at `C=1` and 1.0e-2 (2.0e-2) at `C=10`. The number of
+support vectors changed by one in some of those fits, and a training point whose decision
+value was that close to zero could change label, as LIBSVM's did. The gradient it rebuilds
+is summed in a fixed order, so shrinking adds no dependence of its own on `cache_size` or
+on the NumPy/BLAS build. The tolerances in §3 hold either way.
 
 **`cache_size`.** When the row cache can hold a whole one-vs-one subproblem, its Gram is
 built in one blocked matmul; otherwise rows are evaluated on demand. On the GPU the two
