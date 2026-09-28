@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import copy
 import pickle
+import sys
 import threading
+import time
 import warnings
 
 import numpy as np
@@ -499,6 +501,94 @@ def test_large_offset_is_removed_before_the_float32_cast():
     _assert_svc_parity(mlx, ref, X)
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_rbf_on_tight_clusters_far_apart_matches_scikit_learn(backend):
+    """Rows close to each other but far from the mean: centering cannot help.
+
+    The Gram identity's float32 error grows with ``‖a‖² + ‖b‖²``, so with
+    ``gamma`` matched to clusters 2 000 apart the kernel inside a cluster was
+    wrong by up to 0.58: decision values off by 6.1 against a range of ±3, 87.5%
+    of labels agreeing, ``fit_status_=0`` and no warning. The entries the
+    identity may have got wrong are now recomputed directly — here and at 20
+    clusters in 64 dimensions, measured 1.7 off before — and where the true
+    kernel is the identity matrix, the dual is LIBSVM's exactly.
+    """
+    rng = np.random.default_rng(0)
+    near = rng.standard_normal((300, 3))
+    far = 2000.0 + rng.standard_normal((300, 3))
+    X = np.r_[near, far]
+    y = np.r_[near[:, 0] * near[:, 1] > 0, (far[:, 0] - 2000) * (far[:, 1] - 2000) > 0]
+    mlx = _fit(backend, X, y.astype(int), gamma=1.0)
+    _assert_svc_parity(mlx, SkSVC(gamma=1.0).fit(X, y.astype(int)), X)
+
+    centers = rng.uniform(-100.0, 100.0, size=(20, 64))
+    cluster = rng.integers(0, 20, 1200)
+    X = centers[cluster] + 0.05 * rng.standard_normal((1200, 64))
+    y = (cluster % 2) ^ (rng.random(1200) < 0.2)
+    gamma = 1.0 / (2 * 64 * 0.05**2)
+    mlx = _fit(backend, X, y, gamma=gamma)
+    _assert_svc_parity(mlx, SkSVC(gamma=gamma).fit(X, y), X)
+
+    X = rng.uniform(size=(100, 30)) * 1e10  # every pair is ~1e10 apart: K = I
+    y = np.r_[np.ones(50, int), np.zeros(50, int)]
+    mlx = _fit(backend, X, y, C=100.0, gamma="auto")
+    ref = SkSVC(C=100.0, gamma="auto").fit(X, y)
+    np.testing.assert_array_equal(mlx.dual_coef_, ref.dual_coef_)
+    np.testing.assert_array_equal(mlx.predict(X), ref.predict(X))
+
+
+POLY_OFFSET = {"kernel": "poly", "degree": 3, "coef0": 1.0, "gamma": "auto", "max_iter": 20_000}
+
+
+def _offset_data():
+    """The reported case: an offset of 20 with a spread of about 0.01."""
+    X, y = make_classification(400, 10, random_state=0)
+    return X * 0.01 + 20.0, y
+
+
+def test_poly_on_data_float32_cannot_resolve_is_a_capability_error():
+    """The poly kernel reads the raw inner product, which the frame cannot centre.
+
+    Its float32 error, about 40 near 6.5e7, exceeded the curvature the solver
+    learns from (3–100): with the default ``max_iter`` the fit circled 10⁷
+    iterations (376 s against scikit-learn's 0.001 s) and returned a model 13
+    points less accurate; at a spread of 0.03 it converged, silently, to one 12
+    points worse. Layer 1 now refuses it with a precise reason, and patched mode
+    hands it to scikit-learn.
+    """
+    X, y = _offset_data()
+    with pytest.raises(UnsupportedInputError) as excinfo:
+        SVC(**POLY_OFFSET).fit(X, y)
+    assert excinfo.value.reason == "float32-cancellation"
+    for spread in (0.03, 0.1):
+        with pytest.raises(UnsupportedInputError):
+            SVC(**POLY_OFFSET).fit((X - 20.0) * spread / 0.01 + 20.0, y)
+
+    with tuning_context(force_backend="mlx"):
+        patched = PatchedSVC(**POLY_OFFSET).fit(X, y)
+    assert patched.execution_backend_ == "sklearn"
+    np.testing.assert_array_equal(patched.predict(X), SkSVC(**POLY_OFFSET).fit(X, y).predict(X))
+
+
+def test_poly_self_entries_keep_the_solver_from_circling(monkeypatch):
+    """Even on data the precision check refuses, the solver must not spin.
+
+    It took its curvature from the float64 closed-form diagonal and its gradient
+    updates from float32 rows whose self-entries differed from it by up to 31:
+    each step solved one quadratic and applied another, and the fit ran its whole
+    budget without progress. With the self-entries written from the closed form,
+    the same kernel converges in a few hundred iterations.
+    """
+    import mlxlearn.svm._classes as svc_module
+
+    monkeypatch.setattr(svc_module, "check_frame_resolution", lambda spec, X32: None)
+    X, y = _offset_data()
+    for backend in BACKENDS:
+        model = _fit(backend, X, y, **POLY_OFFSET)
+        assert model.fit_status_ == 0
+        assert model.n_iter_.max() < 2_000
+
+
 def test_gamma_that_float32_cannot_represent_is_a_capability_error():
     """Folded into the frame, gamma=1e40 is still ~1e42: not a float32.
 
@@ -671,6 +761,29 @@ def test_negative_sample_weight_is_a_zero_weight():
     assert PatchedSVC().fit(X, y, sample_weight=weights).execution_backend_ == "sklearn"
     with tuning_context(force_backend="mlx"):
         assert PatchedSVC().fit(X, y, sample_weight=weights).execution_backend_ == "mlx"
+
+
+def test_a_class_with_no_positive_weight_is_handed_to_scikit_learn():
+    """A class whose every sample is dropped is a capability limit, not bad input.
+
+    scikit-learn's LIBSVM drops the rows and fits the remaining classes, into a
+    model whose ``decision_function`` then fails. mlxlearn builds no such model,
+    but it raised ``InvalidInputError`` from inside the fit, where patched mode
+    could not act on it: ``patch_sklearn()`` turned code stock scikit-learn runs
+    into a crash above the crossover. It is now found before any device work, so
+    Layer 1 raises precisely and patched mode falls back.
+    """
+    X, y = _data(n_classes=3, n_samples=600, n_features=8, seed=3)
+    weights = np.where(y == 2, 0.0, 1.0)
+    with pytest.raises(UnsupportedInputError) as excinfo:
+        SVC().fit(X, y, sample_weight=weights)
+    assert excinfo.value.reason == "empty-class"
+
+    with tuning_context(force_backend="mlx"):
+        patched = PatchedSVC().fit(X, y, sample_weight=weights)
+    assert patched.execution_backend_ == "sklearn"
+    stock = SkSVC().fit(X, y, sample_weight=weights)
+    np.testing.assert_array_equal(patched.predict(X), stock.predict(X))
 
 
 def test_sample_weight_equivalence_at_float32_tolerance():
@@ -1043,6 +1156,56 @@ def test_patched_fit_below_the_crossover_skips_the_mlx_preamble(monkeypatch):
             PatchedSVC(kernel="precomputed").fit(X @ X.T, y)
 
 
+def test_patched_many_class_handoff_skips_the_mlx_preamble(monkeypatch):
+    """The many-class rule is decided from the raw labels, before any scan of X.
+
+    It needs the class count, so it was applied only after mlxlearn had copied X
+    to float64 and scanned it — work scikit-learn then repeats, on a fit patched
+    mode hands it by design.
+    """
+    import mlxlearn.svm._classes as svc_module
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("a below-crossover patched fit scanned the data")
+
+    monkeypatch.setattr(svc_module, "validate_data", forbidden)
+    monkeypatch.setattr(svc_module, "check_float32_range", forbidden)
+
+    X, _ = _data(n_samples=400, n_features=8, seed=2)
+    y8 = np.arange(len(X)) % 8
+    with tuning_context(svc_min_samples=0, svc_min_work=0, svc_min_pair_work=1_000):
+        patched = PatchedSVC().fit(X.astype(np.float32), y8)
+    assert patched.execution_backend_ == "sklearn"
+    [event] = [e for e in get_backend_diagnostics() if e.operation == "fit"]
+    assert event.reason == "below-crossover" and "8 classes" in event.detail
+
+
+def test_patched_probability_calls_record_one_event_each():
+    """``probability=True`` is scikit-learn's to fit; its inference still records.
+
+    scikit-learn's ``predict_proba`` and ``predict_log_proba`` are ``available_if``
+    descriptors, which mlxlearn leaves unwrapped so that they keep not existing
+    when ``probability=False``, and so they recorded no event at all — though
+    every other public inference call records one. ``predict_log_proba`` calls
+    ``predict_proba``, and still records one.
+    """
+    X, y = _data(n_samples=300, n_features=6, seed=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)  # deprecated in scikit-learn 1.9
+        patched = PatchedSVC(probability=True, random_state=0).fit(X, y)
+        stock = SkSVC(probability=True, random_state=0).fit(X, y)
+    assert patched.execution_backend_ == "sklearn"
+    for method in ("predict_proba", "predict_log_proba"):
+        before = len(get_backend_diagnostics())
+        getattr(patched, method)(X[:5])
+        events = get_backend_diagnostics()[before:]
+        assert [(e.operation, e.reason) for e in events] == [(method, "sticky")]
+    np.testing.assert_array_equal(patched.predict_proba(X[:5]), stock.predict_proba(X[:5]))
+    for model in (SVC(), PatchedSVC(), SVC().fit(X, y)):
+        assert not hasattr(model, "predict_proba")
+        assert not hasattr(model, "predict_log_proba")
+
+
 def test_refit_on_scikit_learn_clears_the_mlx_state():
     """A refit that falls back must not keep the previous fit's MLX state around.
 
@@ -1090,6 +1253,35 @@ def test_out_of_range_queries_raise_instead_of_flipping_labels(value, layer):
         assert excinfo.value.reason == "float32-overflow"
 
 
+@pytest.mark.parametrize("kernel", ["rbf", "sigmoid", "linear"])
+@pytest.mark.parametrize("layer", ["layer1", "patched"])
+def test_far_queries_are_answered_like_scikit_learn(layer, kernel):
+    """A CMIP ``1e20`` or netCDF ``9.97e36`` fill value in a query row is not an error.
+
+    The query check bounded ``‖q‖²`` as if the query were a Gram row, so one such
+    value failed the whole ``predict`` — in both layers, since inference cannot
+    fall back — where scikit-learn and mlxlearn 0.1.0a2 answered. Only the inner
+    product with the support vectors has to stay in float32: the rbf entry of a
+    query that far out is ``exp(−inf) = 0``, and ``tanh`` saturates.
+    """
+    X, y = _data(n_samples=300, n_features=8, seed=0)
+    if layer == "layer1":
+        model = SVC(kernel=kernel).fit(X, y)
+    else:
+        with tuning_context(force_backend="mlx"):
+            model = PatchedSVC(kernel=kernel).fit(X, y)
+    ref = SkSVC(kernel=kernel).fit(X, y)
+    query = X[:6].copy()
+    query[1, 0] = 1e20
+    query[3, 2] = 9.96921e36
+    query[5, 1] = -1e30
+    np.testing.assert_array_equal(model.predict(query), ref.predict(query))
+    np.testing.assert_allclose(
+        model.decision_function(query), ref.decision_function(query),
+        atol=DECISION_ATOL, rtol=DECISION_RTOL,
+    )
+
+
 def test_query_beyond_the_training_frame_raises():
     """In range for float32, but not for the scale the training data set.
 
@@ -1135,30 +1327,76 @@ def test_support_vector_basis_survives_pickle_and_copy_without_device_state():
         np.testing.assert_array_equal(restored.decision_function(X), before)
 
 
-def test_predictions_from_many_threads_match():
-    """The lazy device build is locked, so concurrent first predictions agree."""
-    X, y = _data(n_samples=600, n_features=10, seed=3)
-    model = _fit("mlx", X, y)
-    expected = model.decision_function(X)
-    model = pickle.loads(pickle.dumps(model))  # nothing built yet
-
-    results: dict[int, np.ndarray] = {}
+def _first_predictions_in_a_burst(blob, X, n_threads=12):
+    """Unpickle a fresh model, then have ``n_threads`` threads predict at once."""
+    model = pickle.loads(blob)  # nothing built yet
+    barrier = threading.Barrier(n_threads)
+    results: list = [None] * n_threads
     errors: list[BaseException] = []
 
-    def worker(i):
+    def worker(slot):
         try:
-            results[i] = model.decision_function(X)
-        except BaseException as exc:  # noqa: BLE001 - reported below
+            barrier.wait()
+            results[slot] = model.decision_function(X)
+        except BaseException as exc:  # noqa: BLE001 - reported by the caller
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
-    assert not errors, errors
-    for result in results.values():
-        np.testing.assert_array_equal(result, expected)
+    return results, errors
+
+
+def test_predictions_from_many_threads_match():
+    """Concurrent first predictions on an unpickled model: the operand is published whole.
+
+    The support vectors' device copy is built lazily. Published before it was
+    evaluated, another thread would evaluate its graph on a stream it does not
+    own: "There is no Stream(gpu, N) in current thread", or a segfault. Evaluating
+    before publishing is what makes concurrent predictions agree. Six threads
+    started one after another never raced — the first built the operand before
+    the second ran, and the test passed with the evaluation removed — so the
+    threads are released together by a barrier, with the switch interval
+    shortened to interleave them, over several fresh models.
+    """
+    X, y = _data(n_samples=600, n_features=10, seed=3)
+    model = _fit("mlx", X, y)
+    expected = model.decision_function(X)
+    blob = pickle.dumps(model)
+
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        for _ in range(3):
+            results, errors = _first_predictions_in_a_burst(blob, X)
+            assert not errors, errors[:2]
+            for result in results:
+                np.testing.assert_array_equal(result, expected)
+    finally:
+        sys.setswitchinterval(interval)
+
+
+def test_the_support_vector_operand_is_built_once(monkeypatch):
+    """The lock makes concurrent first predictions build the device operand once."""
+    from mlxlearn._kernels.kernels import KernelBasis
+
+    X, y = _data(n_samples=600, n_features=10, seed=3)
+    blob = pickle.dumps(_fit("mlx", X, y))
+    builds = []
+    prepare = KernelBasis.prepare
+
+    def slow_prepare(self, rows, **kwargs):
+        if kwargs.get("name") == "support_vectors_":
+            builds.append(threading.get_ident())
+            time.sleep(0.02)
+        return prepare(self, rows, **kwargs)
+
+    monkeypatch.setattr(KernelBasis, "prepare", slow_prepare)
+    _, errors = _first_predictions_in_a_burst(blob, X)
+    assert not errors, errors[:2]
+    assert len(builds) == 1, f"the operand was built {len(builds)} times"
 
 
 def test_model_pickled_before_the_compute_frame_still_predicts():
@@ -1167,8 +1405,7 @@ def test_model_pickled_before_the_compute_frame_still_predicts():
     model = SVC().fit(X, y)
     expected = model.decision_function(X)
     legacy = copy.deepcopy(model)
-    for name in ("_kernel_basis_", "_kernel_scale_"):
-        del legacy.__dict__[name]
+    del legacy.__dict__["_kernel_basis_"]
     legacy._kernel_center_ = legacy._kernel_center_.astype(np.float32)
     np.testing.assert_allclose(legacy.decision_function(X), expected, atol=1e-4)
 

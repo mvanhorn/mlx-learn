@@ -10,22 +10,28 @@ Three things this module is responsible for.
 
 **Never requiring a full Gram.** :class:`KernelRows` answers "give me rows
 ``i, j, …``" from device-resident training data, in one round trip, and
-:func:`kernel_combine` folds ``K(A, B) @ W`` block by block. The dense ``n × n``
-matrix is materialized only when a caller explicitly asks for it via
+:meth:`KernelBasis.combine` folds ``K(Q, B) @ W`` block by block. The dense
+``n × n`` matrix is materialized only when a caller explicitly asks for it via
 :func:`kernel_matrix`, which is what an SMO fit does when — and only when — its
 row-cache budget already permits holding every row.
 
-**Exactness under float32.** The squared distance inside the RBF kernel comes from
-the expanded identity ``‖a‖² + ‖b‖² − 2⟨a, b⟩``, which is hostile in float32 for
-data far from the origin (``docs/fp32_policy.md`` §2.1). Distances are
-translation-invariant, so both matrices are translated by a common ``center``
-before the identity is applied — exact mathematics, and it is what keeps the
-cancellation at the variance scale instead of the coordinate scale. Centering is
-applied *only* to the RBF kernel: ``linear``, ``poly`` and ``sigmoid`` read the raw
-inner product, which is not translation-invariant, and shifting it would compute a
-different kernel. :func:`kernel_frame` does the translation in float64 *before*
-the cast, and adds an exact power-of-two scale that :func:`frame_spec` folds back
-into ``gamma``, so neither a large offset nor an extreme magnitude reaches float32.
+**Accuracy under float32.** :func:`kernel_frame` maps the data in float64 *before*
+the cast: an exact power-of-two scale, folded back into ``gamma`` by
+:func:`frame_spec`, so no magnitude leaves float32's range, and — for the RBF
+kernel only — a translation by the training mean. The squared distance inside the
+RBF kernel comes from the expanded identity ``‖a‖² + ‖b‖² − 2⟨a, b⟩``, whose float32
+error grows with ``‖a‖² + ‖b‖²`` rather than with the distance
+(``docs/fp32_policy.md`` §2.1); distances are translation-invariant, so centering
+keeps that error at the variance scale. Where it is not enough — two rows close
+together but far from the mean, in tight well-separated clusters — the entries
+the identity may have got wrong are recomputed on the host, in float64
+(:class:`_RbfRefiner`).
+``linear``, ``poly`` and ``sigmoid`` read the raw inner product, which is not
+translation-invariant, so they are not translated; :func:`check_frame_resolution`
+refuses data whose variation float32's inner product cannot resolve. And every
+row a solver reads carries its self-entry ``K(x, x)`` exactly as
+:func:`kernel_diagonal` states it, so the solver's curvature and its gradient
+updates see one quadratic.
 
 **Integer powers by repeated squaring.** ``poly`` is ``(γ⟨a,b⟩ + coef0)ᵈ`` with an
 integer degree. Evaluating that as a floating-point power returns NaN whenever the
@@ -37,6 +43,7 @@ base raised to an odd degree yields the negative value it should.
 from __future__ import annotations
 
 import functools
+import math
 import threading
 from dataclasses import dataclass, replace
 
@@ -50,10 +57,10 @@ from ..exceptions import UnsupportedInputError, UnsupportedParameterError
 __all__ = [
     "SUPPORTED_KERNELS",
     "KernelSpec",
+    "KernelBasis",
     "KernelRows",
     "resolve_gamma",
     "kernel_matrix",
-    "kernel_combine",
     "kernel_diagonal",
 ]
 
@@ -190,10 +197,15 @@ def kernel_diagonal(spec: KernelSpec, X: np.ndarray) -> np.ndarray:
     """``K(x, x)`` for every row, computed in closed form, float64.
 
     Reading the diagonal off a materialized Gram would force one to exist; the
-    closed forms below do not. They are also what LIBSVM uses, and it evaluates
-    them in double while holding the cached kernel rows in single — the same split
-    mlxlearn uses, which is why the two agree on the working-set quadratic
-    coefficient to better than the tolerance the solver stops on.
+    closed forms below do not. The solver takes its curvature
+    ``K_ii + K_jj − 2K_ij`` from these values and its gradient updates from the
+    rows, so the rows must agree with them: :func:`kernel_matrix` and
+    :class:`KernelRows` write exactly these values, rounded to float32, into every
+    self-entry, as LIBSVM's rows hold its double-precision diagonal rounded to
+    float. Left to the float32 evaluation, a self-entry differed from its closed
+    form by the rounding of a value as large as ``K`` itself — 31 on a poly kernel
+    near 6e7 — and a step computed for one quadratic, applied to another, left the
+    solver circling a violation for its whole iteration budget.
     """
     if spec.kernel == "rbf":
         # ‖x − x‖² = 0 exactly, so exp(0) = 1 exactly. Computing it would only
@@ -233,6 +245,22 @@ def _host_integer_power(base: np.ndarray, degree: int) -> np.ndarray:
 #: float32's largest finite value. Restated rather than imported from
 #: ``_common.validation``, which imports scikit-learn; this package must not.
 _FLOAT32_MAX = float(np.finfo(np.float32).max)
+
+#: float32's unit roundoff.
+_U = 2.0**-24
+
+
+def _inner_product_error(n_features: int) -> float:
+    """``κ``: the float32 error of an inner product or squared distance, per ``‖a‖² + ‖b‖²``.
+
+    A model, not a proof. Measured on both MLX devices, the Gram identity's
+    ``|computed − exact| / (u·(‖a‖² + ‖b‖²))`` peaked at 4.6 for 2–20 features and
+    7.1 at 4 096 (the blocked sums grow like ``log d``, not the worst case's
+    ``d``); this is two to four times that. The worst-case bound, ``γ_d``, is a
+    hundred times larger at 4 096 features, and would send ordinary wide data
+    down the slow paths it guards.
+    """
+    return _U * (8.0 + 2.0 * math.log2(n_features + 1))
 
 #: Elements per host block when translating rows in float64: small enough that the
 #: float64 buffer stays cache-resident, however large the input is.
@@ -375,18 +403,18 @@ def apply_frame(X, center: np.ndarray | None, scale: float) -> np.ndarray:
 def check_frame_range(
     spec: KernelSpec, X32: np.ndarray, *, name: str = "X", fallback_advice: bool = True
 ) -> None:
-    """Raise when float32 kernel arithmetic on mapped rows ``X32`` could overflow.
+    """Raise when float32 kernel arithmetic among mapped rows ``X32`` could overflow.
 
     ``rbf`` evaluates ``‖a‖² + ‖b‖² − 2⟨a, b⟩``, at most four times the largest
     squared row norm; the other kernels evaluate ``⟨a, b⟩``, bounded by it. Within
     the bound no partial sum can overflow either (Cauchy–Schwarz on each prefix).
 
-    After :func:`kernel_frame` the training rows are always in range. What this
-    catches is a linear-kernel fit with ``‖x‖² > 3.4e38``, and an inference query
-    so far outside the training extent that the training-derived scale cannot hold
-    it. Values past ``3.4e38`` themselves are rejected earlier, on the raw input.
-    ``fallback_advice=False`` leaves out the ``patch_sklearn()`` advice, which only
-    a fit can act on.
+    This is the check for the rows of a Gram — a fit's training data. After
+    :func:`kernel_frame` those are always in range, so what it catches is a
+    linear-kernel fit with ``‖x‖² > 3.4e38``. Queries against fitted rows are
+    checked by :func:`check_query_range`. Values past ``3.4e38`` themselves are
+    rejected earlier, on the raw input. ``fallback_advice=False`` leaves out the
+    ``patch_sklearn()`` advice, which only a fit can act on.
 
     Raises
     ------
@@ -416,6 +444,230 @@ def check_frame_range(
             if fallback_advice
             else "",
         )
+
+
+def check_query_range(
+    spec: KernelSpec, q_sq: np.ndarray, partner_sq: float, *, name: str = "X"
+) -> None:
+    """Raise when queries cannot be evaluated against fitted rows in float32.
+
+    ``q_sq`` holds the mapped queries' squared norms — infinite for an entry the
+    frame could not hold, and not overflowed by float32 itself (see
+    :func:`_query_norms`) — and ``partner_sq`` the largest squared norm among the
+    fitted rows. Only ``⟨q, b⟩`` has to stay finite:
+    within ``‖q‖·‖b‖ ≤ FLOAT32_MAX / 2`` no partial sum overflows. A query's own
+    ``‖q‖²`` may overflow, and that is harmless for the kernels that read it: the
+    rbf squared distance becomes ``+inf`` and the entry ``exp(−inf) = 0`` — the
+    right value whenever even the nearest fitted row is past float32's ``exp``,
+    which is checked. ``tanh`` saturates to ±1, correctly. A poly power that
+    overflows is caught by the caller's finiteness check on the decision values.
+
+    The Gram bound of :func:`check_frame_range` used to be applied here, so a CMIP
+    ``1e20`` or netCDF ``9.97e36`` fill value in one query row failed the whole
+    ``predict`` — values scikit-learn answers, and so did mlxlearn 0.1.0a2.
+
+    Raises
+    ------
+    UnsupportedInputError
+        With ``reason="float32-overflow"``. Inference cannot fall back, so no
+        ``patch_sklearn()`` advice is given.
+    """
+    if q_sq.size == 0:
+        return
+    partner = math.sqrt(partner_sq)
+    reach = math.sqrt(float(q_sq.max()))
+    if not reach * partner <= _FLOAT32_MAX / 2:
+        raise UnsupportedInputError(
+            f"{name} has a row whose inner product with the fitted rows reaches "
+            f"{reach * partner:.3g} in mlxlearn's float32 compute frame, past float32's "
+            f"limit of {_FLOAT32_MAX:.3g}: the {spec.kernel!r} kernel would return "
+            "infinity or NaN. Rescale the queries (or the training data).",
+            reason="float32-overflow",
+        )
+    if spec.kernel != "rbf" or reach + partner <= math.sqrt(_FLOAT32_MAX):
+        return
+    # Where ‖q‖² + ‖b‖² + 2‖q‖‖b‖ can pass float32's range, the entry comes out as
+    # exp(−inf) = 0. That is exact when the true distance, at least ‖q‖ − ‖b‖, puts
+    # every entry below float32's smallest exp (e^−104); a vanishing gamma would not.
+    norms = np.sqrt(q_sq)
+    far = norms + partner > math.sqrt(_FLOAT32_MAX)
+    if not spec.gamma * float(np.min(norms[far]) - partner) ** 2 >= 104.0:
+        raise UnsupportedInputError(
+            f"{name} has a row so far from the fitted rows that its squared distance "
+            f"overflows float32, while gamma={spec.gamma:.3g} in the compute frame is too "
+            "small for its kernel value to be zero. Rescale the queries (or the "
+            "training data).",
+            reason="float32-overflow",
+        )
+
+
+def _query_norms(Q32: np.ndarray) -> np.ndarray:
+    """Squared row norms of mapped queries: float32 where they fit, else float64.
+
+    A float32 sum is a fifth of the float64 one's cost, and only a query whose
+    norm float32 cannot hold — a fill value far outside the training data — needs
+    the wider one. An entry the frame could not hold stays ``inf`` in either.
+    """
+    q_sq = np.einsum("ij,ij->i", Q32, Q32)
+    if not math.isfinite(float(q_sq.max(initial=0.0))):
+        q_sq = np.einsum("ij,ij->i", Q32, Q32, dtype=np.float64)
+    return q_sq
+
+
+#: How much of the data's variation the inner product's float32 error may reach
+#: before :func:`check_frame_resolution` refuses the data. See there.
+_RESOLUTION_LIMIT = 1e-3
+
+
+def check_frame_resolution(spec: KernelSpec, X32: np.ndarray) -> None:
+    """Raise when float32 cannot resolve the variation of an untranslated kernel.
+
+    ``linear`` and ``poly`` read ``⟨a, b⟩`` itself, which is not
+    translation-invariant, so the frame cannot centre them. Their float32 error is
+    about ``κ·‖a‖‖b‖`` (:func:`_inner_product_error`), while what the solver
+    learns from is how the kernel *varies* between rows: its curvature
+    ``K_ii + K_jj − 2K_ij`` scales with ``‖a − b‖²``, and a polynomial's degree
+    multiplies both sides alike. Data with a large offset and a small spread —
+    ``make_classification · 0.01 + 20`` — makes the one larger than the other: the
+    poly kernel came out wrong by 40 near 6.5e7 against a curvature of 3–100, the
+    fit either circled its whole budget (376 s against scikit-learn's 0.001 s) or
+    converged, silently, to a model 12 points less accurate. So the largest squared
+    norm ``R²`` is compared with the mean squared distance between rows,
+    ``S² = 2·Σ var``, and, for ``poly``, ``coef0``'s own rounding with ``gamma·S²``.
+    The ratio overstates the measured kernel error per median curvature by a
+    factor of 2–3; past :data:`_RESOLUTION_LIMIT` the data is refused. Measured on
+    the linear kernel, where scikit-learn still converges: the decision values
+    moved by 1.4e-3 of their range at a ratio of 1.7e-4, 1.1e-2 at 1.7e-3, and 6e-2,
+    with 98.8% of labels agreeing, at 1.5e-2.
+
+    ``sigmoid`` reads the inner product too, but is not checked: on the same
+    offsets, up to a thousand times the spread and with ``gamma`` from saturating
+    to linear, it agreed with scikit-learn to 3e-4 or better. And this is a
+    global test: variation that lives only at a finer scale than ``S`` — tight
+    clusters far from the origin and from each other — is not seen by it.
+
+    Raises
+    ------
+    UnsupportedInputError
+        With ``reason="float32-cancellation"``, so patched mode falls back at fit.
+    """
+    if spec.kernel not in ("linear", "poly") or X32.shape[0] < 2:
+        return
+    reach = float(np.einsum("ij,ij->i", X32, X32).max())
+    spread = 2.0 * float(np.var(X32, axis=0, dtype=np.float64).sum())
+    if reach == 0.0:
+        return  # every row is zero, and so is every entry, exactly
+    # Rows float32 holds as identical — often rows that were not, rounded at a
+    # large offset — leave only rounding for the solver to learn from.
+    ratio = math.inf
+    if spread > 0.0:
+        ratio = _inner_product_error(X32.shape[1]) * reach / spread
+        if spec.kernel == "poly":
+            ratio += _U * abs(spec.coef0) / (spec.gamma * spread)
+    if ratio > _RESOLUTION_LIMIT:
+        raise UnsupportedInputError(
+            f"The {spec.kernel!r} kernel reads the raw inner product, and float32 "
+            "cannot resolve this data's variation in it: the rows are far from the "
+            f"origin compared with how far they are from each other (largest squared "
+            f"norm {reach:.3g}, mean squared distance {spread:.3g} in mlxlearn's compute "
+            f"frame), so its rounding would reach about {ratio:.2g} of the kernel's "
+            f"variation (the limit is {_RESOLUTION_LIMIT:g}). Standardize the features, "
+            "e.g. with StandardScaler.",
+            reason="float32-cancellation",
+            advice="Or run under patch_sklearn(), which hands a fit on such data to "
+            "scikit-learn's float64 path.",
+        )
+
+
+#: An rbf entry is recomputed when the identity's error bound, in the exponent,
+#: exceeds this. On standardized data at ``gamma="scale"`` the bound is ~1e-5 even at
+#: 4 096 features, so ordinary data never reaches it.
+_RBF_REFINE_BOUND = 1e-4
+
+#: ... unless the entry, computed and true, is provably below this.
+_RBF_NEGLIGIBLE = 1e-8
+_RBF_NEGLIGIBLE_LOG = -math.log(_RBF_NEGLIGIBLE)
+
+#: float32's smallest normal value: an entry computed as zero was at most this.
+_FLOAT32_TINY = float(np.finfo(np.float32).tiny)
+
+
+class _RbfRefiner:
+    """Recomputes, directly, the rbf entries the Gram identity may have got wrong.
+
+    The identity's error in ``‖a − b‖²`` is about ``κ·(‖a‖² + ‖b‖²)``
+    (:func:`_inner_product_error`), which centering keeps small only where rows
+    are near the training mean. Between two rows close to each other but far from
+    the mean — tight clusters far apart, with ``gamma`` matched to the clusters —
+    kernel values came out wrong by up to 0.58, and SVC decision values by 3.5
+    against scikit-learn's, silently.
+
+    An entry needs recomputing when its error, in the exponent, can exceed
+    :data:`_RBF_REFINE_BOUND` and its value, computed or true, can exceed
+    :data:`_RBF_NEGLIGIBLE`. Distance is at least ``|‖a‖ − ‖b‖|``, so for a row of
+    norm ``α`` only the rows in a band of norms around it can be non-negligible,
+    and only those far enough out for the error to matter: a binary search over the
+    sorted norms finds them, so a lone far-out row costs its own band, not a pass
+    over the tile. The band's entries are recomputed from the float32 rows in
+    float64, accurate to float32's own rounding for the values the device holds
+    (``docs/fp32_policy.md`` §3.4). Where the identity's float64 error — 2⁻²⁹ of
+    float32's — stays below that rounding, that is one matrix-vector product
+    over the band's rows, kept contiguous in norm order (gathering the rows and
+    differencing measured 39 times slower on dense bands); beyond it, direct
+    differences ``Σ(b − a)²`` of the entries that can matter. On ordinary data
+    :meth:`needed` is false and nothing runs.
+    """
+
+    __slots__ = ("gamma", "kappa", "order", "sq", "norms", "rows")
+
+    def __init__(self, gamma: float, rows: np.ndarray) -> None:
+        self.gamma = float(gamma)
+        self.kappa = _inner_product_error(rows.shape[1])
+        sq = np.einsum("ij,ij->i", rows, rows, dtype=np.float64)
+        self.order = np.argsort(sq, kind="stable")
+        # All in norm order, so that a band is a contiguous slice.
+        self.sq = sq[self.order]
+        self.norms = np.sqrt(self.sq)
+        self.rows = rows[self.order].astype(np.float64)
+
+    @staticmethod
+    def needed(spec: KernelSpec, n_features: int, left_sq: float, right_sq: float) -> bool:
+        """Whether any entry between rows of these largest squared norms can need it."""
+        if spec.kernel != "rbf":
+            return False
+        bound = spec.gamma * _inner_product_error(n_features) * (left_sq + right_sq)
+        return bool(bound > _RBF_REFINE_BOUND)
+
+    def __call__(self, tile: np.ndarray, left: np.ndarray) -> None:
+        """Correct ``tile = K(left, rows)``, a writable float32 host array, in place."""
+        g, k = self.gamma, self.kappa
+        left64 = left.astype(np.float64)
+        left_sq = np.einsum("ij,ij->i", left64, left64)
+        alpha = np.sqrt(left_sq)
+        with np.errstate(divide="ignore", over="ignore"):
+            # (α − β)² − κ(α² + β²) < L/γ: where an entry can be non-negligible ...
+            slack = np.sqrt(left_sq * k * (2.0 - k) + (1.0 - k) * _RBF_NEGLIGIBLE_LOG / g)
+            # ... and γκ(α² + β²) > bound: where its error can matter.
+            floor = np.sqrt(np.maximum(_RBF_REFINE_BOUND / (g * k) - left_sq, 0.0))
+        first = np.searchsorted(self.norms, np.maximum((alpha - slack) / (1.0 - k), floor))
+        last = np.searchsorted(self.norms, (alpha + slack) / (1.0 - k), side="right")
+        # The float64 identity's own error, in the exponent, against float32's rounding.
+        k64 = k * 2.0**-29
+        for r in np.flatnonzero(last > first):
+            lo, hi = int(first[r]), int(last[r])
+            cols = self.order[lo:hi]
+            if g * k64 * (left_sq[r] + self.sq[hi - 1]) <= _U:
+                dots = self.rows[lo:hi] @ left64[r]
+                squared = np.maximum(left_sq[r] + self.sq[lo:hi] - 2.0 * dots, 0.0)
+                tile[r, cols] = np.exp(-g * squared)
+                continue
+            exponent_error = np.minimum(g * k * (left_sq[r] + self.sq[lo:hi]), 700.0)
+            computed = tile[r, cols].astype(np.float64)
+            upper = np.maximum(computed, _FLOAT32_TINY) * np.exp(exponent_error)
+            keep = upper >= _RBF_NEGLIGIBLE
+            if keep.any():
+                diff = self.rows[lo:hi][keep] - left64[r]
+                tile[r, cols[keep]] = np.exp(-g * np.einsum("ij,ij->i", diff, diff))
 
 
 class KernelBasis:
@@ -450,7 +702,8 @@ class KernelBasis:
         self.center = None if center is None else np.array(center, dtype=np.float64)
         self.scale = float(scale)
         self._lock = threading.Lock()
-        self._operand: tuple | None = None  # (mx.array (n, d), mx.array (n,) or None)
+        # (mx.array (n, d), mx.array (n,) or None, the largest squared row norm)
+        self._operand: tuple | None = None
 
     def __getstate__(self) -> dict:
         """Pickle the frame only; the device tensors are derived from the owner's rows."""
@@ -464,7 +717,7 @@ class KernelBasis:
         self._operand = None
 
     def prepare(self, X, *, name: str = "X", fallback_advice: bool = True) -> np.ndarray:
-        """``X`` mapped into this basis's float32 frame, range-checked."""
+        """``X`` mapped into this basis's float32 frame, range-checked as Gram rows."""
         mapped = apply_frame(X, self.center, self.scale)
         check_frame_range(self.spec, mapped, name=name, fallback_advice=fallback_advice)
         return mapped
@@ -478,6 +731,8 @@ class KernelBasis:
                 import mlx.core as mx
 
                 prepared = self.prepare(rows, name="support_vectors_", fallback_advice=False)
+                sq = np.einsum("ij,ij->i", prepared, prepared, dtype=np.float64)
+                reach = float(sq.max(initial=0.0))
                 with use_device(device):
                     right = mx.array(prepared, dtype=mx.float32)
                     if self.spec.kernel == "rbf":
@@ -488,7 +743,7 @@ class KernelBasis:
                         mx.eval(right)
                 # Published whole, in one assignment, so an unlocked reader sees
                 # either nothing or a complete operand.
-                self._operand = (right, right_sq)
+                self._operand = (right, right_sq, reach)
             return self._operand
 
     def combine(
@@ -514,24 +769,42 @@ class KernelBasis:
 
         Notes
         -----
-        The same tile loop as :func:`kernel_combine` — float32 tiles on the device,
-        pipelined against a float64 contraction on the host — so the two cannot
-        drift apart; see there for the precision split and for what ``block_rows``
-        can change.
+        The kernel entries are computed in float32 on device — that is where the
+        arithmetic is, ``n_q · n_rows · n_features`` — and the contraction against
+        ``weights`` is done in float64 on the host, because doing it in float32
+        would add an accumulation error over every row on top of the kernel's own
+        rounding. That precision is not free: with many one-vs-one pairs the host
+        contraction measured 39–47% of ``predict``. It is therefore overlapped with
+        the device, which computes the next tile while the host contracts this one
+        (:func:`_combine_pipelined`), a chunk of rows at a time rather than through
+        a float64 copy of the whole tile.
+
+        Each query is reduced on its own, so ``block_rows`` changes the result only
+        at the level of rounding — a BLAS may choose a different kernel for a block
+        of a handful of rows — and, for a given input and blocking, the output is
+        deterministic. Queries are range-checked by :func:`check_query_range`, and
+        rbf entries the Gram identity may have got wrong are recomputed
+        (:class:`_RbfRefiner`), exactly as at fit.
         """
         import mlx.core as mx
 
-        # Inference: the fitted backend is sticky, so there is no fallback to advise.
-        Q32 = self.prepare(Q, fallback_advice=False)
         W = np.asarray(weights, dtype=np.float64)
+        Q32 = apply_frame(Q, self.center, self.scale)
         out = np.zeros((Q32.shape[0], W.shape[1]), dtype=np.float64)
         if Q32.shape[0] == 0 or rows.shape[0] == 0:
             return out
 
         device = inference_device(backend)
-        right, right_sq = self._device_operand(rows, device)
+        right, right_sq, reach = self._device_operand(rows, device)
+        q_sq = _query_norms(Q32)
+        check_query_range(self.spec, q_sq, reach)
+        refine = None
+        if _RbfRefiner.needed(self.spec, Q32.shape[1], float(q_sq.max()), reach):
+            refine = _RbfRefiner(self.spec.gamma, apply_frame(rows, self.center, self.scale))
         with use_device(device):
-            _combine_tiles(mx, self.spec, device, Q32, right, right_sq, W, out, block_rows)
+            _combine_tiles(
+                mx, self.spec, device, Q32, right, right_sq, W, out, block_rows, refine
+            )
         return out
 
 
@@ -643,7 +916,7 @@ def _tile_transform(mx, spec: KernelSpec, device: str):
     return lambda dot, a_sq, b_sq: _transform(mx, spec, dot, a_sq, b_sq)
 
 
-#: Rows of a kernel tile contracted per host matmul in :func:`kernel_combine`.
+#: Rows of a kernel tile contracted per host matmul in :meth:`KernelBasis.combine`.
 #: Converting a whole tile to float64 first materializes a twin twice its size
 #: (256 MiB for a full-budget tile) and streams it through memory once more than
 #: necessary; a few hundred rows at a time keep the float64 copy in cache, and are
@@ -651,26 +924,34 @@ def _tile_transform(mx, spec: KernelSpec, device: str):
 _HOST_CONTRACT_ROWS = 256
 
 
-def _contract_tile(tile, weights: np.ndarray, out: np.ndarray) -> None:
+def _contract_tile(tile, weights: np.ndarray, out: np.ndarray, refine=None) -> None:
     """``out[:] = tile @ weights`` in float64, a chunk of rows at a time.
 
     Blocks until ``tile`` has been evaluated — the only synchronization point in
-    the pipelined loops below.
+    the pipelined loops below. ``refine``, when given, corrects a writable host
+    copy of the tile first.
     """
     host = np.asarray(tile)
+    if refine is not None:
+        host = np.array(host, dtype=NUMPY_FLOAT)
+        refine(host)
     for start in range(0, host.shape[0], _HOST_CONTRACT_ROWS):
         stop = start + _HOST_CONTRACT_ROWS
         out[start:stop] = host[start:stop].astype(np.float64) @ weights
 
 
-def _combine_pipelined(mx, transform, n_a: int, rows: int, left, right, b_sq, weights, out):
+def _combine_pipelined(
+    mx, transform, n_a: int, rows: int, left, right, b_sq, weights, out, refine=None
+):
     """Fold ``K(left, right) @ weights`` into ``out``, overlapping device and host.
 
     ``left(start, stop)`` returns one block of the left operand and its squared
     norms (``None`` unless rbf). Tile ``i + 1`` is submitted with ``mx.async_eval``
     *before* the host contracts tile ``i``, so the device computes the next tile
     while the host is busy with this one; evaluated serially, the GPU sat idle for
-    the contraction, measured at 39–47% of multiclass predict time.
+    the contraction, measured at 39–47% of multiclass predict time. ``refine``,
+    when given, is ``refine(tile, start, stop)`` and corrects the host copy of the
+    tile for rows ``start:stop``.
 
     Memory: at most three tiles are alive on the device — the one being contracted
     and the next one's inner product and result — where the serial loop held two
@@ -688,20 +969,25 @@ def _combine_pipelined(mx, transform, n_a: int, rows: int, left, right, b_sq, we
 
     tile = submit(0)
     for start in range(0, n_a, rows):
-        following = submit(start + rows) if start + rows < n_a else None
-        _contract_tile(tile, weights, out[start : start + rows])
+        stop = min(start + rows, n_a)
+        following = submit(stop) if stop < n_a else None
+        fix = None if refine is None else functools.partial(refine, start=start, stop=stop)
+        _contract_tile(tile, weights, out[start:stop], fix)
         # Rebinding releases this tile before the next submission, which is what
         # keeps the device at three live tiles rather than four.
         tile = following
 
 
-def _combine_tiles(mx, spec, device, left32, right, right_sq, weights, out, block_rows) -> None:
-    """``out[:] = K(left32, right) @ weights``: the one tile loop behind every combine.
+def _combine_tiles(
+    mx, spec, device, left32, right, right_sq, weights, out, block_rows, refiner=None
+) -> None:
+    """``out[:] = K(left32, right) @ weights``: the tile loop behind :meth:`KernelBasis.combine`.
 
     ``left32`` is a host float32 matrix already in the kernel's frame; ``right``
     and ``right_sq`` (its squared row norms, rbf only) are on the device. Blocked
-    by :func:`_block_rows` for ``device``, transformed by :func:`_tile_transform`
-    and pipelined by :func:`_combine_pipelined`, inside the caller's
+    by :func:`_block_rows` for ``device``, transformed by :func:`_tile_transform`,
+    corrected by ``refiner`` (an :class:`_RbfRefiner` over ``right``'s host rows)
+    when given, and pipelined by :func:`_combine_pipelined`, inside the caller's
     :func:`~mlxlearn._common.device.use_device` block for that device.
     """
     n_left = int(left32.shape[0])
@@ -712,16 +998,49 @@ def _combine_tiles(mx, spec, device, left32, right, right_sq, weights, out, bloc
         block = mx.array(left32[start:stop], dtype=mx.float32)
         return block, (mx.sum(block * block, axis=1) if needs_norms else None)
 
+    refine = None
+    if refiner is not None:
+
+        def refine(tile, *, start, stop):
+            refiner(tile, left32[start:stop])
+
     transform = _tile_transform(mx, spec, device)
-    _combine_pipelined(mx, transform, n_left, rows, left, right, right_sq, weights, out)
+    _combine_pipelined(
+        mx, transform, n_left, rows, left, right, right_sq, weights, out, refine
+    )
 
 
-def _prepare(spec: KernelSpec, A, center) -> np.ndarray:
-    """Host-side float32 copy of ``A``, translated when the kernel allows it."""
-    out = np.ascontiguousarray(A, dtype=NUMPY_FLOAT)
-    if center is not None and spec.uses_center:
-        out = np.ascontiguousarray(out - np.asarray(center, dtype=NUMPY_FLOAT))
-    return out
+def _host_float32(A) -> np.ndarray:
+    """Host-side C-ordered float32 view or copy of ``A``."""
+    return np.ascontiguousarray(A, dtype=NUMPY_FLOAT)
+
+
+def _self_entries(spec: KernelSpec, X32: np.ndarray) -> np.ndarray:
+    """:func:`kernel_diagonal` of float32 rows, rounded to float32: every self-entry's value.
+
+    A value past float32's range becomes ``inf``, as the float32 evaluation would
+    have made it; the solver reports that as non-finite.
+    """
+    with np.errstate(over="ignore"):
+        return kernel_diagonal(spec, X32).astype(NUMPY_FLOAT)
+
+
+def _rbf_refiner(spec: KernelSpec, left32: np.ndarray, right32: np.ndarray, right_sq=None):
+    """An :class:`_RbfRefiner` over ``right32`` when entries against ``left32`` may need one.
+
+    ``right_sq`` may pass the right rows' squared norms already on hand (float32 is
+    enough for the test); the left rows' are computed here.
+    """
+    if spec.kernel != "rbf" or left32.size == 0 or right32.size == 0:
+        return None
+    if right_sq is None:
+        right_sq = np.einsum("ij,ij->i", right32, right32)
+    left_sq = right_sq if left32 is right32 else np.einsum("ij,ij->i", left32, left32)
+    if not _RbfRefiner.needed(
+        spec, right32.shape[1], float(np.max(left_sq)), float(np.max(right_sq))
+    ):
+        return None
+    return _RbfRefiner(spec.gamma, right32)
 
 
 def kernel_matrix(
@@ -730,7 +1049,6 @@ def kernel_matrix(
     B: np.ndarray | None = None,
     *,
     backend: str = "cpu",
-    center: np.ndarray | None = None,
     block_rows: int | None = None,
 ) -> np.ndarray:
     """The dense kernel matrix ``K(A, B)``, float32.
@@ -738,13 +1056,13 @@ def kernel_matrix(
     Parameters
     ----------
     spec : KernelSpec
+        The compute spec: ``A`` and ``B`` are already in its frame.
     A : ndarray of shape (n_a, n_features)
     B : ndarray of shape (n_b, n_features), optional
-        Defaults to ``A``.
+        Defaults to ``A``, in which case the diagonal is :func:`kernel_diagonal`'s
+        closed form, rounded to float32 — the value the solver's curvature uses.
     backend : {"mlx", "cpu"}, default="cpu"
         Which MLX device evaluates the blocks.
-    center : ndarray of shape (n_features,), optional
-        Common translation, applied only for ``kernel="rbf"``.
     block_rows : int, optional
         Rows of ``A`` per block. Defaults to a memory-derived size.
 
@@ -755,14 +1073,16 @@ def kernel_matrix(
     Notes
     -----
     This is the one function here that does materialize an ``n_a × n_b`` result, so
-    callers who cannot afford that should use :func:`kernel_combine` or
+    callers who cannot afford that should use :class:`KernelBasis` or
     :class:`KernelRows` instead. The *evaluation* is still blocked: the device
-    never holds more than one block at a time regardless of the output size.
+    never holds more than one block at a time regardless of the output size. rbf
+    entries the Gram identity may have got wrong are recomputed on the host
+    (:class:`_RbfRefiner`).
     """
     import mlx.core as mx
 
-    A32 = _prepare(spec, A, center)
-    B32 = A32 if B is None else _prepare(spec, B, center)
+    A32 = _host_float32(A)
+    B32 = A32 if B is None else _host_float32(B)
     n_a, n_b = A32.shape[0], B32.shape[0]
     out = np.empty((n_a, n_b), dtype=NUMPY_FLOAT)
     if n_a == 0 or n_b == 0:
@@ -771,6 +1091,7 @@ def kernel_matrix(
     device = inference_device(backend)
     rows = _block_rows(n_a, n_b, device, block_rows)
     needs_norms = spec.kernel == "rbf"
+    refiner = _rbf_refiner(spec, A32, B32)
 
     with use_device(device):
         transform = _tile_transform(mx, spec, device)
@@ -784,67 +1105,10 @@ def kernel_matrix(
             tile = transform(block @ right_t, a_sq, b_sq)
             mx.eval(tile)
             out[start:end] = np.asarray(tile)
-    return out
-
-
-def kernel_combine(
-    spec: KernelSpec,
-    A: np.ndarray,
-    B: np.ndarray,
-    weights: np.ndarray,
-    *,
-    backend: str = "cpu",
-    center: np.ndarray | None = None,
-    block_rows: int | None = None,
-) -> np.ndarray:
-    """``K(A, B) @ weights``, blocked over ``A``, returned as float64.
-
-    Parameters
-    ----------
-    spec : KernelSpec
-    A : ndarray of shape (n_a, n_features)
-    B : ndarray of shape (n_b, n_features)
-    weights : ndarray of shape (n_b, n_outputs)
-    backend : {"mlx", "cpu"}, default="cpu"
-    center : ndarray of shape (n_features,), optional
-    block_rows : int, optional
-
-    Returns
-    -------
-    ndarray of shape (n_a, n_outputs), float64
-
-    Notes
-    -----
-    The kernel entries are computed in float32 on device — that is where the
-    arithmetic is, ``n_a · n_b · n_features`` — and the contraction against
-    ``weights`` is done in float64 on the host, because doing it in float32 would
-    add an accumulation error over every support vector on top of the kernel's own
-    rounding. That precision is not free: with many one-vs-one pairs the host
-    contraction measured 39–47% of ``predict``. It is therefore overlapped with
-    the device, which computes the next tile while the host contracts this one,
-    and done a chunk of rows at a time rather than through a float64 copy of the
-    whole tile.
-
-    Each row of ``A`` is reduced on its own, so ``block_rows`` changes the result
-    only at the level of rounding — a BLAS may choose a different kernel for a
-    block of a handful of rows — and, for a given input and blocking, the output
-    is deterministic.
-    """
-    import mlx.core as mx
-
-    A32 = _prepare(spec, A, center)
-    B32 = _prepare(spec, B, center)
-    n_a, n_b = A32.shape[0], B32.shape[0]
-    W = np.asarray(weights, dtype=np.float64)
-    out = np.zeros((n_a, W.shape[1]), dtype=np.float64)
-    if n_a == 0 or n_b == 0:
-        return out
-
-    device = inference_device(backend)
-    with use_device(device):
-        right = mx.array(B32, dtype=mx.float32)
-        b_sq = mx.sum(right * right, axis=1) if spec.kernel == "rbf" else None
-        _combine_tiles(mx, spec, device, A32, right, b_sq, W, out, block_rows)
+            if refiner is not None:
+                refiner(out[start:end], A32[start:end])
+    if B is None:
+        np.fill_diagonal(out, _self_entries(spec, A32))
     return out
 
 
@@ -865,7 +1129,7 @@ class KernelRows:
     Attributes
     ----------
     X : ndarray of shape (n_samples, n_features)
-        Float32 C-ordered copy, already translated when ``spec.uses_center``.
+        Float32 C-ordered copy, already in ``spec``'s compute frame.
     spec : KernelSpec
     backend : {"mlx", "cpu"}
 
@@ -887,13 +1151,20 @@ class KernelRows:
     matrix-*vector* product, which the backends reduce in a different order, so a
     row's value would depend on how many other rows were fetched alongside it — and
     a solver prefetching rows would take a different path from one that did not.
-    As it is, on the GPU a row's value does not depend on its batch, and equals
-    the corresponding row of :func:`kernel_matrix`'s Gram (measured on MLX 0.32
-    over every shape tried; neither is a documented property of MLX, so neither
-    is promised). On the CPU device it can differ in the last bit: the vectorized
-    ``exp``/``tanh`` finish a tile with a scalar tail whose rounding differs, and
-    where an entry falls in the tile depends on the batch. What is guaranteed on
-    both is that a given request returns the same bits every time.
+    At narrow widths, on the GPU, a row's value does not depend on its batch and
+    equals the corresponding row of :func:`kernel_matrix`'s Gram (measured on MLX
+    0.32 up to 512 features; neither is a documented property of MLX, so neither
+    is promised). At about a thousand features and more MLX picks a different
+    matrix-multiply kernel for some shapes — the Gram's, or a batch of 33 rows,
+    the GPU prefetch's own — and the two properties fail in the last bits: the
+    solver's path then depends on which rows arrived together, and so on
+    ``cache_size`` (9.2e-4 in SVC decision values at 2 048 × 2 048). On the CPU
+    device a row can differ in the last bit
+    whatever the width: the vectorized ``exp``/``tanh`` finish a tile with a
+    scalar tail whose rounding differs, and where an entry falls in the tile
+    depends on the batch. What is guaranteed on both is that a given request
+    returns the same bits every time, and that every self-entry is exactly
+    :func:`kernel_diagonal`'s value, rounded to float32.
 
     :meth:`row` is the one-at-a-time path, and it differs by device. On the GPU it
     is ``rows([index])[0]``, at no extra cost. On the CPU device the per-call
@@ -912,11 +1183,15 @@ class KernelRows:
     _device_sq: object = None  # mx.array (n,), only for rbf
     _tile: object = None  # f(dot, a_sq, b_sq), from _tile_transform
     _device_kind: str = "cpu"  # the MLX device ``backend`` resolves to here
+    _diagonal: object = None  # (n,) float32, every self-entry
+    _refiner: object = None  # _RbfRefiner, or None where no entry can need one
 
     def __post_init__(self) -> None:
         import mlx.core as mx
 
         self._device_kind = inference_device(self.backend)
+        self._diagonal = _self_entries(self.spec, self.X)
+        self._refiner = _rbf_refiner(self.spec, self.X, self.X)
         with use_device(self._device_kind):
             data = mx.array(self.X, dtype=mx.float32)
             self._device_X = data
@@ -926,6 +1201,13 @@ class KernelRows:
                 mx.eval(data, self._device_sq)
             else:
                 mx.eval(data)
+
+    def _finish(self, tile: np.ndarray, index: np.ndarray) -> np.ndarray:
+        """Correct host rows ``tile = K(X[index], X)`` in place: refinement, self-entries."""
+        if self._refiner is not None:
+            self._refiner(tile, self.X[index])
+        tile[np.arange(index.shape[0]), index] = self._diagonal[index]
+        return tile
 
     @property
     def n_samples(self) -> int:
@@ -972,7 +1254,8 @@ class KernelRows:
                 else:
                     out = _integer_power(mx, z, int(self.spec.degree))
             mx.eval(out)
-            return np.asarray(out, dtype=NUMPY_FLOAT)
+            tile = np.array(np.asarray(out)[None, :], dtype=NUMPY_FLOAT)
+        return self._finish(tile, np.array([index]))[0]
 
     def rows(self, indices) -> np.ndarray:
         """``K(X[indices], X)`` as a float32 array of shape ``(len(indices), n_samples)``.
@@ -1010,24 +1293,19 @@ class KernelRows:
             dot = (data @ data[selected].T).T
             tile = self._tile(dot, a_sq, b_sq)
             mx.eval(tile)
-            return np.array(np.asarray(tile)[:count], dtype=NUMPY_FLOAT, order="C")
+            host = np.array(np.asarray(tile)[:count], dtype=NUMPY_FLOAT, order="C")
+        return self._finish(host, index)
 
 
-def build_kernel_rows(
-    X: np.ndarray,
-    spec: KernelSpec,
-    *,
-    backend: str,
-    center: np.ndarray | None = None,
-) -> KernelRows:
+def build_kernel_rows(X: np.ndarray, spec: KernelSpec, *, backend: str) -> KernelRows:
     """Build a :class:`KernelRows` over a float32 copy of ``X``.
 
-    The copy is deliberate, and forced rather than incidental: ``_prepare`` returns
-    its argument unchanged when it is already float32 and C-ordered, so without the
-    explicit copy a row source could alias the caller's buffer and change its own
-    answers when the caller mutated their array, mid-fit.
+    The copy is deliberate, and forced rather than incidental: the float32
+    conversion returns its argument unchanged when it is already float32 and
+    C-ordered, so without the explicit copy a row source could alias the caller's
+    buffer and change its own answers when the caller mutated their array, mid-fit.
     """
-    prepared = _prepare(spec, X, center)
+    prepared = _host_float32(X)
     if prepared is X or np.shares_memory(prepared, X):
         prepared = prepared.copy()
     return KernelRows(X=prepared, spec=spec, backend=backend)

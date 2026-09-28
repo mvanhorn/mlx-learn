@@ -13,7 +13,7 @@ that "we xfail that one" is a policy and not a reaction to a red test.
 |---|---|
 | Input `X`, `y` | anything scikit-learn accepts; float64/int/bool are converted |
 | Computation on the MLX device, GPU or CPU | **float32**, always |
-| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the SMO dual variables and gradients, the contraction of SVC decision values, neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_` |
+| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the SMO dual variables and gradients, the contraction of SVC decision values, the rbf entries SVC recomputes directly (§2.4), neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_` |
 | Returned distances, probabilities, decision values | **float64** |
 | Fitted attributes (`coef_`, `intercept_`, `dual_coef_`, `support_vectors_`) | **float64** |
 | Returned indices, labels | `int64` / the input label dtype, matching scikit-learn |
@@ -42,7 +42,8 @@ What happens next depends on when it is found:
 - **At inference** it is raised, in both layers. The backend is sticky: a model fitted on
   MLX has no scikit-learn state to hand the call to. The neighbor estimators and `SVC`
   raise for a query float32 cannot represent, and also for a query so far from the
-  training data that the scale chosen at `fit` cannot hold it. `LogisticRegression`
+  training data that the scale chosen at `fit` cannot hold it — for `SVC`, one whose inner
+  product with a support vector float32 cannot hold (§2.4). `LogisticRegression`
   predicts with scikit-learn's float64 code and has no such limit.
 
 **Values whose squares leave float32.** A value can fit in float32 while its square does
@@ -212,25 +213,85 @@ recorded the same way.
 
 ### 2.4 Kernel evaluation (`SVC`)
 
-LIBSVM caches kernel rows as C `float`. mlxlearn evaluates them in float32 too, and keeps
-the dual variables, gradients and working-set arithmetic in float64, as LIBSVM does — on
+LIBSVM computes each kernel entry in double and caches it rounded to C `float`. mlxlearn
+computes the entries in float32 on the device, inner products included, and keeps the
+dual variables, gradients and working-set arithmetic in float64, as LIBSVM does — on
 NumPy 1.x as well as 2.x. Decision values contract the float32 kernel entries against
-float64 coefficients in float64, so the only float32 error that reaches the output is the
-kernel's own rounding.
+float64 coefficients in float64, so the float32 error that reaches the output is the
+kernel's. Most of it is the rounding of inner products — of `⟨a, b⟩`, or of the rbf squared
+distance `‖a‖² + ‖b‖² − 2⟨a, b⟩` (§2.1) — measured at up to about `7u·(‖a‖² + ‖b‖²)` on
+either device, from 2 to 4 096 features. That error grows with the rows' magnitude, not
+with their difference, while the model learns from their differences. The frame, the rbf
+refinement and the resolution check below keep the one below the other; the self-entries
+keep the solver consistent with what remains.
 
-Before anything is rounded, the data is mapped exactly, in float64, into a *compute
-frame*. For the rbf kernel it is translated by the training mean first, so a large offset
-never reaches float32. For every kernel but the linear one it is then scaled by the power
-of two that puts the largest mapped entry in `[0.5, 1)`, and the scale is folded back into
-`gamma` (`γ′ = γ / s²`), so the kernel is unchanged. For data already in range the result
-is bit-identical, not merely close; data around `1e±19` is served, and so is a `gamma`
-outside float32's own range (`gamma="scale"` on data around `1e-20` resolves past
-float32's largest value, and folds back to order one). What the frame cannot represent is a capability
-limit at `fit` — a `gamma` or `coef0` not finite in float32 once folded
-(`UnsupportedParameterError`), a linear-kernel row whose squared norm exceeds float32
-(`UnsupportedInputError`) — and an error at inference, for a query so far outside the
-training extent that the frame cannot hold it. A non-finite decision value is an error,
-never a label.
+**The compute frame.** Before anything is rounded, the data is mapped exactly, in float64,
+into a *compute frame*. For the rbf kernel it is translated by the training mean first,
+so a large offset never reaches float32. For every kernel but the linear one it is then
+scaled by the power of two that puts the largest mapped entry in `[0.5, 1)`, and the scale
+is folded back into `gamma` (`γ′ = γ / s²`), so the kernel is unchanged. The scale is
+exact: data scaled by any power of two fits bit-identically, and poly, sigmoid and linear
+results for data already in range are bit-identical to unscaled evaluation. The rbf
+translation is not a no-op against 0.1.0a2, which cast first and subtracted a float32
+mean: the mean is now subtracted before rounding, which changes the float32 inputs
+slightly and can move where inside `tol` the solver stops — measured up to 6e-4 in the
+decision values on `N(3, 1)` data. Data around `1e±19` is served,
+and so is a `gamma` outside float32's own range (`gamma="scale"` on data around `1e-20`
+resolves past float32's largest value, and folds back to order one).
+
+**Rows close together, far from the mean (rbf).** Centering keeps the identity's error
+small only near the training mean. Two rows close to each other but far out — tight
+clusters far apart with `gamma` matched to the clusters, or an explicit `gamma` on
+unscaled multi-modal data — got kernel entries wrong by up to 0.58, and fits returned
+decision values 3–6 away from scikit-learn's, silently, under `patch_sklearn()` too. So
+every entry whose identity error, in the exponent, can exceed `1e-4`, and whose value,
+computed or true, can exceed `1e-8`, is recomputed on the host from the float32 rows, in
+float64 — exact, for the values the device holds (§3.4), to float32's own rounding.
+Distance is at least the difference of the norms, so only rows in a band of similar norms
+can qualify: a lone far-out row costs its own band, not a pass over the Gram, and on
+ordinary data the test never opens — on standardized data at `gamma="scale"` the bound
+stays near `1e-5` up to 4 096 features. Measured: two clusters 2 000 apart, decision values
+within 1.1e-3 of scikit-learn's (6.1 before); 40 clusters at 2 400 × 512 on the GPU, within
+3.1e-4 (3.5 before), in 0.14 s against 0.05 s unrefined and 0.39 s for scikit-learn. Where
+every entry inside a cluster needs it — two clusters of 2 000 or 5 000 rows each — the fit
+took 2.6–3× as long as unrefined, 1.4–1.7× scikit-learn's time. The same test runs on
+queries at inference.
+
+**The raw inner product (linear, poly).** These kernels are not translation-invariant, so
+the frame cannot centre them: their float32 error scales with the offset, while the
+curvature the solver learns from, `K_ii + K_jj − 2K_ij`, scales with the spread. On
+`make_classification · 0.01 + 20` a cubic kernel near 6.5e7 came out wrong by 40 against
+curvatures of 3–100. mlxlearn compares that error at the largest row norm with the mean
+squared distance between rows — and, for poly, `coef0`'s own rounding with `gamma` times
+it — and past `1e-3` refuses the fit with `UnsupportedInputError`, reason
+`"float32-cancellation"`, which patched mode hands to scikit-learn. The ratio overstates the
+measured error per median curvature about threefold. On the linear kernel, where
+scikit-learn still converges on such data, the decision values moved by 1.4e-3 of their
+range at a ratio of 1.7e-4, by 1.1e-2 at 1.7e-3, and by 6e-2, with 98.8% of labels
+agreeing, at 1.5e-2.
+`sigmoid` is not checked: on the same offsets it agreed with scikit-learn to 3e-4 or
+better. The test is global, so structure that lives at a much finer scale than the data's
+overall spread — tight clusters far from the origin — is not seen by it; standardize such
+data before a poly kernel, or use scikit-learn.
+
+**Self-entries.** The solver takes its curvature from the closed-form diagonal, in
+float64, and its gradient updates from the rows. Every row carries that closed form,
+rounded to float32, in its self-entry, so the two describe one quadratic. Left to the
+float32 evaluation they disagreed — by 31 on that poly kernel, where each step then solved
+one quadratic and applied another, and the fit circled its whole 10⁷-iteration budget:
+376 s against scikit-learn's 0.001 s. On ordinary data the self-entries move by a rounding,
+which can move where inside `tol` a fit stops: measured up to 2.3e-3 in the decision values
+of in-range poly fits and 1.5e-2 in a linear one (whose dual is flat, §3.2), inside the §3
+tolerance on either side.
+
+What the frame cannot represent is a capability limit at `fit` — a `gamma` or `coef0` not
+finite in float32 once folded (`UnsupportedParameterError`), a linear-kernel row whose
+squared norm exceeds float32 (`UnsupportedInputError`) — and an error at inference, for a
+query whose inner product with a support vector float32 cannot hold. A query far from the
+training data is otherwise answered, as scikit-learn answers it: its rbf entries are
+exactly 0 and its sigmoid entries ±1, so a CMIP `1e20` or netCDF `9.97e36` fill value in one
+query row no longer fails the batch. A non-finite decision value is an error, never a
+label.
 
 **Shrinking.** `shrinking=True`, scikit-learn's default, runs LIBSVM's shrinking
 heuristic: samples pinned at a bound are set aside between gradient reconstructions. The
@@ -245,13 +306,16 @@ comparison found a largest `|Δα|` of 7e-4 with the objective identical to 1e-6
 tolerances in §3 hold either way.
 
 **`cache_size`.** When the row cache can hold a whole one-vs-one subproblem, its Gram is
-built in one blocked matmul; otherwise rows are evaluated on demand. On the GPU the two
-produce bit-identical rows, so crossing that boundary does not change the fit there
-(measured on all four kernels at 2 000 × 10, a property of MLX's matmul rather than a
-promise). On MLX's CPU device they accumulate in different orders: the same comparison
-moved the decision values by up to 2.2e-3 and changed the iteration count, both fits
-KKT-optimal and inside the §3 tolerance. scikit-learn is bit-identical across
-`cache_size`; pin it for bit-reproducible fits on MLX's CPU.
+built in one blocked matmul; otherwise rows are evaluated on demand, and the two can round
+differently. On the GPU they produced bit-identical rows at narrow widths (all four
+kernels at 2 000 × 10), a property of MLX's matmul rather than a promise; at a thousand
+features and more MLX picks another matmul kernel for some shapes — the Gram's, or a batch
+of 33 rows, the prefetch's own — and at 2 048 × 2 048 and 3 000 × 4 096 `cache_size=5`
+moved the decision values by up to 9.2e-4. On MLX's CPU device they accumulate in
+different orders at any width: at 2 000 × 10 the decision values moved by up to 2.2e-3 and
+the iteration count changed. Every fit is KKT-optimal and inside the §3 tolerance.
+scikit-learn is bit-identical across `cache_size`; pin it for bit-reproducible fits, on
+either device.
 
 ## 3. Tolerances the test suite uses
 
@@ -496,7 +560,10 @@ is to keep it that way.
 - **Silently downcast and claim parity.** Every deviation in this document is tested, not
   assumed.
 - **Turn a value into infinity and carry on.** Values, squares and queries float32 cannot
-  hold are rescaled exactly or refused (§1). A non-finite result is an error, never an
+  hold are rescaled exactly or refused (§1). The one infinity carried is exact where it
+  lands: an `SVC` query so far out that its rbf squared distance overflows gets the kernel
+  value `exp(−inf) = 0`, which is its value in float64 too, and only where the nearest
+  support vector is past float32's `exp` (§2.4). A non-finite result is an error, never an
   answer.
 - **Loosen a tolerance to make a test pass.** Tolerances come from this document. A failure
   at these tolerances is a bug in mlxlearn.
