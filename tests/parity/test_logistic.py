@@ -298,6 +298,30 @@ def test_binary_objective_matches_float64_in_both_layouts(fit_intercept, weighte
             np.testing.assert_allclose(np.asarray(got_grad)[0], grad, rtol=1e-4, atol=1e-6)
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_gpu_binary_fit_runs_on_the_transposed_design(backend, monkeypatch):
+    """The layout is chosen from the device the fit actually runs on.
+
+    The gate compared what ``use_device`` yields with the string ``"gpu"``; once it
+    yielded an ``mx.Stream`` that never matched, and every GPU binary fit silently
+    took the slow ``(n,) @ (n, d)`` gradient, 2.5-2.9x slower on tall, narrow data.
+    """
+    from mlxlearn._solvers import logistic
+
+    seen = []
+    original = logistic._binary_objective
+
+    def spy(mx, X, *args, transposed=False, **kwargs):
+        seen.append((transposed, tuple(X.shape)))
+        return original(mx, X, *args, transposed=transposed, **kwargs)
+
+    monkeypatch.setattr(logistic, "_binary_objective", spy)
+    X, y = _data(n_samples=400, n_features=8)
+    _fit(backend, LogisticRegression(), X, y)
+    on_gpu = backend == "mlx"
+    assert seen == [(on_gpu, (8, 400) if on_gpu else (400, 8))]
+
+
 # ------------------------------------------------------------- hard numerics
 
 
