@@ -46,7 +46,9 @@ every sample. Two departures from LIBSVM, both deliberate: the active set is kep
 ascending index order rather than compacted by swapping, so the last-index
 tie-breaking above means the same thing with and without shrinking; and the
 reconstruction reads the rows it needs in batches, outside the LRU, so it neither
-costs one round trip per row nor evicts the rows the next iterations need.
+costs one round trip per row nor evicts the rows the next iterations need. It
+still adds them up one row at a time in index order, as LIBSVM does, so neither
+the batch size nor the BLAS build decides how the rebuilt gradient rounds.
 
 This module imports numpy and nothing else. It never sees an estimator, never
 reads global configuration, and never imports scikit-learn.
@@ -832,7 +834,7 @@ _RECONSTRUCT_ROWS = 256
 def _upper_bound_part(
     y: np.ndarray, C: np.ndarray, alpha: np.ndarray, cache: _RowCache
 ) -> np.ndarray:
-    """``ygbar`` from scratch: ``Σ_{s at upper bound} C_s y_s K[s, :]``."""
+    """``ygbar`` from scratch: ``Σ_{s at upper bound} C_s y_s K[s, :]``, in index order."""
     upper, _ = _bound_status(alpha, C)
     # A zero box is "at its upper bound" too, and contributes nothing.
     bounded = np.flatnonzero(upper & (C > 0.0))
@@ -840,7 +842,8 @@ def _upper_bound_part(
     weights = C[bounded] * y[bounded]
     chunk = max(2, min(_RECONSTRUCT_ROWS, cache.capacity))
     for start in range(0, bounded.shape[0], chunk):
-        total += weights[start : start + chunk] @ _read_rows(cache, bounded[start : start + chunk])
+        block = _read_rows(cache, bounded[start : start + chunk])
+        _add_rows(total, block, weights[start : start + chunk])
     return total
 
 
@@ -862,6 +865,12 @@ def _reconstruct_gradient(
     batches of ``_RECONSTRUCT_ROWS`` through ``fetch_rows`` and outside the LRU,
     using resident rows where there are any. Reading them one ``fetch_row`` at a
     time through the cache measured slower than not shrinking at all.
+
+    Either way the terms are added in LIBSVM's order — to ``ygbar_t − y_t``, one
+    free sample at a time, in index order — so the batching decides only how rows
+    are read. A matrix product per batch rounded the sum by the batch size, which
+    follows the cache capacity, and by the BLAS build; near a tie that rounding
+    picks the working pair, so ``cache_size`` moved shrinking fits.
     """
     inactive = np.setdiff1d(np.arange(y.shape[0]), active, assume_unique=True)
     if inactive.shape[0] == 0:
@@ -877,10 +886,22 @@ def _reconstruct_gradient(
         for start in range(0, sources.shape[0], chunk):
             block = _read_rows(cache, sources[start : start + chunk])
             if by_free:
-                rebuilt += weights[start : start + chunk] @ block[:, inactive]
+                _add_rows(rebuilt, block[:, inactive], weights[start : start + chunk])
             else:
-                rebuilt[start : start + chunk] += block[:, free] @ weights
+                for k, row in enumerate(block[:, free], start=start):
+                    # A running sum from rebuilt[k], in the by-free branch's order:
+                    # accumulate is sequential by definition, where sum() may
+                    # reassociate.
+                    terms = np.multiply(row, weights, dtype=np.float64)
+                    terms[0] += rebuilt[k]
+                    rebuilt[k] = np.add.accumulate(terms)[-1]
     yg[inactive] = rebuilt
+
+
+def _add_rows(total: np.ndarray, block: np.ndarray, weights: np.ndarray) -> None:
+    """``total += weights @ block``, one row at a time in row order, in float64."""
+    for row, weight in zip(block, weights, strict=True):
+        total += _widened(row, weight)
 
 
 def _read_rows(cache: _RowCache, indices: np.ndarray) -> np.ndarray:

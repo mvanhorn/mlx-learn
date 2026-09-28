@@ -276,6 +276,24 @@ def test_cache_capacity_changes_calls_not_the_solution():
     assert tiny_src.single > whole_src.single
 
 
+@pytest.mark.parametrize("cache_rows, fetch_rows", [(3, True), (2, False)])
+def test_cache_capacity_does_not_move_a_shrinking_solve(cache_rows, fetch_rows):
+    """With shrinking, the capacity also sets the batches the gradient is rebuilt in.
+
+    Each batch used to be reduced with a matrix product, so the capacity — and the
+    BLAS build — decided how the rebuilt gradient was rounded, and near a tie which
+    pair came next: this problem took a different path at each of these
+    capacities. The terms are now added one at a time in index order, however the
+    rows were read.
+    """
+    _, y, K32 = _problem(n=500, seed=3, kernel="poly", flip_y=0.1)
+    C = np.full(500, 10.0)
+    whole, _ = _solve(y, K32, C, shrinking=True)
+    small, _ = _solve(y, K32, C, shrinking=True, cache_rows=cache_rows, fetch_rows=fetch_rows)
+    assert whole.n_iter > 500  # past the first shrinking pass, at min(n, 1000)
+    _assert_same_state(whole, small)
+
+
 @pytest.mark.parametrize("cache_rows", [3, 40, 250, 500])
 def test_prefetch_changes_calls_not_the_solution(cache_rows):
     """Batched prefetch, into free room and — once full — over the LRU tail."""
@@ -358,6 +376,35 @@ def test_the_non_shrinking_path_is_pinned(case, cache_rows):
     """
     config = {} if cache_rows is None else {"cache_rows": cache_rows}
     assert _pin(_pinned_solve(case, **config)) == _PINNED_PLAIN[case]
+
+
+_PINNED_SHRINKING = {
+    ("linear", 300, 4, 0, 1.0, False, 10_000_000):
+        (2389, "converged", "-0x1.a6ac2a478c996p-4", "08a098a44ef23833"),
+    ("poly", 300, 4, 1, 0.05, False, 10_000_000):
+        (3876, "converged", "0x1.6194aa39f5147p-1", "23f5434e94de4c0b"),
+    ("linear", 400, 5, 2, 0.5, True, 10_000_000):
+        (5895, "converged", "0x1.61a42c4966343p-3", "653f821c971726d8"),
+}
+
+
+@pytest.mark.parametrize("cache_rows", [None, 2])
+@pytest.mark.parametrize(
+    "case", list(_PINNED_SHRINKING), ids=lambda case: "-".join(map(str, case[:5]))
+)
+def test_the_shrinking_path_is_pinned(case, cache_rows):
+    """Shrinking fits are the same bits on every cache capacity and BLAS build.
+
+    The rebuilt gradient decides working pairs near a tie, so its rounding is part
+    of the path. When each batch of rows was reduced with a matrix product, every
+    one of these problems took a different path at each of the two capacities, and
+    the third also on NumPy 1.23 with OpenBLAS against 2.5 with Accelerate at the
+    same capacity. The pins hold on both builds.
+    """
+    config = {"shrinking": True}
+    if cache_rows is not None:
+        config["cache_rows"] = cache_rows
+    assert _pin(_pinned_solve(case, **config)) == _PINNED_SHRINKING[case]
 
 
 # ------------------------------------------------------------------- shrinking
