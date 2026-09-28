@@ -344,9 +344,10 @@ def test_a_tol_below_the_float32_floor_stops_on_the_floor():
 
 #: ``(n_classes, C, fit_intercept) -> (n_iter, objective)`` measured with the solver as
 #: shipped in 0.1.0a2, on ``make_classification(5000, 20, n_informative=12,
-#: n_redundant=4, random_state=0)``. Identical on the GPU and CPU devices. Changes to
-#: the solver's internals may reach the same point in fewer iterations or at a lower
-#: objective, never the reverse.
+#: n_redundant=4, random_state=0)``, on an M4 Max: the same iteration counts on the GPU
+#: and CPU devices, objectives up to 1.4e-9 apart. Changes to the solver's internals
+#: may reach the same point in fewer iterations or at a lower objective, never the
+#: reverse.
 _PINNED = {
     (2, 0.01, True): (16, 0.5293678939),
     (2, 1.0, True): (16, 0.5263766616),
@@ -390,7 +391,12 @@ def test_logistic_trajectories_do_not_regress(key, device, _pinned_data):
     )
 
     assert solution.converged and solution.stop_reason == "gtol"
-    assert solution.n_iter <= pinned_iter
-    # 2e-9 absolute is float32 noise on an objective near 1, and well inside the
-    # 1e-5 relative parity budget; an actual regression shows up orders larger.
-    assert objective <= pinned_objective + 2e-9
+    # Headroom for another chip's float32 accumulation order, which is all that
+    # differs between Apple GPUs and between Accelerate builds. One iteration: the
+    # (2, 1.0, False) run stops at max|g| = 0.995 tol, so a wobble of half a percent
+    # takes one more step. And 1e-8 relative on the objective: reordering only the
+    # rows of the data moves it by up to about 4e-9 on an objective near 1.1 — past
+    # the 2e-9 absolute this used to allow in 22 of 640 orders — while an actual
+    # regression shows up orders larger, and the parity budget is 1e-5.
+    assert solution.n_iter <= pinned_iter + 1
+    assert objective <= pinned_objective * (1 + 1e-8)
