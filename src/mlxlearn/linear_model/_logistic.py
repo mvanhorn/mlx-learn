@@ -705,8 +705,10 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self.coef_ = solution.coef
         self.intercept_ = solution.intercept
         self.n_iter_ = np.array([solution.n_iter], dtype=np.int32)
-        self._set_backend(backend)
+        # Before the commit, so a ConvergenceWarning that a user's "error" filter
+        # escalates leaves the fit incomplete, as every fit that raises does.
         self._report_convergence(solution, backend)
+        self._set_backend(backend)
 
         if callback_ctx is not None:
             callback_ctx.call_on_fit_task_end(

@@ -561,6 +561,33 @@ def test_the_convergence_warning_starts_as_scikit_learns_does(backend):
         _fit(backend, LogisticRegression(max_iter=1), X, y)
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_an_escalated_convergence_warning_leaves_the_fit_incomplete(backend):
+    """A fit that raises does not commit, whatever raised — here, an "error" filter.
+
+    The warning came after the commit point, so the fit raised with the model
+    fitted, predicting and recorded as a completed fit, where the patched class's
+    scikit-learn path and SVC both end unfitted.
+    """
+    if backend == "mlx" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    X, y = _data()
+    model = _fit(backend, LogisticRegression(), X, y)
+    model.set_params(max_iter=1)
+    mlxlearn.clear_backend_diagnostics()
+    with warnings.catch_warnings(), tuning_context(force_backend=backend):
+        warnings.simplefilter("error", ConvergenceWarning)
+        with pytest.raises(ConvergenceWarning):
+            model.fit(X, y)
+
+    # Not the previous fit's coefficients either.
+    with pytest.raises(NotFittedError):
+        model.predict(X)
+    with pytest.raises(AttributeError):
+        model.execution_backend_
+    assert not [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
+
+
 def test_objective_is_no_worse_at_an_equal_truncated_budget():
     """The fair comparison when neither solver has converged.
 
