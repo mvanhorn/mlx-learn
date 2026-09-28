@@ -457,7 +457,9 @@ def validate_float32_input(
     — step 2 runs on the *validated* array instead: scikit-learn has already done
     the conversion, so the check costs one min/max pass rather than a second
     conversion, and it still fires before the cast would turn the value into
-    infinity.
+    infinity. A tuple of dtypes, as ``validate_data`` takes it, counts as wide
+    when any member is: the validated array then keeps float32 input as float32,
+    which the range check skips, and scans only what came out wider.
 
     At fit time, steps 1 and 2 belong inside ``_select_backend``'s
     ``capability_check``, the only place a capability error can still fall back;
@@ -474,7 +476,7 @@ def validate_float32_input(
         As for ``validate_data``: when given, ``(X, y)`` is returned.
     operation : str, default="predict"
         Named in the sparse-input message.
-    dtype : NumPy floating dtype, default=float32
+    dtype : NumPy floating dtype or tuple of them, default=float32
     reset : bool, optional
         Passed to ``validate_data``. Defaults to ``operation == "fit"``, so an
         inference call cannot reset ``n_features_in_`` by forgetting to say so.
@@ -490,7 +492,8 @@ def validate_float32_input(
     """
     if reset is None:
         reset = operation == "fit"
-    wide = np.dtype(dtype).itemsize > np.dtype(NUMPY_FLOAT).itemsize
+    dtypes = dtype if isinstance(dtype, (tuple, list)) else (dtype,)
+    wide = any(np.dtype(d).itemsize > np.dtype(NUMPY_FLOAT).itemsize for d in dtypes)
     if not range_checked:
         require_dense(X, estimator=type(estimator).__name__, operation=operation)
         if not wide:

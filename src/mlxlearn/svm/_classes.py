@@ -55,12 +55,10 @@ from sklearn.svm import SVC as _SkSVC
 from sklearn.utils.multiclass import check_classification_targets
 from sklearn.utils.validation import column_or_1d
 
-from .._common import device as _device_state
 from .._common.base import BackendMixin, mlx_guard
-from .._common.config import get_config, get_tuning
+from .._common.config import get_tuning
 from .._common.device import physical_memory_bytes
 from .._common.validation import (
-    FLOAT32_MAX,
     check_consistent_length,
     check_float32_range,
     check_is_fitted,
@@ -70,6 +68,7 @@ from .._common.validation import (
     require_dense,
     require_supported_params,
     validate_data,
+    validate_float32_input,
 )
 from .._kernels.kernels import (
     SUPPORTED_KERNELS,
@@ -85,7 +84,6 @@ from .._kernels.kernels import (
 from .._solvers.smo import SMOConfig, solve_c_svc
 from ..exceptions import (
     CapabilityError,
-    DeviceError,
     InvalidInputError,
     UnsupportedInputError,
     UnsupportedParameterError,
@@ -94,6 +92,14 @@ from ..exceptions import (
 __all__ = ["SVC", "MLXSVCMixin"]
 
 _SUPPORTED_SHAPES = ("ovo", "ovr")
+
+#: scikit-learn's message for a non-finite fitted model, verbatim so that code
+#: matching on it keeps working, plus what went wrong on the MLX path.
+_NON_FINITE_MODEL = (
+    "The dual coefficients or intercepts are not finite. The input data may contain "
+    "large values and need to be preprocessed. (mlxlearn evaluates the kernel in "
+    "float32, where these kernel values overflowed.)"
+)
 
 #: Whether the installed scikit-learn deprecates ``probability`` (1.9+), read off the
 #: inherited signature rather than a version string: the sentinel is the fact that
@@ -108,16 +114,6 @@ def _safe_shape(X) -> tuple[int, ...] | None:
     if shape is None or len(shape) != 2:
         return None
     return (int(shape[0]), int(shape[1]))
-
-
-def _check_validated_range(X: np.ndarray) -> None:
-    """:func:`check_float32_range` on a validated (finite) array, cheaply.
-
-    Two reductions rule out the common case; the full scan, and its error, run only
-    when a value actually exceeds float32. Inference pays this on every call.
-    """
-    if X.dtype.itemsize > 4 and X.size and not max(X.max(), -X.min()) <= FLOAT32_MAX:
-        check_float32_range(X)
 
 
 def _libsvm_sample_weight(sample_weight, X: np.ndarray) -> np.ndarray | None:
@@ -520,6 +516,7 @@ class MLXSVCMixin(BackendMixin):
             max_iter=self._resolve_max_iter(n_pair),
             cache_rows=max(2, min(cache_rows, n_pair)),
             prefetch_rows=prefetch_rows,
+            shrinking=bool(self.shrinking),
         )
         return solve_c_svc(y_pair, C_pair, k_diag, fetch, config, fetch_rows=fetch_rows)
 
@@ -588,6 +585,10 @@ class MLXSVCMixin(BackendMixin):
                 None,
                 backend,
             )
+            if state.stop_reason == "non-finite":
+                # The solver saw an infinite or NaN kernel value or gradient, so
+                # there is no model to return; see the backstop below.
+                raise InvalidInputError(_NON_FINITE_MODEL)
             pair_rows.append(index)
             # LIBSVM folds the label into the dual coefficient before storing it.
             pair_coef.append(state.alpha * y_pair)
@@ -636,21 +637,18 @@ class MLXSVCMixin(BackendMixin):
             ]
 
         # scikit-learn's own post-fit check, with its message verbatim so code that
-        # matches on it keeps working. Without it a kernel that overflowed float32
-        # produced NaN gradients, the solver found no eligible working pair and
-        # reported convergence after one iteration, and the fit returned a NaN
-        # intercept with fit_status_=0 -- a model predicting one class for
-        # everything, silently. Checked before any attribute is assigned, so a
-        # failed fit leaves no half-populated estimator behind. InvalidInputError,
+        # matches on it keeps working. A kernel that overflowed float32 produced
+        # NaN gradients, the solver found no eligible working pair and reported
+        # convergence after one iteration, and the fit returned a NaN intercept
+        # with fit_status_=0 -- a model predicting one class for everything,
+        # silently. The solver now reports that as stop_reason="non-finite",
+        # raised above; this stays as the backstop for anything non-finite that
+        # reaches the assembled model. Checked before any attribute is assigned, so
+        # a failed fit leaves no half-populated estimator behind. InvalidInputError,
         # a ValueError, because this runs inside mlx_guard, which reports a plain
         # ValueError as an MLX failure.
         if not (np.isfinite(rho).all() and np.isfinite(dual_coef).all()):
-            raise InvalidInputError(
-                "The dual coefficients or intercepts are not finite. The input data "
-                "may contain large values and need to be preprocessed. (mlxlearn "
-                "evaluates the kernel in float32, where these kernel values "
-                "overflowed.)"
-            )
+            raise InvalidInputError(_NON_FINITE_MODEL)
 
         self.support_ = support
         self.support_vectors_ = X64[support] if n_sv else np.empty((0, n_features))
@@ -721,32 +719,6 @@ class MLXSVCMixin(BackendMixin):
 
     # --------------------------------------------------------------- inference
 
-    def _inference_backend(self, operation: str, shape: tuple[int, ...] | None) -> str:
-        """The fitted backend, or the MLX CPU device when the fitted GPU is gone.
-
-        Inference stays on the backend ``fit`` chose, with one exception that does
-        not re-decide anything: a model fitted on the MLX GPU and loaded where no
-        GPU is usable runs the *same* MLX code on the MLX CPU device. Its state is
-        backend-independent, so this is not the scikit-learn hop stickiness exists
-        to prevent. It happens under ``device="auto"`` and ``"cpu"`` only; an
-        explicit ``device="gpu"`` still raises, because a user who named a device
-        wants that device.
-        """
-        backend = self._fitted_backend(operation)
-        if backend == "mlx" and not _device_state.gpu_available():
-            if get_config().device == "gpu":
-                raise DeviceError(
-                    f"{type(self).__name__} was fitted on the MLX GPU backend and no "
-                    "usable MLX GPU exists in this process. device='gpu' names that "
-                    "device explicitly, so mlxlearn will not compute elsewhere; set "
-                    "device='auto' or 'cpu' to evaluate this model on the MLX CPU "
-                    "device instead."
-                )
-            self._backend_event(operation, "cpu", reason="gpu-unavailable", shape=shape)
-            return "cpu"
-        self._note_inference(operation, shape=shape)
-        return backend
-
     def _kernel_basis(self) -> KernelBasis:
         basis = getattr(self, "_kernel_basis_", None)
         if basis is not None:
@@ -775,20 +747,24 @@ class MLXSVCMixin(BackendMixin):
                 f"cannot use sparse input in {type(self).__name__!r} trained on dense data"
             )
         # float32 queries are kept as float32: the frame is applied in float64 block
-        # by block anyway, and float32 -> float64 -> float32 is exact.
-        Xv = validate_data(
+        # by block anyway, and float32 -> float64 -> float32 is exact. A float64
+        # query is range-checked after validation, one min/max pass.
+        Xv = validate_float32_input(
             self,
             X,
-            accept_sparse=False,
+            operation=operation,
             dtype=(np.float64, np.float32),
             order="C",
             reset=False,
         )
-        backend = self._inference_backend(operation, _safe_shape(Xv))
+        # The fitted backend, sticky. A GPU-fitted model in a process without a
+        # usable GPU runs the same MLX code on MLX's CPU (recorded as
+        # "gpu-unavailable"), unless device="gpu" names the GPU explicitly; the
+        # kernels resolve the device by the same rule, inference_device().
+        backend = self._note_inference(operation, shape=_safe_shape(Xv))
         n_pairs = self._pair_weights_.shape[1]
         if Xv.shape[0] == 0:
             return np.empty((0, n_pairs), dtype=np.float64)
-        _check_validated_range(Xv)
         with mlx_guard(type(self).__name__, operation):
             decision = self._kernel_basis().combine(
                 Xv, self.support_vectors_, self._pair_weights_, backend=backend
@@ -832,10 +808,13 @@ class SVC(MLXSVCMixin, _SkSVC):
         linear kernel does not read it, so ``gamma=0.0`` is accepted there.
     coef0 : float, default=0.0
     shrinking : bool, default=True
-        **Accepted and ignored.** Shrinking is a pure speed heuristic that
-        provably does not change the optimum; mlxlearn 0.1.0 does not implement
-        it, and passing ``shrinking=False`` therefore also changes nothing. It is
-        not raised on because doing so would reject the scikit-learn default.
+        LIBSVM's shrinking heuristic, honored: samples pinned at a bound that
+        cannot form a violating pair are set aside periodically, so iterations
+        run over the active set only, and the full gradient is rebuilt before
+        the solver may stop. The stopping test always covers every sample, so
+        the optimum is the same either way. As in LIBSVM, the path to it can
+        differ within ``tol`` — the support-vector set at the margin and the
+        last digits of the decision values can move.
     probability : bool, default=False
         ``True`` is not implemented; see Notes. On scikit-learn 1.9, where the
         parameter is deprecated and defaults to the ``"deprecated"`` sentinel,
@@ -1036,7 +1015,7 @@ class SVC(MLXSVCMixin, _SkSVC):
         # under fallback_policy="raise". The float32 range check runs on the validated
         # float64 array, which also covers object-dtype input the raw scan skipped.
         try:
-            _check_validated_range(X64)
+            check_float32_range(X64)
             problem = self._prepare_kernel_problem(X64)
         except CapabilityError as exc:
             self._handle_capability_error(exc, "fit", shape=X64.shape)

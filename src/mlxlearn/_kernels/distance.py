@@ -44,10 +44,9 @@ from typing import Any
 
 import numpy as np
 
-from .._common import device as _device
 from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .._common.config import get_tuning
-from .._common.device import physical_memory_bytes, use_device
+from .._common.device import inference_device, physical_memory_bytes, use_device
 from ..exceptions import UnsupportedInputError
 
 __all__ = ["NeighborIndex", "build_index", "resolve_blocks"]
@@ -196,15 +195,11 @@ def _compute_device(backend: str) -> str:
     ``"cpu"`` is MLX's CPU. ``"mlx"`` is the GPU — unless this process has none, as
     when a model fitted on a Mac is unpickled somewhere without Metal. MLX's CPU
     runs the identical float32 code, so that is used rather than refusing to
-    predict, except when the configuration names the GPU explicitly: then
-    :func:`~mlxlearn._common.device.resolve_device` raises, as it does everywhere
-    else an explicit device cannot be honored.
+    predict, except when the configuration names the GPU explicitly. That rule is
+    :func:`~mlxlearn._common.device.inference_device`'s, shared with every other
+    kernel, so the device a query runs on and the one diagnostics report agree.
     """
-    if backend != "mlx":
-        return "cpu"
-    if _device.gpu_available():
-        return "gpu"
-    return _device.resolve_device()
+    return inference_device(backend)
 
 
 @functools.lru_cache(maxsize=1)
@@ -514,10 +509,13 @@ class NeighborIndex:
 
         # Carry extra candidates so the certificate usually succeeds first time.
         k_carry = _first_pass_carry(k_search, self.n_features, n_train)
+        device = _compute_device(self.backend)
+        # Blocked for the device the query runs on, which for a GPU-fitted index
+        # loaded on a GPU-less host is MLX's CPU, not the device it was built for.
         plan = resolve_blocks(
             n_query,
             n_train,
-            backend=self.backend,
+            backend="mlx" if device == "gpu" else "cpu",
             k_search=k_carry,
             query_block_size=query_block_size,
             train_block_size=train_block_size,
@@ -526,7 +524,6 @@ class NeighborIndex:
         out_idx = np.empty((n_query, k), dtype=INDEX_DTYPE)
         out_dist = np.empty((n_query, k), dtype=np.float64) if return_distance else None
 
-        device = _compute_device(self.backend)
         search = _Search(
             index=self,
             state=state,

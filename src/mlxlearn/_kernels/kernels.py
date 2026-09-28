@@ -44,7 +44,7 @@ import numpy as np
 
 from .._common.arrays import NUMPY_FLOAT
 from .._common.config import get_tuning
-from .._common.device import use_device
+from .._common.device import inference_device, use_device
 from ..exceptions import UnsupportedInputError, UnsupportedParameterError
 
 __all__ = [
@@ -458,7 +458,7 @@ class KernelBasis:
         check_frame_range(self.spec, mapped, name=name)
         return mapped
 
-    def _device_operand(self, rows: np.ndarray, backend: str) -> tuple:
+    def _device_operand(self, rows: np.ndarray, device: str) -> tuple:
         operand = self._operand
         if operand is not None:
             return operand
@@ -467,7 +467,7 @@ class KernelBasis:
                 import mlx.core as mx
 
                 prepared = self.prepare(rows, name="support_vectors_")
-                with use_device(_device(backend)):
+                with use_device(device):
                     right = mx.array(prepared, dtype=mx.float32)
                     if self.spec.kernel == "rbf":
                         right_sq = mx.sum(right * right, axis=1)
@@ -503,9 +503,10 @@ class KernelBasis:
 
         Notes
         -----
-        The same float32-tile / float64-contraction split as :func:`kernel_combine`,
-        and for the same reason; the result is likewise independent of
-        ``block_rows``.
+        The same tile loop as :func:`kernel_combine` — float32 tiles on the device,
+        pipelined against a float64 contraction on the host — so the two cannot
+        drift apart; see there for the precision split and for what ``block_rows``
+        can change.
         """
         import mlx.core as mx
 
@@ -515,18 +516,10 @@ class KernelBasis:
         if Q32.shape[0] == 0 or rows.shape[0] == 0:
             return out
 
-        right, right_sq = self._device_operand(rows, backend)
-        step = _block_rows(Q32.shape[0], int(right.shape[0]), backend, block_rows)
-        needs_norms = self.spec.kernel == "rbf"
-        with use_device(_device(backend)):
-            right_t = right.T
-            for start in range(0, Q32.shape[0], step):
-                end = min(start + step, Q32.shape[0])
-                block = mx.array(Q32[start:end], dtype=mx.float32)
-                a_sq = mx.sum(block * block, axis=1) if needs_norms else None
-                tile = _transform(mx, self.spec, block @ right_t, a_sq, right_sq)
-                mx.eval(tile)
-                out[start:end] = np.asarray(tile).astype(np.float64) @ W
+        device = inference_device(backend)
+        right, right_sq = self._device_operand(rows, device)
+        with use_device(device):
+            _combine_tiles(mx, self.spec, device, Q32, right, right_sq, W, out, block_rows)
         return out
 
 
@@ -535,12 +528,8 @@ class KernelBasis:
 # --------------------------------------------------------------------------------------
 
 
-def _device(backend: str) -> str:
-    return "gpu" if backend == "mlx" else "cpu"
-
-
-def _block_rows(n_rows: int, n_cols: int, backend: str, block_rows: int | None) -> int:
-    """How many rows of the left operand to evaluate at once.
+def _block_rows(n_rows: int, n_cols: int, device: str, block_rows: int | None) -> int:
+    """How many rows of the left operand to evaluate at once on ``device``.
 
     Derived from the same byte budget the distance kernel uses, halved because a
     block needs both the inner-product tile and the transformed tile alive at the
@@ -551,7 +540,7 @@ def _block_rows(n_rows: int, n_cols: int, backend: str, block_rows: int | None) 
         return max(1, min(int(block_rows), max(n_rows, 1)))
     tuning = get_tuning()
     budget = (
-        tuning.distance_block_bytes if backend == "mlx" else tuning.cpu_distance_block_bytes
+        tuning.distance_block_bytes if device == "gpu" else tuning.cpu_distance_block_bytes
     )
     rows = int(budget // max(8 * n_cols, 1))
     return max(1, min(max(n_rows, 1), rows))
@@ -624,16 +613,18 @@ def _fused_rbf():
     return mx.compile(rbf, shapeless=True)
 
 
-def _tile_transform(mx, spec: KernelSpec, backend: str):
+def _tile_transform(mx, spec: KernelSpec, device: str):
     """``f(dot, a_sq, b_sq)`` turning an inner-product tile into a kernel tile.
 
-    The fused rbf kernel is used on the GPU only. On MLX's CPU device the same
-    compiled graph measured 2.3–2.6× *slower* than the eager ops, and its first
-    call per process shells out to a C compiler for about a second — neither of
-    which the CPU path, which Layer 1 takes for every problem below the SVC
-    crossover, should pay for an identical answer.
+    The fused rbf kernel is used on the GPU only — the device the work runs on,
+    not the backend it was fitted for. On MLX's CPU device the same compiled
+    graph measured 2.3–2.6× *slower* than the eager ops, and its first call per
+    process shells out to a C compiler for about a second — neither of which the
+    CPU path, which Layer 1 takes for every problem below the SVC crossover, nor
+    a GPU-fitted model loaded on a GPU-less host, should pay for an identical
+    answer.
     """
-    if spec.kernel == "rbf" and backend == "mlx":
+    if spec.kernel == "rbf" and device == "gpu":
         fused = _fused_rbf()
         neg_gamma = mx.array(-spec.gamma, dtype=mx.float32)
         return lambda dot, a_sq, b_sq: fused(dot, a_sq, b_sq, neg_gamma)
@@ -692,6 +683,27 @@ def _combine_pipelined(mx, transform, n_a: int, rows: int, left, right, b_sq, we
         tile = following
 
 
+def _combine_tiles(mx, spec, device, left32, right, right_sq, weights, out, block_rows) -> None:
+    """``out[:] = K(left32, right) @ weights``: the one tile loop behind every combine.
+
+    ``left32`` is a host float32 matrix already in the kernel's frame; ``right``
+    and ``right_sq`` (its squared row norms, rbf only) are on the device. Blocked
+    by :func:`_block_rows` for ``device``, transformed by :func:`_tile_transform`
+    and pipelined by :func:`_combine_pipelined`, inside the caller's
+    :func:`~mlxlearn._common.device.use_device` block for that device.
+    """
+    n_left = int(left32.shape[0])
+    rows = _block_rows(n_left, int(right.shape[0]), device, block_rows)
+    needs_norms = spec.kernel == "rbf"
+
+    def left(start, stop):
+        block = mx.array(left32[start:stop], dtype=mx.float32)
+        return block, (mx.sum(block * block, axis=1) if needs_norms else None)
+
+    transform = _tile_transform(mx, spec, device)
+    _combine_pipelined(mx, transform, n_left, rows, left, right, right_sq, weights, out)
+
+
 def _prepare(spec: KernelSpec, A, center) -> np.ndarray:
     """Host-side float32 copy of ``A``, translated when the kernel allows it."""
     out = np.ascontiguousarray(A, dtype=NUMPY_FLOAT)
@@ -744,11 +756,12 @@ def kernel_matrix(
     if n_a == 0 or n_b == 0:
         return out
 
-    rows = _block_rows(n_a, n_b, backend, block_rows)
+    device = inference_device(backend)
+    rows = _block_rows(n_a, n_b, device, block_rows)
     needs_norms = spec.kernel == "rbf"
 
-    with use_device(_device(backend)):
-        transform = _tile_transform(mx, spec, backend)
+    with use_device(device):
+        transform = _tile_transform(mx, spec, device)
         right = mx.array(B32, dtype=mx.float32)
         right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
@@ -815,20 +828,11 @@ def kernel_combine(
     if n_a == 0 or n_b == 0:
         return out
 
-    rows = _block_rows(n_a, n_b, backend, block_rows)
-    needs_norms = spec.kernel == "rbf"
-
-    with use_device(_device(backend)):
+    device = inference_device(backend)
+    with use_device(device):
         right = mx.array(B32, dtype=mx.float32)
-        b_sq = mx.sum(right * right, axis=1) if needs_norms else None
-
-        def left(start, stop):
-            block = mx.array(A32[start:stop], dtype=mx.float32)
-            return block, (mx.sum(block * block, axis=1) if needs_norms else None)
-
-        _combine_pipelined(
-            mx, _tile_transform(mx, spec, backend), n_a, rows, left, right, b_sq, W, out
-        )
+        b_sq = mx.sum(right * right, axis=1) if spec.kernel == "rbf" else None
+        _combine_tiles(mx, spec, device, A32, right, b_sq, W, out, block_rows)
     return out
 
 
@@ -895,14 +899,16 @@ class KernelRows:
     _device_X: object = None  # mx.array (n, d)
     _device_sq: object = None  # mx.array (n,), only for rbf
     _tile: object = None  # f(dot, a_sq, b_sq), from _tile_transform
+    _device_kind: str = "cpu"  # the MLX device ``backend`` resolves to here
 
     def __post_init__(self) -> None:
         import mlx.core as mx
 
-        with use_device(_device(self.backend)):
+        self._device_kind = inference_device(self.backend)
+        with use_device(self._device_kind):
             data = mx.array(self.X, dtype=mx.float32)
             self._device_X = data
-            self._tile = _tile_transform(mx, self.spec, self.backend)
+            self._tile = _tile_transform(mx, self.spec, self._device_kind)
             if self.spec.kernel == "rbf":
                 self._device_sq = mx.sum(data * data, axis=1)
                 mx.eval(data, self._device_sq)
@@ -926,11 +932,11 @@ class KernelRows:
         the batch-dependent last bits that mixing :meth:`row` and :meth:`rows`
         brings on that device (see Notes).
         """
-        return _GPU_PREFETCH_ROWS if self.backend == "mlx" else 0
+        return _GPU_PREFETCH_ROWS if self._device_kind == "gpu" else 0
 
     def row(self, index: int) -> np.ndarray:
         """``K(X[index], X)`` as a float32 array of length ``n_samples``."""
-        if self.backend == "mlx":
+        if self._device_kind == "gpu":
             return self.rows(np.array([index]))[0]
 
         import mlx.core as mx
@@ -938,7 +944,7 @@ class KernelRows:
         index = int(index)
         if not 0 <= index < self.n_samples:
             raise IndexError(f"row index must lie in [0, {self.n_samples}); got {index}")
-        with use_device(_device(self.backend)):
+        with use_device(self._device_kind):
             data = self._device_X
             dot = (data @ data[index][:, None])[:, 0]
             if self.spec.kernel == "linear":
@@ -979,7 +985,7 @@ class KernelRows:
         # See the class Notes: one row is a two-column product, never a GEMV.
         chosen = np.repeat(index, 2) if count == 1 else index
 
-        with use_device(_device(self.backend)):
+        with use_device(self._device_kind):
             data = self._device_X
             selected = mx.array(chosen.astype(np.int32))
             a_sq = b_sq = None
