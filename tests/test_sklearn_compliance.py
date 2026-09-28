@@ -198,7 +198,7 @@ def test_xfail_list_is_what_it_claims_to_be():
 
 
 def test_layer1_tags_narrow_what_layer2_allows():
-    """Layer 1 declares it does not take sparse or multi-output; Layer 2 declares it does.
+    """Layer 1 declares it does not take sparse input; Layer 2 declares it does.
 
     An estimator that advertises a capability and then raises is lying to every
     meta-estimator that reads its tags.
@@ -209,6 +209,8 @@ def test_layer1_tags_narrow_what_layer2_allows():
     lenient = get_tags(patched.KNeighborsClassifier())
 
     assert strict.input_tags.sparse is False
-    assert strict.target_tags.multi_output is False
     assert lenient.input_tags.sparse is True
+    # The neighbor estimators serve multi-output targets on the MLX path, so
+    # both layers advertise them.
+    assert strict.target_tags.multi_output is True
     assert lenient.target_tags.multi_output is True

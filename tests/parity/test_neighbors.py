@@ -6,17 +6,46 @@ here invents its own.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 from sklearn import neighbors as sk_neighbors
+from sklearn.exceptions import DataConversionWarning
+from sklearn.utils.estimator_checks import check_estimator, check_param_validation
 
+import mlxlearn
 from mlxlearn._common.config import tuning_context
 from mlxlearn._kernels.distance import build_index
-from mlxlearn.exceptions import SparseInputError, UnsupportedParameterError
+from mlxlearn.exceptions import (
+    CapabilityError,
+    SparseInputError,
+    UnsupportedInputError,
+    UnsupportedParameterError,
+)
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
+from mlxlearn.patching import _estimators as patched
 from tests._helpers import assert_neighbor_parity
 
 BACKENDS = ["mlx", "cpu"]
+
+LAYER1 = [NearestNeighbors, KNeighborsClassifier, KNeighborsRegressor]
+LAYER2 = [patched.NearestNeighbors, patched.KNeighborsClassifier, patched.KNeighborsRegressor]
+SUPERVISED = [
+    (KNeighborsClassifier, sk_neighbors.KNeighborsClassifier),
+    (KNeighborsRegressor, sk_neighbors.KNeighborsRegressor),
+    (patched.KNeighborsClassifier, sk_neighbors.KNeighborsClassifier),
+    (patched.KNeighborsRegressor, sk_neighbors.KNeighborsRegressor),
+]
+
+
+def _layer_id(cls):
+    return ("L2-" if cls._mlxlearn_allow_fallback else "L1-") + cls.__name__
+
+
+def _events(operation=None):
+    events = mlxlearn.get_backend_diagnostics()
+    return [e for e in events if operation is None or e.operation == operation]
 
 
 def sk_reference(X, **kwargs):
@@ -314,7 +343,10 @@ def test_input_layout_does_not_change_results(transform, rng):
         ({"metric": "cosine"}, "metric"),
         ({"metric": "minkowski", "p": 1}, "p"),
         ({"metric": "minkowski", "p": 3}, "p"),
+        ({"metric": "minkowski", "p": 2, "metric_params": {"p": 3}}, "p"),
         ({"metric_params": {"w": [1.0]}}, "metric_params"),
+        ({"metric_params": {"p": 2, "w": [1.0]}}, "metric_params"),
+        ({"metric": "euclidean", "metric_params": {"p": 2}}, "metric_params"),
         ({"weights": lambda d: d}, "weights"),
     ],
 )
@@ -344,13 +376,6 @@ def test_sparse_input_raises_type_error(small_classification_data):
         KNeighborsClassifier(n_neighbors=3).fit(sparse.csr_matrix(X), y)
     assert isinstance(excinfo.value, TypeError)
     assert "sparse" in str(excinfo.value).lower()
-
-
-def test_multioutput_y_raises(rng):
-    X = rng.normal(size=(200, 4))
-    y = rng.integers(0, 2, size=(200, 2))
-    with pytest.raises(UnsupportedParameterError, match="single-output"):
-        KNeighborsClassifier(n_neighbors=3).fit(X, y)
 
 
 def test_nan_input_raises(small_classification_data):
@@ -423,3 +448,571 @@ def test_layer1_cannot_be_forced_to_sklearn(small_classification_data):
     with tuning_context(force_backend="sklearn"):
         with pytest.raises(MLXLearnError, match="Layer 1 estimators never dispatch"):
             KNeighborsClassifier(n_neighbors=3).fit(X, y)
+
+
+# ----------------------------------------------------------------------------------
+# parameter validation -- scikit-learn's constraints, in both layers
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cls", LAYER1 + LAYER2, ids=_layer_id)
+def test_check_param_validation(cls):
+    """scikit-learn's own check, which ``check_estimator`` does not run.
+
+    Overriding ``fit`` drops the ``_fit_context`` that validates constructor
+    parameters, so without an explicit ``_validate_params()`` an invalid value
+    was accepted and an invalid ``algorithm`` reported as a capability mismatch.
+    """
+    check_param_validation(cls.__name__, cls())
+
+
+@pytest.mark.parametrize("cls", LAYER2, ids=_layer_id)
+def test_check_param_validation_on_the_patched_mlx_path(cls):
+    """The check's 20-row data is below the crossover, so patched mode hands the
+    fit to scikit-learn, which validates on its own. Forcing MLX is what reaches
+    mlxlearn's fit."""
+    with tuning_context(force_backend="mlx"):
+        check_param_validation(cls.__name__, cls())
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [KNeighborsClassifier, KNeighborsRegressor, patched.KNeighborsClassifier, patched.KNeighborsRegressor],
+    ids=_layer_id,
+)
+def test_n_neighbors_zero_is_rejected_above_the_crossover(cls, rng):
+    """It used to fit, then predict ``classes_[0]`` (or NaN) for every row."""
+    X = rng.normal(size=(600, 16))
+    y = rng.integers(0, 3, 600)
+    with pytest.raises(ValueError, match="The 'n_neighbors' parameter of .* must be"):
+        cls(n_neighbors=0).fit(X, y)
+
+
+def test_n_neighbors_bound_message_matches_sklearn(rng):
+    """Including the ``n_samples`` suffix, and the order of the checks."""
+    X = rng.normal(size=(300, 16))
+    Q = rng.normal(size=(2, 16))
+    mine = NearestNeighbors().fit(X)
+    theirs = sk_neighbors.NearestNeighbors(algorithm="brute").fit(X)
+
+    for query, k in ((Q, 301), (None, 300)):
+        with pytest.raises(ValueError) as expected:
+            theirs.kneighbors(query, n_neighbors=k)
+        with pytest.raises(ValueError) as got:
+            mine.kneighbors(query, n_neighbors=k)
+        assert str(got.value) == str(expected.value)
+
+    # scikit-learn validates the query before the bound, so a wrong width wins.
+    with pytest.raises(ValueError, match="X has 3 features"):
+        mine.kneighbors(Q[:, :3], n_neighbors=500)
+    with pytest.raises(ValueError, match="Expected n_neighbors > 0. Got -1$"):
+        mine.kneighbors(Q, n_neighbors=-1.5)
+
+
+# ----------------------------------------------------------------------------------
+# targets -- column vectors, multi-output, and no aliasing
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("weights", ["uniform", "distance"])
+@pytest.mark.parametrize("n_samples", [120, 600], ids=["below-crossover", "above-crossover"])
+@pytest.mark.parametrize("cls", [KNeighborsRegressor, patched.KNeighborsRegressor], ids=_layer_id)
+def test_regressor_column_vector_y_keeps_its_shape(cls, n_samples, weights, rng):
+    """A ``(n, 1)`` target predicts ``(n_queries, 1)``, as scikit-learn's does, silently.
+
+    The MLX path used to ravel it with a DataConversionWarning, so under
+    ``patch_sklearn()`` the output shape depended on the size of the data, and
+    ``pred - y_test`` quietly broadcast to a square matrix.
+    """
+    X = rng.normal(size=(n_samples, 16))
+    y = rng.normal(size=(n_samples, 1))
+    Q = rng.normal(size=(9, 16))
+    ref = sk_neighbors.KNeighborsRegressor(n_neighbors=5, weights=weights).fit(X, y).predict(Q)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DataConversionWarning)
+        pred = cls(n_neighbors=5, weights=weights).fit(X, y).predict(Q)
+
+    assert pred.shape == ref.shape == (9, 1)
+    np.testing.assert_allclose(pred, ref, atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("cls", [KNeighborsClassifier, patched.KNeighborsClassifier], ids=_layer_id)
+def test_classifier_column_vector_y_warns_and_ravels_like_sklearn(cls, rng):
+    X = rng.normal(size=(600, 16))
+    y = rng.integers(0, 3, size=(600, 1))
+    Q = rng.normal(size=(9, 16))
+    with pytest.warns(DataConversionWarning):
+        ref = sk_neighbors.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+
+    with pytest.warns(DataConversionWarning, match="column-vector y"):
+        model = cls(n_neighbors=5).fit(X, y)
+
+    assert model.outputs_2d_ is False
+    np.testing.assert_array_equal(model.classes_, ref.classes_)
+    np.testing.assert_array_equal(model.predict(Q), ref.predict(Q))
+
+
+@pytest.mark.parametrize("weights", ["uniform", "distance"])
+@pytest.mark.parametrize("cls", [KNeighborsClassifier, patched.KNeighborsClassifier], ids=_layer_id)
+def test_multi_output_classification_matches_sklearn(cls, weights, rng):
+    """Multi-output targets stay on the MLX path; only the vote runs per output."""
+    X = rng.normal(size=(600, 16))
+    Y = np.column_stack([rng.integers(0, 3, 600), 10 * rng.integers(0, 2, 600) + 5])
+    Q = np.vstack([X[:10], rng.normal(size=(40, 16))])
+
+    ref = sk_neighbors.KNeighborsClassifier(n_neighbors=7, weights=weights).fit(X, Y)
+    model = cls(n_neighbors=7, weights=weights).fit(X, Y)
+
+    assert model.execution_backend_ != "sklearn"
+    assert model.outputs_2d_ is True
+    for mine, theirs in zip(model.classes_, ref.classes_, strict=True):
+        np.testing.assert_array_equal(mine, theirs)
+    np.testing.assert_array_equal(model.predict(Q), ref.predict(Q))
+    for mine, theirs in zip(model.predict_proba(Q), ref.predict_proba(Q), strict=True):
+        np.testing.assert_allclose(mine, theirs, atol=1e-5)
+
+
+@pytest.mark.parametrize("weights", ["uniform", "distance"])
+@pytest.mark.parametrize("cls", [KNeighborsRegressor, patched.KNeighborsRegressor], ids=_layer_id)
+def test_multi_output_regression_matches_sklearn(cls, weights, rng):
+    X = rng.normal(size=(600, 16))
+    Y = rng.normal(size=(600, 3))
+    Q = np.vstack([X[:10], rng.normal(size=(40, 16))])
+
+    ref = sk_neighbors.KNeighborsRegressor(n_neighbors=7, weights=weights).fit(X, Y).predict(Q)
+    model = cls(n_neighbors=7, weights=weights).fit(X, Y)
+
+    assert model.execution_backend_ != "sklearn"
+    pred = model.predict(Q)
+    assert pred.shape == ref.shape == (50, 3)
+    np.testing.assert_allclose(pred, ref, atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_mutating_float64_y_after_fit_does_not_change_predictions(backend, regression_data):
+    """``validate_data`` hands back the caller's own buffer for a float64 ``y``.
+
+    The regressor used to keep it, so writing into ``y`` after fit changed its
+    predictions. An int ``y`` is copied by conversion, which is why the invariant
+    test that mutates a classification target never saw this.
+    """
+    X, y = regression_data
+    y = np.array(y, dtype=np.float64)
+    with tuning_context(force_backend=backend):
+        model = KNeighborsRegressor(n_neighbors=5).fit(X, y)
+    before = model.predict(X[:20])
+
+    assert not np.shares_memory(model._y, y)
+    assert not hasattr(model, "_y_checked_")
+    y[:] = 1000.0
+    np.testing.assert_array_equal(before, model.predict(X[:20]))
+
+
+def test_vote_helpers_match_a_naive_accumulation(rng):
+    """``np.bincount`` replaced ``np.add.at``; the sums must be bitwise the same."""
+    from mlxlearn.neighbors._base import class_probabilities, weighted_mode
+
+    codes = rng.integers(0, 4, size=(200, 7))
+    for weights in (None, rng.random((200, 7))):
+        naive = np.zeros((200, 4))
+        rows = np.repeat(np.arange(200), 7)
+        np.add.at(naive, (rows, codes.ravel()), 1.0 if weights is None else weights.ravel())
+        np.testing.assert_array_equal(
+            class_probabilities(codes, weights, 4), naive / naive.sum(axis=1, keepdims=True)
+        )
+        np.testing.assert_array_equal(weighted_mode(codes, weights, 4), naive.argmax(axis=1))
+
+
+# ----------------------------------------------------------------------------------
+# input handling -- strings, sparse queries, prebuilt indexes
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cls", LAYER1 + LAYER2, ids=_layer_id)
+def test_string_data_is_rejected_like_sklearn(cls, rng):
+    """An explicit float32 dtype made ``check_array`` parse ``"1.5"``; stock refuses it.
+
+    Under ``patch_sklearn()`` that meant string data raised below the crossover
+    and was accepted above it.
+    """
+    X = rng.normal(size=(600, 16))
+    y = rng.integers(0, 2, 600)
+    for strings in (X.astype(str), X.astype(str).tolist()):
+        with pytest.raises(ValueError, match="bytes/strings"):
+            cls().fit(strings, y)
+
+    model = cls().fit(X, y)
+    with pytest.raises(ValueError, match="bytes/strings"):
+        model.kneighbors(X[:3].astype(str))
+
+
+def test_object_arrays_of_numbers_are_still_accepted(rng):
+    """scikit-learn converts object arrays, so mlxlearn must not start refusing them."""
+    X = rng.normal(size=(600, 16))
+    reference = NearestNeighbors(n_neighbors=3).fit(X).kneighbors(X[:5])
+    result = NearestNeighbors(n_neighbors=3).fit(X.astype(object)).kneighbors(X[:5].astype(object))
+    np.testing.assert_array_equal(result[1], reference[1])
+
+
+def _sparse_query_problem(rng):
+    X = rng.normal(size=(600, 32))
+    y = rng.integers(0, 3, 600)
+    Q = rng.normal(size=(40, 32))
+    Q[Q < 0.5] = 0.0
+    return X, y, Q
+
+
+def test_patched_mlx_fit_answers_sparse_queries_like_sklearn(rng):
+    """Layer 2 advertises sparse input, and stock brute force serves this query.
+
+    The MLX fit populates the state scikit-learn's brute-force search reads, so a
+    sparse query is answered by it, recorded as one fallback event on the call.
+    """
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y, Q = _sparse_query_problem(rng)
+    ref = sk_neighbors.KNeighborsClassifier(n_neighbors=5, algorithm="brute").fit(X, y)
+    model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    assert model.execution_backend_ != "sklearn"
+
+    mlxlearn.clear_backend_diagnostics()
+    with pytest.warns(mlxlearn.MLXLearnFallbackWarning, match="sparse"):
+        pred = model.predict(sparse.csr_matrix(Q))
+    np.testing.assert_array_equal(pred, ref.predict(Q))
+    [event] = _events()
+    assert (event.operation, event.backend, event.reason) == ("predict", "sklearn", "sparse-input")
+    assert event.fallback
+
+    dist, idx = model.kneighbors(sparse.csr_matrix(Q))
+    assert_neighbor_parity(dist, idx, *ref.kneighbors(Q), atol=1e-5)
+    np.testing.assert_allclose(model.predict_proba(sparse.csr_matrix(Q)), ref.predict_proba(Q))
+
+
+def test_patched_sparse_query_honors_fallback_policy_raise(rng):
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y, Q = _sparse_query_problem(rng)
+    model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    with mlxlearn.config_context(fallback_policy="raise"):
+        with pytest.raises(CapabilityError, match="fallback_policy='raise'"):
+            model.predict(sparse.csr_matrix(Q))
+
+
+def test_layer1_mlx_fit_still_raises_on_sparse_queries(rng):
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y, Q = _sparse_query_problem(rng)
+    model = KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    with pytest.raises(SparseInputError, match="predict received sparse input"):
+        model.predict(sparse.csr_matrix(Q))
+    with pytest.raises(SparseInputError, match="kneighbors received sparse input"):
+        model.kneighbors(sparse.csr_matrix(Q))
+
+
+@pytest.mark.parametrize(
+    "make_index",
+    [
+        lambda X: sk_neighbors.KDTree(X),
+        lambda X: sk_neighbors.BallTree(X),
+        lambda X: sk_neighbors.NearestNeighbors().fit(X),
+    ],
+    ids=["KDTree", "BallTree", "fitted-estimator"],
+)
+def test_prebuilt_index_is_a_capability_mismatch(make_index, rng):
+    """scikit-learn's fit accepts a prebuilt index; mlxlearn used to fail with a TypeError."""
+    X = rng.normal(size=(600, 16))
+    Q = rng.normal(size=(5, 16))
+    index = make_index(X)
+    ref = sk_neighbors.NearestNeighbors(n_neighbors=3).fit(index)
+
+    with pytest.warns(mlxlearn.MLXLearnFallbackWarning, match="prebuilt"):
+        model = patched.NearestNeighbors(n_neighbors=3).fit(index)
+    assert model.execution_backend_ == "sklearn"
+    np.testing.assert_array_equal(model.kneighbors(Q)[1], ref.kneighbors(Q)[1])
+
+    with pytest.raises(UnsupportedInputError) as excinfo:
+        NearestNeighbors(n_neighbors=3).fit(index)
+    assert excinfo.value.reason == "prebuilt-index"
+
+
+# ----------------------------------------------------------------------------------
+# radius queries and fitted attributes
+# ----------------------------------------------------------------------------------
+
+
+def _assert_radius_parity(mine, theirs, radius, *, atol=1e-5):
+    """Same neighbor sets, except for points sitting on the radius itself."""
+    (m_dist, m_idx), (t_dist, t_idx) = mine, theirs
+    for md, mi, td, ti in zip(m_dist, m_idx, t_dist, t_idx, strict=True):
+        mine_d = dict(zip(mi.tolist(), md.tolist(), strict=True))
+        theirs_d = dict(zip(ti.tolist(), td.tolist(), strict=True))
+        for i in set(mine_d) ^ set(theirs_d):
+            assert abs(mine_d.get(i, theirs_d.get(i)) - radius) <= atol
+        for i in set(mine_d) & set(theirs_d):
+            assert abs(mine_d[i] - theirs_d[i]) <= atol
+
+
+def test_radius_neighbors_matches_sklearn_and_gets_a_float32_query(monkeypatch, rng):
+    """The training copy is float32. A float64 query used to miss scikit-learn's
+    Cython radius search, which requires matching dtypes, and ran about 4.5x
+    slower than stock on its chunked fallback."""
+    X = rng.normal(size=(2000, 16))
+    Q = rng.normal(size=(50, 16))
+    radius = 4.5
+    model = NearestNeighbors(radius=radius).fit(X)
+    ref = sk_neighbors.NearestNeighbors(radius=radius, algorithm="brute").fit(
+        X.astype(np.float32).astype(np.float64)
+    )
+
+    _assert_radius_parity(model.radius_neighbors(Q), ref.radius_neighbors(Q), radius)
+    _assert_radius_parity(model.radius_neighbors(), ref.radius_neighbors(), radius)
+    sorted_dist, _ = model.radius_neighbors(Q, sort_results=True)
+    assert all(np.all(np.diff(row) >= 0) for row in sorted_dist)
+    for mode in ("connectivity", "distance"):
+        graph = model.radius_neighbors_graph(Q, mode=mode)
+        expected = ref.radius_neighbors_graph(Q, mode=mode)
+        assert abs(graph - expected).max() <= 1e-5
+
+    seen = []
+    original = sk_neighbors.NearestNeighbors.radius_neighbors
+
+    def spy(self, X=None, *args, **kwargs):
+        seen.append(None if X is None else X.dtype)
+        return original(self, X, *args, **kwargs)
+
+    monkeypatch.setattr(sk_neighbors.NearestNeighbors, "radius_neighbors", spy)
+    mlxlearn.clear_backend_diagnostics()
+    model.radius_neighbors(Q)
+    assert seen == [np.dtype(np.float32)] == [model._fit_X.dtype]
+    assert [(e.operation, e.reason) for e in _events()] == [("radius_neighbors", "sticky")]
+
+
+@pytest.mark.parametrize(
+    "metric, expected",
+    [("minkowski", "euclidean"), ("euclidean", "euclidean"), ("l2", "l2"), ("sqeuclidean", "sqeuclidean")],
+)
+def test_effective_metric_matches_sklearn(metric, expected, rng):
+    X = rng.normal(size=(600, 16))
+    model = NearestNeighbors(metric=metric).fit(X)
+    ref = sk_neighbors.NearestNeighbors(metric=metric).fit(X)
+    assert model.execution_backend_ != "sklearn"
+    assert model.effective_metric_ == ref.effective_metric_ == expected
+    assert model.effective_metric_params_ == ref.effective_metric_params_
+
+
+@pytest.mark.parametrize("weights", ["uniform", "distance"])
+def test_sqeuclidean_matches_sklearn(weights, rng):
+    """The kernel's own squared distances: same neighbors, distances squared, and
+    ``weights='distance'`` weighting by ``1/d**2`` exactly as scikit-learn does."""
+    X = rng.normal(size=(600, 16))
+    y = rng.integers(0, 3, 600)
+    Q = np.vstack([X[:10], rng.normal(size=(40, 16))])
+    kwargs = {"n_neighbors": 7, "metric": "sqeuclidean", "weights": weights}
+
+    ref = sk_neighbors.KNeighborsClassifier(**kwargs).fit(X, y)
+    model = KNeighborsClassifier(**kwargs).fit(X, y)
+    assert model.execution_backend_ != "sklearn"
+
+    assert_neighbor_parity(*model.kneighbors(Q), *ref.kneighbors(Q), atol=1e-5)
+    np.testing.assert_array_equal(model.predict(Q), ref.predict(Q))
+    np.testing.assert_allclose(model.predict_proba(Q), ref.predict_proba(Q), atol=1e-5)
+
+
+@pytest.mark.parametrize("p", [2, 1, None])
+def test_minkowski_p_in_metric_params_is_resolved_like_sklearn(p, rng):
+    """``metric_params={'p': 2}`` is Euclidean, whatever ``p`` says, as in scikit-learn.
+
+    It used to be refused outright, and ``p=1`` alongside it was refused as
+    Manhattan although scikit-learn ignores ``p`` then and computes Euclidean.
+    """
+    X = rng.normal(size=(600, 16))
+    Q = rng.normal(size=(20, 16))
+    kwargs = {"n_neighbors": 5, "metric": "minkowski", "p": p, "metric_params": {"p": 2}}
+
+    with warnings.catch_warnings(record=True) as expected:
+        warnings.simplefilter("always")
+        ref = sk_neighbors.NearestNeighbors(**kwargs).fit(X)
+    with warnings.catch_warnings(record=True) as got:
+        warnings.simplefilter("always")
+        model = NearestNeighbors(**kwargs).fit(X)
+
+    assert model.execution_backend_ != "sklearn"
+    assert [w.category for w in got] == [w.category for w in expected]
+    assert (SyntaxWarning in [w.category for w in got]) is (p is not None)
+    assert model.effective_metric_ == ref.effective_metric_ == "euclidean"
+    assert model.effective_metric_params_ == ref.effective_metric_params_ == {}
+    assert_neighbor_parity(*model.kneighbors(Q), *ref.kneighbors(Q))
+
+
+# ----------------------------------------------------------------------------------
+# refit hygiene and diagnostics
+# ----------------------------------------------------------------------------------
+
+
+def test_refit_onto_sklearn_drops_the_previous_index(classification_data):
+    """The old index — a float32 copy of the training set, plus device buffers —
+    used to survive a refit that fell back, in memory and in every pickle."""
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y = classification_data
+    with tuning_context(force_backend="mlx"):
+        model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    assert hasattr(model, "_index_")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", mlxlearn.MLXLearnFallbackWarning)
+        model.fit(sparse.csr_matrix(X[:500]), y[:500])
+
+    assert model.execution_backend_ == "sklearn"
+    assert not hasattr(model, "_index_")
+    assert model._fit_X.shape == (500, X.shape[1])
+
+
+def test_failed_refit_keeps_nothing_of_the_previous_fit(classification_data):
+    from mlxlearn.exceptions import MLXLearnError
+
+    sparse = pytest.importorskip("scipy.sparse")
+    X, y = classification_data
+    model = KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    with pytest.raises(SparseInputError):
+        model.fit(sparse.csr_matrix(X), y)
+
+    assert not hasattr(model, "_index_")
+    assert not hasattr(model, "_fit_X")
+    with pytest.raises(MLXLearnError, match="no recorded execution backend"):
+        model.predict(X[:3])
+
+
+@pytest.mark.parametrize("algorithm", ["brute", "kd_tree"], ids=["mlx-fitted", "sklearn-fitted"])
+@pytest.mark.parametrize(
+    "cls, method",
+    [
+        (patched.KNeighborsClassifier, "predict"),
+        (patched.KNeighborsClassifier, "predict_proba"),
+        (patched.KNeighborsClassifier, "kneighbors"),
+        (patched.KNeighborsRegressor, "predict"),
+    ],
+    ids=lambda v: v if isinstance(v, str) else v.__name__,
+)
+def test_one_inference_event_per_public_call(cls, method, algorithm, classification_data):
+    """Named after the call, whichever backend fitted the model.
+
+    The MLX path recorded ``predict`` as ``kneighbors``; the scikit-learn path
+    recorded it twice, as ``predict`` and again as the ``kneighbors`` stock
+    ``predict`` makes back into the class.
+    """
+    X, y = classification_data
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", mlxlearn.MLXLearnFallbackWarning)
+        model = cls(n_neighbors=5, algorithm=algorithm).fit(X, y)
+
+    mlxlearn.clear_backend_diagnostics()
+    getattr(model, method)(X[:10])
+
+    events = _events()
+    assert [(e.operation, e.reason) for e in events] == [(method, "sticky")]
+    assert events[0].backend == model.execution_backend_
+
+
+@pytest.mark.parametrize("cls", LAYER2, ids=_layer_id)
+def test_patched_mlx_path_passes_sklearn_checks(cls):
+    """At check_estimator's data sizes patched mode hands every fit to scikit-learn,
+    so the Layer 2 compliance run never reaches mlxlearn's own fit or inference.
+    Forced onto MLX, it does — multi-output targets included."""
+    with tuning_context(force_backend="mlx"):
+        results = check_estimator(cls(), on_fail=None)
+    failures = [
+        f"{r['check_name']}: {r['exception']}" for r in results if r["status"] == "failed"
+    ]
+    assert not failures, "\n".join(failures)
+
+
+# ----------------------------------------------------------------------------------
+# patched dispatch -- decided from the shape, before touching the data
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "shape, reason", [((120, 5), "below-crossover"), ((5000, 3), "tree-wins")]
+)
+def test_patched_handoff_does_not_scan_or_copy_the_data(shape, reason, monkeypatch, rng):
+    """Patched mode decides these from ``X.shape`` alone and records one event.
+
+    It used to scan for float32 overflow and make a validated float32 copy first —
+    pure overhead for work scikit-learn validates again, which made the handoff
+    slower than the stock fit it stands in for.
+    """
+    from mlxlearn.neighbors import _base
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("a fit handed to scikit-learn touched the data first")
+
+    for name in ("check_float32_range", "validate_data", "build_index"):
+        monkeypatch.setattr(_base, name, forbidden)
+
+    X = rng.normal(size=shape)
+    y = (X[:, 0] > 0).astype(int)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", mlxlearn.MLXLearnFallbackWarning)
+        model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+
+    assert model.execution_backend_ == "sklearn"
+    assert [(e.backend, e.reason) for e in _events("fit")] == [("sklearn", reason)]
+    ref = sk_neighbors.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    np.testing.assert_array_equal(model.predict(X[:50]), ref.predict(X[:50]))
+
+
+def test_patched_low_dimensional_auto_goes_to_sklearns_kd_tree(rng):
+    """Stock ``algorithm='auto'`` answers this with a KD-tree brute force cannot touch.
+
+    Measured at 200 000 x 4 the MLX scan was 15x-25x slower than the tree it
+    replaced under patch_sklearn(), and about 100x at 1 000 000 x 3.
+    """
+    X = rng.normal(size=(5000, 3))
+    Q = rng.normal(size=(20, 3))
+    model = patched.NearestNeighbors(n_neighbors=5).fit(X)
+
+    assert model.execution_backend_ == "sklearn"
+    assert model._fit_method == "kd_tree"
+    [event] = _events("fit")
+    assert event.reason == "tree-wins" and event.fallback
+    ref = sk_neighbors.NearestNeighbors(n_neighbors=5).fit(X)
+    np.testing.assert_array_equal(model.kneighbors(Q)[1], ref.kneighbors(Q)[1])
+
+
+@pytest.mark.parametrize(
+    "cls, kwargs, shape",
+    [
+        (patched.NearestNeighbors, {"algorithm": "brute"}, (5000, 3)),
+        (NearestNeighbors, {}, (5000, 3)),
+        (patched.NearestNeighbors, {}, (3000, 3)),
+        (patched.NearestNeighbors, {}, (5000, 16)),
+        (patched.NearestNeighbors, {"n_neighbors": 2500}, (5000, 3)),
+    ],
+    ids=["explicit-brute", "layer1", "sparse-for-its-dimension", "wide", "k-over-half-n"],
+)
+def test_tree_rule_leaves_everything_else_on_mlx(cls, kwargs, shape, rng):
+    """Only where scikit-learn itself would build a tree, and the tree would win.
+
+    An explicit ``algorithm='brute'`` is compared brute against brute, where MLX
+    wins; Layer 1 has no tree to hand the work to.
+    """
+    model = cls(**kwargs).fit(rng.normal(size=shape))
+    assert model.execution_backend_ != "sklearn"
+
+
+def test_tree_rule_is_a_tuning_knob_that_force_backend_outranks(rng):
+    X = rng.normal(size=(5000, 3))
+    with tuning_context(knn_tree_density=0):
+        assert patched.NearestNeighbors().fit(X).execution_backend_ != "sklearn"
+    with tuning_context(knn_tree_density=4):
+        assert patched.NearestNeighbors().fit(X[:300]).execution_backend_ == "sklearn"
+    with tuning_context(force_backend="mlx"):
+        assert patched.NearestNeighbors().fit(X).execution_backend_ == "mlx"
+
+
+def test_capability_mismatch_outranks_the_tree_rule(rng):
+    """A metric mlxlearn cannot serve is reported as that, with its warning."""
+    X = rng.normal(size=(5000, 3))
+    with pytest.warns(mlxlearn.MLXLearnFallbackWarning, match="metric"):
+        model = patched.NearestNeighbors(metric="manhattan").fit(X)
+    assert model.execution_backend_ == "sklearn"
+    [event] = _events("fit")
+    assert event.reason == "unsupported-parameter:metric"

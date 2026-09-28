@@ -197,6 +197,14 @@ class Tuning:
     knn_min_train_samples: int = 256
     knn_min_work: int = 2_048  # n_train * n_features
     #
+    # Patched mode only: with algorithm='auto', stock scikit-learn answers low-d
+    # data with a KD-tree, which beats a brute-force scan once n_train >= this *
+    # 2**n_features (see MLXNeighborsMixin._tree_wins). Measured on Gaussian data,
+    # k=5, 256-4096 queries: the scan runs 0.04x-0.88x of the tree at density >= 781
+    # (200000 x 4..8, 1e6 x 8..10) and 1.3x-12x at density <= 312 (20000 x 6..12,
+    # 200000 x 10..12). 0 disables the rule.
+    knn_tree_density: int = 512
+    #
     # Logistic regression is the opposite story, and the thresholds are high on
     # purpose. Its L-BFGS matches scikit-learn's iteration count but pays a host
     # synchronization per line-search evaluation, so an iteration costs ~5.9 ms
