@@ -866,7 +866,7 @@ def test_refit_onto_sklearn_drops_the_previous_index(classification_data):
 
 
 def test_failed_refit_keeps_nothing_of_the_previous_fit(classification_data):
-    from mlxlearn.exceptions import MLXLearnError
+    from sklearn.exceptions import NotFittedError
 
     sparse = pytest.importorskip("scipy.sparse")
     X, y = classification_data
@@ -876,7 +876,9 @@ def test_failed_refit_keeps_nothing_of_the_previous_fit(classification_data):
 
     assert not hasattr(model, "_index_")
     assert not hasattr(model, "_fit_X")
-    with pytest.raises(MLXLearnError, match="no recorded execution backend"):
+    # An incomplete fit reports the estimator unfitted (BackendMixin.__sklearn_is_fitted__):
+    # scikit-learn's NotFittedError, which its callers catch, not a bare MLXLearnError.
+    with pytest.raises(NotFittedError):
         model.predict(X[:3])
 
 

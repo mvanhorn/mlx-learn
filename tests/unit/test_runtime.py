@@ -368,10 +368,23 @@ def test_inference_device_keeps_the_fitted_device_when_it_exists(monkeypatch):
 def test_gpu_fitted_inference_on_a_gpu_less_host_is_recorded(monkeypatch, data):
     X, y = data
     with tuning_context(force_backend="mlx"):
-        model = LogisticRegression().fit(X, y)
+        model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
     monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
     model.predict(X[:10])
     assert mlxlearn.get_last_backend_event().reason == "gpu-unavailable"
+
+
+def test_host_side_inference_is_not_gpu_unavailable(monkeypatch, data):
+    """LogisticRegression predicts in NumPy float64 on every backend: no GPU is missed."""
+    X, y = data
+    with tuning_context(force_backend="mlx"):
+        model = LogisticRegression().fit(X, y)
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    model.predict(X[:10])
+    event = mlxlearn.get_last_backend_event()
+    assert (event.backend, event.reason) == ("mlx", "sticky")
+    assert event.extra["compute"] == "numpy-float64"
+    assert event.extra["fit_reason"] == "forced"
 
 
 # ======================================================================================
@@ -485,11 +498,15 @@ def test_an_mlx_crash_at_inference_raises_too(monkeypatch, data, layer):
 
 def _grow_cache(mx, n_bytes: int) -> None:
     # A computed buffer, freed, lands in MLX's cache. The trailing tiny eval makes
-    # MLX drop its own last reference to the big one.
+    # MLX drop its own last reference to the big one. The synchronize waits for the
+    # command buffer's completion handler, which frees that eval's own temporaries
+    # on another thread: without it they could land in the cache just *after* the
+    # release under test, and the "== 0" checks failed about one run in three.
     buffer = mx.ones((n_bytes // 4,), dtype=mx.float32) * 2
     mx.eval(buffer)
     del buffer
     mx.eval(mx.zeros((1,)))
+    mx.synchronize()
 
 
 def test_a_block_that_grew_the_cache_releases_it():
@@ -626,8 +643,11 @@ def test_logistic_predict_records_once(data):
     model = LogisticRegression().fit(X, y)
     assert _events_of(lambda: model.predict(X)) == [("predict", "cpu")]
     assert _events_of(lambda: model.predict_proba(X)) == [("predict_proba", "cpu")]
-    assert _events_of(lambda: model.predict_log_proba(X)) == [("predict_proba", "cpu")]
-    assert _events_of(lambda: model.score(X, y)) == [("predict", "cpu")]
+    # Named after the call the user made: LogisticRegression overrides
+    # predict_log_proba and score itself, so they are not recorded as the
+    # predict_proba and predict they use.
+    assert _events_of(lambda: model.predict_log_proba(X)) == [("predict_log_proba", "cpu")]
+    assert _events_of(lambda: model.score(X, y)) == [("score", "cpu")]
 
 
 def test_mlx_neighbors_predict_is_recorded_as_predict(data):

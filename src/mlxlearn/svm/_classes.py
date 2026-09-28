@@ -641,9 +641,11 @@ class MLXSVCMixin(BackendMixin):
         # reported convergence after one iteration, and the fit returned a NaN
         # intercept with fit_status_=0 -- a model predicting one class for
         # everything, silently. Checked before any attribute is assigned, so a
-        # failed fit leaves no half-populated estimator behind.
+        # failed fit leaves no half-populated estimator behind. InvalidInputError,
+        # a ValueError, because this runs inside mlx_guard, which reports a plain
+        # ValueError as an MLX failure.
         if not (np.isfinite(rho).all() and np.isfinite(dual_coef).all()):
-            raise ValueError(
+            raise InvalidInputError(
                 "The dual coefficients or intercepts are not finite. The input data "
                 "may contain large values and need to be preprocessed. (mlxlearn "
                 "evaluates the kernel in float32, where these kernel values "

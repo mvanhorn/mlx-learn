@@ -29,7 +29,6 @@ from mlxlearn._common.config import tuning_context
 from mlxlearn._common.device import gpu_available
 from mlxlearn._solvers.logistic import reference_objective
 from mlxlearn.exceptions import (
-    MLXLearnError,
     SparseInputError,
     UnsupportedInputError,
     UnsupportedParameterError,
@@ -885,7 +884,23 @@ def test_a_refit_that_failed_partway_does_not_predict_from_mixed_state():
     model = LogisticRegression().fit(X, y)
     with pytest.raises(ValueError, match="at least 2 classes"):
         model.fit(X, np.full(len(y), 7))
-    with pytest.raises(MLXLearnError, match="no recorded execution backend"):
+    # An incomplete fit reports the estimator unfitted (BackendMixin.__sklearn_is_fitted__),
+    # so this is scikit-learn's NotFittedError — which handlers written against
+    # scikit-learn catch — rather than a bare MLXLearnError.
+    with pytest.raises(NotFittedError):
+        model.predict(X)
+
+
+def test_a_patched_refit_that_failed_in_scikit_learn_does_not_predict_either():
+    """The below-crossover path lifts the in-progress marker for scikit-learn's fit."""
+    X, y = _data(n_samples=400)
+    model = PatchedLogisticRegression().fit(X, y)
+    assert model.execution_backend_ == "sklearn"
+    X_bad = X.copy()
+    X_bad[0, 0] = np.nan
+    with pytest.raises(ValueError):
+        model.fit(X_bad, y)
+    with pytest.raises(NotFittedError):
         model.predict(X)
 
 
@@ -908,7 +923,8 @@ def test_one_diagnostics_event_per_public_call(method):
 
     events = mlxlearn.get_backend_diagnostics()
     assert [(e.operation, e.backend, e.reason) for e in events] == [(method, "cpu", "sticky")]
-    assert events[0].extra == {"compute": "numpy-float64"}
+    # fit_reason: why the model was fitted where it was, as every sticky event says.
+    assert events[0].extra == {"compute": "numpy-float64", "fit_reason": model.fit_event_.reason}
 
 
 # ------------------------------------------------ scikit-learn's fit-time warnings
@@ -1006,6 +1022,33 @@ def test_callbacks_see_every_iteration(backend, n_classes):
     reference = _Recorder()
     stock = SkLogisticRegression().set_callbacks(reference).fit(X, y)
     assert reference.hooks["begin"] == int(stock.n_iter_[0]) + 2
+
+
+class _FailingRecorder(_Recorder):
+    """Raises from the per-iteration hook, which runs inside the guarded solver."""
+
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    def on_fit_task_end(self, estimator, context, **kwargs):
+        super().on_fit_task_end(estimator, context, **kwargs)
+        if self.hooks["end"] == 2:
+            raise self.error
+
+
+@pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")
+@pytest.mark.parametrize("error", [ValueError("from the callback"), KeyError("callback")])
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_callback_error_is_raised_as_itself(backend, error):
+    """Not as a BackendExecutionError: the callback is the caller's code, not MLX."""
+    if backend == "mlx" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    X, y = _data(n_samples=500, n_features=8)
+    model = LogisticRegression().set_callbacks(_FailingRecorder(error))
+    with tuning_context(force_backend=backend), pytest.raises(type(error)) as excinfo:
+        model.fit(X, y)
+    assert excinfo.value is error
 
 
 @pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")

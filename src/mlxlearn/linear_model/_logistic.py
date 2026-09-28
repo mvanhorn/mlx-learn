@@ -19,6 +19,7 @@ from __future__ import annotations
 import inspect
 import math
 import re
+import sys
 import warnings
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -42,7 +43,11 @@ from .._common.validation import (
     validate_data,
 )
 from .._solvers.logistic import LogisticConfig, solve_logistic
-from ..exceptions import UnsupportedInputError, UnsupportedParameterError
+from ..exceptions import (
+    BackendExecutionError,
+    UnsupportedInputError,
+    UnsupportedParameterError,
+)
 
 try:  # scikit-learn >= 1.9: tears callbacks down after fit, whatever the outcome
     from sklearn.callback import with_callbacks as _with_callbacks
@@ -445,6 +450,14 @@ class MLXLogisticMixin(BackendMixin):
             )
             return
         backend = self._fitted_backend(operation)
+        # Why the model was fitted where it was, as BackendMixin._note_inference
+        # records it for every other estimator. The reason stays "sticky" even for
+        # an MLX-fitted model on a GPU-less host: this inference is host NumPy
+        # float64 on every backend, so no GPU was wanted and none was missed.
+        extra = {}
+        fit_event = self.__dict__.get("_fit_event_")
+        if fit_event is not None:
+            extra["fit_reason"] = fit_event.reason
         self._backend_event(
             operation,
             backend,
@@ -452,6 +465,7 @@ class MLXLogisticMixin(BackendMixin):
             shape=shape,
             fallback=backend == "sklearn",
             compute="numpy-float64",
+            **extra,
         )
 
 
@@ -668,15 +682,21 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                     n_features=X_checked.shape[1],
                 )
 
-        with mlx_guard(type(self).__name__, "fit"):
-            solution = solve_logistic(
-                X_checked,
-                y_encoded.astype(np.int32, copy=False),
-                n_classes=n_classes,
-                sample_weight=weights,
-                config=config,
-                callback=bridge,
-            )
+        try:
+            with mlx_guard(type(self).__name__, "fit"):
+                solution = solve_logistic(
+                    X_checked,
+                    y_encoded.astype(np.int32, copy=False),
+                    n_classes=n_classes,
+                    sample_weight=weights,
+                    config=config,
+                    callback=bridge,
+                )
+        except BackendExecutionError as exc:
+            if bridge is None or bridge.error is None or exc.original is not bridge.error:
+                raise
+            # The user's callback raised, not MLX: re-raise exactly that.
+            raise bridge.error from None
 
         if bridge is not None:
             bridge.close()
@@ -700,13 +720,22 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     def _fit_with_sklearn(self, X, y, sample_weight):
         """Hand the whole fit to scikit-learn, which manages its own fitted state.
 
-        The in-progress marker goes first: scikit-learn 1.9 builds mid-fit copies
-        of this estimator for callbacks, and those have to be able to predict. A
-        scikit-learn fit that fails partway leaves exactly the state it leaves for
-        scikit-learn's own class.
+        The in-progress markers go first: scikit-learn 1.9 builds mid-fit copies
+        of this estimator (``copy.copy``) for callbacks, and those have to be able
+        to predict, so while scikit-learn fits they are judged by its own
+        fitted-attribute rule. A scikit-learn fit that fails partway reports the
+        estimator unfitted again, as every other failed refit does
+        (:meth:`BackendMixin.__sklearn_is_fitted__`), rather than predicting from
+        new ``classes_`` beside the previous ``coef_``.
         """
-        self.__dict__.pop("_mlxlearn_fit_started", None)
-        super().fit(X, y, sample_weight)
+        state = self.__dict__
+        state.pop("_mlxlearn_fit_started", None)
+        state.pop("_mlxlearn_fit_incomplete", None)
+        try:
+            super().fit(X, y, sample_weight)
+        except BaseException:
+            self._begin_fit()
+            raise
         self._set_backend("sklearn")
         return self
 
@@ -896,10 +925,11 @@ class _CallbackBridge:
     usable estimator from it — including the backend that owns it, so that the
     copy scikit-learn builds mid-fit can predict.
 
-    The per-iteration hooks run inside the solver, and so inside ``mlx_guard``: a
-    callback's ``ValueError``/``TypeError`` passes through unchanged, and anything
-    else it raises arrives wrapped in ``BackendExecutionError`` with the original
-    as ``__cause__`` — attributed to the wrong layer, but never swallowed.
+    The per-iteration hooks run inside the solver, and so inside ``mlx_guard``,
+    which reports anything but mlxlearn's own errors as an MLX failure. The bridge
+    therefore keeps what a hook raised (:attr:`error`), and ``fit`` unwraps the
+    ``BackendExecutionError`` built around exactly that and re-raises it unchanged:
+    a callback's error is the caller's, not a backend bug.
     """
 
     def __init__(self, ctx, estimator, X, y, metadata, backend, *, n_targets, n_features):
@@ -909,6 +939,8 @@ class _CallbackBridge:
         self._y = y
         self._metadata = metadata
         self._backend = backend
+        #: What the last per-iteration hook raised, if it did not return.
+        self.error: BaseException | None = None
         self._iteration = self._begin(
             np.zeros((n_targets, n_features)), np.zeros(n_targets)
         )
@@ -928,14 +960,20 @@ class _CallbackBridge:
         return context
 
     def __call__(self, coef, intercept):
-        self._iteration.call_on_fit_task_end(
-            estimator=self._estimator,
-            X=self._X,
-            y=self._y,
-            metadata=self._metadata,
-            reconstruction_attributes=self._attributes(coef, intercept),
-        )
-        self._iteration = self._begin(coef, intercept)
+        returned = False
+        try:
+            self._iteration.call_on_fit_task_end(
+                estimator=self._estimator,
+                X=self._X,
+                y=self._y,
+                metadata=self._metadata,
+                reconstruction_attributes=self._attributes(coef, intercept),
+            )
+            self._iteration = self._begin(coef, intercept)
+            returned = True
+        finally:
+            # Only noted: whatever was raised propagates untouched from here.
+            self.error = None if returned else sys.exc_info()[1]
 
     def close(self):
         self._iteration.call_on_fit_task_end(estimator=self._estimator)

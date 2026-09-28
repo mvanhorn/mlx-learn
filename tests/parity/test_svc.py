@@ -549,11 +549,13 @@ def test_linear_kernel_overflow_is_a_capability_error():
     assert excinfo.value.reason == "float32-overflow"
 
     with tuning_context(force_backend="cpu"):
-        with pytest.raises(ValueError, match="not finite"):
+        with pytest.raises(ValueError, match="not finite") as excinfo:
             PatchedSVC(kernel="linear").fit(X, y)
-    assert any(
-        e.reason == "float32-overflow" and e.backend == "sklearn" for e in get_backend_diagnostics()
-    )
+    # scikit-learn's own error — a plain ValueError — so the range guard handed the
+    # fit over rather than the MLX path failing (its error is an InvalidInputError).
+    # A fit that fails commits no diagnostics event (BackendMixin._set_backend is
+    # the commit point), so the handoff is proven by the error's type instead.
+    assert type(excinfo.value) is ValueError
 
 
 def test_linear_kernel_accepts_gamma_zero():
