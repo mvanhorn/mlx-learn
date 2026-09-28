@@ -17,12 +17,13 @@ import mlx.core as mx
 import numpy as np
 import pytest
 
-from mlxlearn._common.config import config_context, tuning_context
+from mlxlearn._common.config import tuning_context
 from mlxlearn._common.device import gpu_available
 from mlxlearn._kernels import distance
 from mlxlearn._kernels.distance import NeighborIndex, build_index, resolve_blocks
-from mlxlearn.exceptions import DeviceError, UnsupportedInputError
+from mlxlearn.exceptions import UnsupportedInputError
 from mlxlearn.neighbors import KNeighborsRegressor, NearestNeighbors
+from tests._helpers import join_or_fail
 
 MiB = 1024 * 1024
 
@@ -57,7 +58,7 @@ def test_concurrent_first_queries_on_an_unpickled_index(rng, monkeypatch):
     monkeypatch.setattr(distance, "_build_state", slow_build)
 
     n_threads = 12
-    barrier = threading.Barrier(n_threads)
+    barrier = threading.Barrier(n_threads, timeout=60)
     results: list = [None] * n_threads
     errors: list[BaseException] = []
 
@@ -71,11 +72,12 @@ def test_concurrent_first_queries_on_an_unpickled_index(rng, monkeypatch):
     interval = sys.getswitchinterval()
     sys.setswitchinterval(1e-6)
     try:
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+        threads = [
+            threading.Thread(target=worker, args=(i,), daemon=True) for i in range(n_threads)
+        ]
         for thread in threads:
             thread.start()
-        for thread in threads:
-            thread.join()
+        join_or_fail(threads)
     finally:
         sys.setswitchinterval(interval)
 
@@ -170,29 +172,28 @@ def test_query_peak_memory_stays_near_the_budget(backend, rng):
 # ----------------------------------------------------------------------------------
 
 
-def test_a_gpu_built_index_runs_on_the_cpu_where_there_is_no_gpu(rng, monkeypatch):
+def test_a_gpu_built_index_runs_where_it_is_told(rng, monkeypatch):
     """A model fitted on a Mac, unpickled in a process without Metal.
 
-    MLX's CPU runs the same float32 code, so ``device="auto"`` and ``"cpu"`` must
-    serve it; an explicit ``device="gpu"`` still cannot be honored and raises.
-    It used to raise under every setting, advising ``device='auto'``, which was
-    already set.
+    MLX's CPU runs the same float32 code. Whether to use it is the estimator's
+    decision, from the configured device (``inference_device``); the index runs on
+    the device it is handed and reads no configuration. It used to read it itself,
+    below the layer allowed to.
     """
     X = rng.normal(size=(2000, 8)).astype(np.float32)
     Q = rng.normal(size=(40, 8)).astype(np.float32)
-    fitted = build_index(X, backend="mlx")
-    expected_dist, expected_idx = fitted.query(Q, 5)
-    payload = pickle.dumps(fitted)
+    expected_dist, expected_idx = build_index(X, backend="cpu").query(Q, 5)
+
+    def no_configuration():
+        raise AssertionError("the index read the user's configuration")
 
     monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
-    for device in ("auto", "cpu"):
-        with config_context(device=device):
-            dist, idx = pickle.loads(payload).query(Q, 5)
+    monkeypatch.setattr("mlxlearn._common.device.get_config", no_configuration)
+    fitted = build_index(X, backend="mlx", device="cpu")
+    for index in (fitted, pickle.loads(pickle.dumps(fitted))):
+        dist, idx = index.query(Q, 5, device="cpu")
         np.testing.assert_array_equal(idx, expected_idx)
-        np.testing.assert_allclose(dist, expected_dist, rtol=1e-6)
-
-    with config_context(device="gpu"), pytest.raises(DeviceError):
-        pickle.loads(payload).query(Q, 5)
+        np.testing.assert_array_equal(dist, expected_dist)
 
 
 def test_the_cpu_device_does_not_compile(rng, monkeypatch):

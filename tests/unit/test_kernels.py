@@ -476,17 +476,15 @@ def test_prefetch_is_offered_only_where_a_call_is_expensive():
 # --------------------------------------------------------------- a host with no GPU
 
 
-def test_mlx_work_on_a_gpu_less_host_runs_on_the_mlx_cpu(monkeypatch, data):
-    """backend="mlx" names a fitted backend, not a device; inference_device() decides.
+def test_the_kernels_run_where_they_are_told_and_read_no_configuration(monkeypatch, data):
+    """backend="mlx" with a device the caller resolved: MLX's CPU, on a GPU-less host.
 
-    Each kernel used to map "mlx" straight to the GPU, so a GPU-fitted model loaded
-    where no GPU works raised DeviceError under device="auto" — the setting that
-    asks for exactly this degradation. The answer is the CPU backend's, bit for bit:
-    the same float32 code, the same (eager) tile transform, the same blocking.
+    Where a GPU-fitted model runs in a process without a GPU is the estimator's
+    decision (inference_device), from the configured device. The kernels used to
+    read that configuration themselves, below the layer allowed to; they now take
+    the device as an argument. The answer is the CPU backend's, bit for bit: the
+    same float32 code, the same (eager) tile transform, the same blocking.
     """
-    from mlxlearn import config_context
-    from mlxlearn.exceptions import DeviceError
-
     A, B = data
     spec = KernelSpec(kernel="rbf", gamma=0.08)
     weights = np.random.default_rng(3).normal(size=(B.shape[0], 4))
@@ -496,24 +494,17 @@ def test_mlx_work_on_a_gpu_less_host_runs_on_the_mlx_cpu(monkeypatch, data):
         "basis": _combine(spec, A, B, weights, "cpu"),
     }
 
-    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
-    for device in ("auto", "cpu"):
-        with config_context(device=device):
-            rows = build_kernel_rows(B, spec, backend="mlx")
-            assert rows.prefetch_rows == 0  # the CPU's policy, not the GPU's
-            actual = {
-                "matrix": kernel_matrix(spec, A, B, backend="mlx"),
-                "rows": rows.rows([0, 5, 9]),
-                "basis": _combine(spec, A, B, weights, "mlx"),
-            }
-        for name, value in expected.items():
-            np.testing.assert_array_equal(actual[name], value, err_msg=name)
+    def no_configuration():
+        raise AssertionError("a kernel read the user's configuration")
 
-    with config_context(device="gpu"):
-        for call in (
-            lambda: kernel_matrix(spec, A, B, backend="mlx"),
-            lambda: build_kernel_rows(B, spec, backend="mlx"),
-            lambda: _combine(spec, A, B, weights, "mlx"),
-        ):
-            with pytest.raises(DeviceError, match="fitted on the MLX GPU"):
-                call()
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    monkeypatch.setattr("mlxlearn._common.device.get_config", no_configuration)
+    rows = build_kernel_rows(B, spec, backend="mlx", device="cpu")
+    assert rows.prefetch_rows == 0  # the CPU's policy, not the GPU's
+    actual = {
+        "matrix": kernel_matrix(spec, A, B, backend="mlx", device="cpu"),
+        "rows": rows.rows([0, 5, 9]),
+        "basis": KernelBasis(spec).combine(A, B, weights, backend="mlx", device="cpu"),
+    }
+    for name, value in expected.items():
+        np.testing.assert_array_equal(actual[name], value, err_msg=name)

@@ -276,6 +276,30 @@ def test_a_sparse_query_on_an_mlx_fitted_patched_knn_is_one_fallback_event(data,
         assert "patch_sklearn()" not in events[0].detail
 
 
+def test_a_call_made_inside_another_estimators_call_records_its_own_event(data):
+    """A weights callable that queries a second neighbor estimator.
+
+    The neighbor estimators silenced nested calls with a flag of their own, set
+    per thread rather than per estimator: while a scikit-learn-fitted model's
+    predict ran, another estimator's kneighbors recorded nothing.
+    """
+    X, y = data
+    with tuning_context(force_backend="cpu"):
+        other = NearestNeighbors(n_neighbors=2).fit(X)
+
+    def weights(dist):
+        other.kneighbors(X[:3])
+        return np.ones_like(dist)
+
+    model = patched.KNeighborsClassifier(n_neighbors=3, weights=weights).fit(X, y)
+    assert model.execution_backend_ == "sklearn"
+    events = _events(lambda: model.predict(X[:5]))
+    assert [(e.estimator, e.operation) for e in events] == [
+        ("KNeighborsClassifier", "predict"),
+        ("NearestNeighbors", "kneighbors"),
+    ]
+
+
 @pytest.mark.parametrize("name", KNN)
 def test_a_sparse_query_on_layer1_knn_raises_with_one_event(data, name):
     X, y = data

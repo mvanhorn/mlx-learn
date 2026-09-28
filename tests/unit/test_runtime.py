@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 from sklearn.datasets import make_classification
-from sklearn.exceptions import NotFittedError
+from sklearn.exceptions import ConvergenceWarning, NotFittedError
 from sklearn.neighbors import NearestNeighbors as SkNearestNeighbors
 
 import mlxlearn
@@ -46,6 +46,7 @@ from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.patching import _estimators as patched
 from mlxlearn.svm import SVC
+from tests._helpers import join_or_fail
 
 ESTIMATORS = [
     (KNeighborsClassifier, patched.KNeighborsClassifier, {"n_neighbors": 3}),
@@ -91,6 +92,18 @@ def _infer(model, X):
 
 def _fit_events():
     return [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
+
+
+def _without_device_error(call):
+    """``call()``, failing on a DeviceError: the GPU policy would report it as a skip.
+
+    For tests that simulate a host without a GPU, where a DeviceError is the bug
+    under test rather than a missing device.
+    """
+    try:
+        return call()
+    except DeviceError as exc:
+        pytest.fail(f"DeviceError where no GPU was needed: {exc}")
 
 
 def _run(code: str, **env) -> subprocess.CompletedProcess:
@@ -274,7 +287,7 @@ def test_concurrent_blocks_on_different_devices_never_see_the_wrong_one():
     before = mx.default_device()
     wrong: list[tuple[str, object]] = []
     errors: list[BaseException] = []
-    start = threading.Barrier(6)
+    start = threading.Barrier(6, timeout=60)
 
     def worker(kind):
         target = mx.gpu if kind == "gpu" else mx.cpu
@@ -290,12 +303,12 @@ def test_concurrent_blocks_on_different_devices_never_see_the_wrong_one():
         except BaseException as exc:  # noqa: BLE001 - re-raised in the main thread
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=(k,)) for k in ("gpu", "cpu") * 3]
+    threads = [
+        threading.Thread(target=worker, args=(k,), daemon=True) for k in ("gpu", "cpu") * 3
+    ]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join(timeout=60)
-    assert not any(t.is_alive() for t in threads), "device gate deadlocked"
+    join_or_fail(threads, timeout=60)
     assert not errors, errors
     assert not wrong, wrong[:5]
     assert mx.default_device() == before
@@ -364,6 +377,32 @@ def test_inference_device_keeps_the_fitted_device_when_it_exists(monkeypatch):
     monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: True)
     with mlxlearn.config_context(device="cpu"):
         assert inference_device("mlx") == "gpu"
+
+
+@needs_gpu
+@pytest.mark.parametrize("kind", ["NearestNeighbors", "SVC"])
+def test_a_gpu_fitted_model_answers_on_the_mlx_cpu_without_a_gpu(monkeypatch, data, kind):
+    """Unpickled where no GPU works: MLX's CPU under device="auto" or "cpu".
+
+    The estimator resolves the device from the configuration and hands it to the
+    kernels; an explicit device="gpu" is still refused rather than substituted.
+    """
+    X, y = data
+    with tuning_context(force_backend="mlx"):
+        model = SVC().fit(X, y) if kind == "SVC" else NearestNeighbors(n_neighbors=3).fit(X)
+
+    def answer(m):
+        return m.kneighbors(X[:20])[1] if kind == "NearestNeighbors" else m.decision_function(X[:20])
+
+    expected = answer(model)
+    payload = pickle.dumps(model)
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    for device in ("auto", "cpu"):
+        with mlxlearn.config_context(device=device):
+            actual = _without_device_error(lambda: answer(pickle.loads(payload)))
+        np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-6)
+    with mlxlearn.config_context(device="gpu"), pytest.raises(DeviceError, match="fitted on the MLX GPU"):
+        answer(pickle.loads(payload))
 
 
 def test_gpu_fitted_inference_on_a_gpu_less_host_is_recorded(monkeypatch, data):
@@ -596,13 +635,53 @@ def test_a_capability_fallback_records_one_event_and_one_warning(data):
     assert model.fit_event_.reason == "sparse-input"
 
 
-def test_a_fit_that_fails_validation_records_nothing(data):
+def test_a_fit_that_fails_after_deciding_records_its_decision(data):
+    """It recorded nothing, so get_last_backend_event() described an older call.
+
+    The decision is recorded when it is made: the fit that failed is on the record,
+    once, and the estimator is still unfitted.
+    """
     X, y = data
     X_bad = X.copy()
     X_bad[0, 0] = np.nan
+    model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
+    model.predict(X[:2])
+    mlxlearn.clear_backend_diagnostics()
     with pytest.raises(ValueError):
-        KNeighborsClassifier().fit(X_bad, y)
-    assert _fit_events() == []
+        model.fit(X_bad, y)
+    (event,) = mlxlearn.get_backend_diagnostics()
+    assert (event.operation, event.backend, event.reason) == ("fit", "cpu", "below-crossover")
+    assert mlxlearn.get_last_backend_event() is event
+    with pytest.raises(NotFittedError):
+        model.predict(X[:2])
+
+
+def test_a_fallback_that_scikit_learn_then_rejects_is_warned_and_recorded(data):
+    """The warning and the record came with a completed fit: here, never."""
+    X, y = data
+    y_bad = y.astype(np.float64)
+    y_bad[0] = np.nan
+    model = patched.KNeighborsClassifier(n_neighbors=3, metric="manhattan")
+    with pytest.warns(MLXLearnFallbackWarning, match="manhattan"):
+        with pytest.raises(ValueError, match="NaN"):
+            model.fit(X, y_bad)
+    (event,) = _fit_events()
+    assert (event.backend, event.reason) == ("sklearn", "unsupported-parameter:metric")
+    assert mlxlearn.get_last_backend_event() is event
+    with pytest.raises(NotFittedError):
+        model.predict(X[:2])
+
+
+@pytest.mark.parametrize("layer", ["L1", "L2"])
+@pytest.mark.parametrize("pair", ESTIMATORS, ids=IDS)
+def test_a_list_decided_again_after_validation_is_one_event(data, pair, layer):
+    """Input with no shape is decided before validation and again after it."""
+    X, y = data
+    for tuning in ({}, NO_CROSSOVER):
+        mlxlearn.clear_backend_diagnostics()
+        with tuning_context(**tuning):
+            model = _estimator(pair, layer).fit(X.tolist(), y.tolist())
+        assert mlxlearn.get_backend_diagnostics() == [model.fit_event_]
 
 
 def test_the_fit_event_is_kept_on_the_model(data):
@@ -702,11 +781,18 @@ def _sparse_fit(data):
     return patched.KNeighborsClassifier(n_neighbors=3).fit(sp.csr_matrix(X), y)
 
 
-def test_the_fallback_warning_points_at_the_callers_line(data):
-    """A fixed stacklevel landed on _common/base.py, which no user filter can match."""
+@pytest.mark.parametrize("pair", ESTIMATORS, ids=IDS)
+def test_the_fallback_warning_points_at_the_callers_line(data, pair):
+    """A fixed stacklevel landed on _common/base.py, which no user filter can match.
+
+    On scikit-learn 1.9, LogisticRegression's warning landed on scikit-learn's
+    callback decorator, which wraps its fit.
+    """
+    X, y = data
+    model = _estimator(pair, "L2")
     with pytest.warns(MLXLearnFallbackWarning) as caught:
-        _sparse_fit(data)
-    assert caught[0].filename == __file__
+        model.fit(sp.csr_matrix(X), y)
+    assert [w.filename for w in caught if w.category is MLXLearnFallbackWarning] == [__file__]
 
 
 def test_a_module_filter_written_against_user_code_matches(data):
@@ -740,6 +826,30 @@ def test_an_error_filter_raises_on_every_fallback(data):
             # Like fallback_policy="raise": the fit that raised did not complete.
             with pytest.raises(AttributeError):
                 model.execution_backend_
+
+
+def test_an_error_filter_raises_before_scikit_learn_does_the_work(monkeypatch, data):
+    """The warning came only once scikit-learn had run the whole fallback fit.
+
+    Measured at 2.4 s for a patched SVC(probability=True) at 6000 x 64, against
+    nothing when the warning comes with the decision — and the refused fit was
+    left holding scikit-learn's fitted attributes.
+    """
+    from sklearn.neighbors import KNeighborsClassifier as SkKNeighborsClassifier
+
+    def stock_fit(self, X, y):
+        raise AssertionError("scikit-learn's fit ran before the fallback warning")
+
+    monkeypatch.setattr(SkKNeighborsClassifier, "fit", stock_fit)
+    X, y = data
+    model = patched.KNeighborsClassifier(n_neighbors=3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", MLXLearnFallbackWarning)
+        with pytest.raises(MLXLearnFallbackWarning):
+            model.fit(sp.csr_matrix(X), y)
+    assert [e.reason for e in _fit_events()] == ["sparse-input"]
+    with pytest.raises(NotFittedError):
+        model.predict(X[:2])
 
 
 def _overflowing(X):
@@ -1003,12 +1113,55 @@ def test_patched_small_problems_go_to_sklearn_without_a_gpu(monkeypatch, data, p
     assert model.execution_backend_ == "sklearn"
 
 
-def test_an_explicit_gpu_device_does_not_override_the_crossover(data):
-    """Documented: device picks the MLX device once dispatch has chosen MLX."""
+@pytest.mark.parametrize("as_list", [False, True], ids=["ndarray", "list"])
+@pytest.mark.parametrize("pair", ESTIMATORS, ids=IDS)
+def test_an_explicit_gpu_device_does_not_override_the_crossover(monkeypatch, data, pair, as_list):
+    """Documented: device picks the MLX device once dispatch has chosen MLX.
+
+    On a host with no usable GPU, a directly imported SVC resolved the device
+    before the size decision and raised DeviceError on a problem it runs on MLX's
+    CPU; so did every estimator for input with no shape before validation.
+    """
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
     X, y = data
-    with mlxlearn.config_context(device="gpu") if gpu_available() else mlxlearn.config_context():
-        assert LogisticRegression().fit(X, y).execution_backend_ == "cpu"
-        assert patched.LogisticRegression().fit(X, y).execution_backend_ == "sklearn"
+    if as_list:
+        X, y = X.tolist(), y.tolist()
+    with mlxlearn.config_context(device="gpu"):
+        model = _without_device_error(lambda: _estimator(pair, "L1").fit(X, y))
+        assert (model.execution_backend_, model.fit_event_.reason) == ("cpu", "below-crossover")
+        patched_model = _without_device_error(lambda: _estimator(pair, "L2").fit(X, y))
+        assert patched_model.execution_backend_ == "sklearn"
+        # Above the crossover the device is named and missing: refused, not substituted.
+        with tuning_context(**NO_CROSSOVER, svc_min_pair_work=0):
+            with pytest.raises(DeviceError):
+                _estimator(pair, "L1").fit(X, y)
+
+
+def test_the_linear_kernel_never_needs_the_gpu(monkeypatch, data):
+    """Always below the crossover, so it raised DeviceError at every size."""
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    X, y = data
+    with mlxlearn.config_context(device="gpu"), tuning_context(**NO_CROSSOVER):
+        model = _without_device_error(lambda: SVC(kernel="linear").fit(X, y))
+    assert model.execution_backend_ == "cpu"
+
+
+@pytest.mark.parametrize("pair", ESTIMATORS, ids=IDS)
+def test_forcing_scikit_learn_outranks_the_data_checks(data, pair):
+    """MLXLEARN_FORCE_BACKEND comes before the data checks, as it does the size rules.
+
+    The neighbor estimators and LogisticRegression ran their float32 range scan
+    as a capability check, ahead of it: under fallback_policy="raise", a fit forced
+    onto scikit-learn — which takes the data — raised for a limit of the path it
+    was not taking. SVC already skipped the scan.
+    """
+    X, y = data
+    with tuning_context(force_backend="sklearn"), mlxlearn.config_context(fallback_policy="raise"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # scikit-learn's own overflow
+            warnings.simplefilter("ignore", ConvergenceWarning)
+            model = _estimator(pair, "L2").fit(_overflowing(X), y)
+    assert (model.execution_backend_, model.fit_event_.reason) == ("sklearn", "forced")
 
 
 def test_the_raw_shape_crossover_decides_before_validation(monkeypatch, data):

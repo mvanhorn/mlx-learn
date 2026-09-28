@@ -613,7 +613,11 @@ def test_an_escalated_convergence_warning_leaves_the_fit_incomplete(backend):
         model.predict(X)
     with pytest.raises(AttributeError):
         model.execution_backend_
-    assert not [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
+    # On the record all the same, as every fit's decision is, with the stop that
+    # raised: one event, the fit's.
+    (event,) = mlxlearn.get_backend_diagnostics()
+    assert (event.operation, event.reason) == ("fit", "forced")
+    assert event.extra["stop_reason"] == "max_iter"
 
 
 def test_objective_is_no_worse_at_an_equal_truncated_budget():

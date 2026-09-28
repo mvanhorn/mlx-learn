@@ -6,13 +6,14 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
 from .._common.arrays import NUMPY_FLOAT
-from .._common.validation import _is_pandas, check_float32_range, check_is_fitted, is_sparse
-from ._base import (
-    MLXNeighborsMixin,
-    _reject_string_data,
+from .._common.validation import (
+    _is_pandas,
     _safe_shape,
-    _sparse_query_for_sklearn,
+    check_float32_range,
+    check_is_fitted,
+    is_sparse,
 )
+from ._base import MLXNeighborsMixin, _reject_string_data, _sparse_query_for_sklearn
 
 __all__ = ["NearestNeighbors"]
 
@@ -118,8 +119,8 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
         """
         check_is_fitted(self)
         if self._fitted_backend("radius_neighbors") == "sklearn":
-            with self._inference("radius_neighbors"):
-                return super().radius_neighbors(X, radius, return_distance, sort_results)
+            self._note_inference("radius_neighbors")
+            return super().radius_neighbors(X, radius, return_distance, sort_results)
 
         if X is not None and is_sparse(X):
             X = _sparse_query_for_sklearn(X, self._fit_X.dtype)
@@ -140,10 +141,8 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
         shape = self._fit_X.shape if X is None else _safe_shape(X)
         # scikit-learn's host code on the fitted state: no MLX device is involved,
         # so a GPU-fitted model needs none to answer this.
-        with self._inference(
-            "radius_neighbors", shape=shape, host=True, compute="scikit-learn"
-        ):
-            return super().radius_neighbors(X, radius, return_distance, sort_results)
+        self._note_inference("radius_neighbors", shape=shape, host=True, compute="scikit-learn")
+        return super().radius_neighbors(X, radius, return_distance, sort_results)
 
 
 def _as_float32_query(X):
