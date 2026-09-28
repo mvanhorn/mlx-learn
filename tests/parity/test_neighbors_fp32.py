@@ -91,7 +91,7 @@ def test_large_offset_does_not_destroy_accuracy(backend, rng):
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_accuracy_is_relative_to_the_float32_input(backend):
-    """A limit that is about storage, not arithmetic — policy §3.2.
+    """A limit that is about storage, not arithmetic — policy §3.4.
 
     Shift the adversarial data to coordinate 1e4 and float32 has a spacing of
     ~1e-3 there, so the 1e-8 increments are gone before any distance is computed:
