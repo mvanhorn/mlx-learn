@@ -846,14 +846,27 @@ def test_layer1_does_not_advertise_array_api_support(pair):
 
 
 def test_under_array_api_dispatch_patched_logistic_hands_off(monkeypatch, data):
+    """What scikit-learn serves in the input's namespace goes back to it.
+
+    Stock LogisticRegression advertises array-API support from scikit-learn 1.9
+    on; before that there is nothing to hand back, and the patched class keeps
+    the work, exactly as it does for SVC and the neighbors on every version.
+    """
+    from sklearn.linear_model import LogisticRegression as SkLogisticRegression
+
     X, y = data
+    stock_supports = SkLogisticRegression().__sklearn_tags__().array_api_support
     monkeypatch.setattr(base_module, "_array_api_dispatch_enabled", lambda: True)
     with tuning_context(**NO_CROSSOVER), warnings.catch_warnings():
         warnings.simplefilter("ignore", MLXLearnFallbackWarning)
         patched_model = patched.LogisticRegression().fit(X, y)
         direct = LogisticRegression().fit(X, y)
-    assert patched_model.execution_backend_ == "sklearn"
-    assert patched_model.fit_event_.reason == "array-api-dispatch"
+    if stock_supports:
+        assert patched_model.execution_backend_ == "sklearn"
+        assert patched_model.fit_event_.reason == "array-api-dispatch"
+    else:
+        assert patched_model.execution_backend_ != "sklearn"
+        assert patched_model.fit_event_.reason != "array-api-dispatch"
     assert direct.execution_backend_ != "sklearn"
 
 
