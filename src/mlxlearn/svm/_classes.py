@@ -74,7 +74,7 @@ from .._kernels.kernels import (
     resolve_gamma,
 )
 from .._solvers.smo import SMOConfig, solve_c_svc
-from ..exceptions import UnsupportedParameterError
+from ..exceptions import InvalidInputError, UnsupportedParameterError
 
 __all__ = ["SVC", "MLXSVCMixin"]
 
@@ -418,7 +418,7 @@ class MLXSVCMixin(BackendMixin):
                 if not active[y_encoded == c].any()
             ]
             if empty:
-                raise ValueError(
+                raise InvalidInputError(
                     "Every sample of class "
                     f"{empty[0]!r} has an effective weight of zero, so that class "
                     "cannot be fitted. Remove it from y or give it a nonzero "
@@ -729,7 +729,7 @@ class SVC(MLXSVCMixin, _SkSVC):
         weights = check_sample_weight(sample_weight, X64, dtype=np.float64)
 
         below, detail = self._below_crossover(*X64.shape)
-        if below and backend != "cpu":
+        if below:
             backend = self._select_backend(
                 "fit",
                 below_crossover=True,

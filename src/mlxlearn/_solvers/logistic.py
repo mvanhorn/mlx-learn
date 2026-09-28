@@ -58,6 +58,7 @@ import numpy as np
 
 from .._common.arrays import NUMPY_FLOAT
 from .._common.device import use_device
+from ..exceptions import InvalidInputError
 from .lbfgs import LBFGSConfig, minimize
 
 __all__ = [
@@ -362,7 +363,7 @@ def solve_logistic(
             # The wording matters: scikit-learn 1.9's
             # check_all_zero_sample_weights_error matches r"weight.*zero|zero.*weight",
             # and every estimator is expected to say so recognizably.
-            raise ValueError(
+            raise InvalidInputError(
                 "Sample weights sum to zero: every sample weight is zero, so there "
                 "is nothing to fit."
             )

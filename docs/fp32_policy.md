@@ -194,7 +194,10 @@ for the float64 data it never saw.
 
 The rule this yields: mlxlearn's accuracy claims are always relative to the float32
 representation of the input. When the input's own dynamic range exceeds float32, the answer
-is scikit-learn, and `patch_sklearn()` users get it via `device="cpu"`.
+is scikit-learn itself — stock, unpatched scikit-learn (import it before `patch_sklearn()`,
+or call `unpatch_sklearn()`). `device="cpu"` is not a way to get it: it runs the same float32
+algorithm on MLX's CPU backend, with the same rounding. Under `patch_sklearn()`, problems
+below the measured crossover are handed to scikit-learn automatically, on either device.
 
 ## 4. `check_estimator` policy
 
@@ -227,9 +230,12 @@ instead.
 **Rule B — dtype preservation.** A check asserting that float32 input yields float32 fitted
 attributes is xfailed: mlxlearn deliberately returns float64 attributes (§1).
 
-**Rule C — deliberate determinism.** A check asserting that `random_state=None` produces
-varying results is xfailed when `deterministic=True` is configured (§`rng.py`). It passes
-under `deterministic=False`.
+**Rule C — deliberate determinism (reserved).** No 0.1.x estimator draws random numbers,
+so the `deterministic` and `random_state` options have no observable effect today and no
+check is xfailed under this rule. It is reserved for the estimators that will: a check
+asserting that `random_state=None` produces varying results may be xfailed under
+`deterministic=True` (`_common/rng.py` resolves `None` to a fixed seed there), provided it
+passes under `deterministic=False`.
 
 **Never xfailed, under any circumstances:**
 
@@ -249,6 +255,7 @@ is to keep it that way.
   assumed.
 - **Loosen a tolerance to make a test pass.** Tolerances come from this document. A failure
   at these tolerances is a bug in mlxlearn.
-- **Offer a float64 GPU path.** MLX does not have one. Requesting float64 accuracy means
-  requesting scikit-learn, and `patch_sklearn()` users get it by keeping the problem below
-  the crossover or setting `device="cpu"`.
+- **Offer a float64 GPU path.** MLX does not have one, and mlxlearn's CPU path is the same
+  float32 computation on another device. Requesting float64 accuracy means requesting
+  scikit-learn: `patch_sklearn()` users get it for problems below the crossover, and
+  otherwise by using stock scikit-learn for that estimator.
