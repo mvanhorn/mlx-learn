@@ -2,20 +2,46 @@
 
 These exist because the expanded Gram identity ``‖q‖² + ‖t‖² − 2⟨q,t⟩`` is the fast
 way to compute distances and the numerically hostile one. Each test pins a specific
-claim from ``docs/fp32_policy.md`` §2.1.
+claim from ``docs/fp32_policy.md`` §2.1 or §3.1.
+
+Most compare against :func:`_exact_neighbors` — float64 direct differences ranked by
+``(distance, index)`` — rather than against scikit-learn, which defines no order
+among ties and whose own brute-force path uses the same identity in float64.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
+from sklearn.datasets import make_blobs, make_classification
 from sklearn.neighbors import NearestNeighbors as SkNearestNeighbors
 
 from mlxlearn._kernels.distance import build_index
+from mlxlearn.exceptions import UnsupportedInputError
 from mlxlearn.neighbors import NearestNeighbors
 from tests._helpers import assert_neighbor_parity, assert_ties_break_on_smallest_index
 
 BACKENDS = ["mlx", "cpu"]
+
+
+def _exact_neighbors(X, Q, k):
+    """The first ``k`` training rows under ``(distance, index)``, in float64.
+
+    Direct differences, not the Gram identity, so the reference has no cancellation
+    of its own; and a lexicographic sort, so ties are ranked the way mlxlearn
+    promises to rank them.
+    """
+    X = np.asarray(X, dtype=np.float64)
+    Q = np.asarray(Q, dtype=np.float64)
+    order = np.arange(X.shape[0])
+    dist = np.empty((Q.shape[0], k))
+    idx = np.empty((Q.shape[0], k), dtype=np.int64)
+    for row, q in enumerate(Q):
+        d2 = np.sum((X - q) ** 2, axis=1)
+        first = np.lexsort((order, d2))[:k]
+        idx[row] = first
+        dist[row] = np.sqrt(d2[first])
+    return dist, idx
 
 
 def _adversarial_column(n=120_000):
@@ -119,3 +145,309 @@ def test_high_dimensional_accumulation(backend, rng):
 
     np.testing.assert_array_equal(np.sort(idx, axis=1), np.sort(ref_idx, axis=1))
     np.testing.assert_allclose(dist, ref_dist, rtol=1e-4, atol=1e-4)
+
+
+# ----------------------------------------------------------------------------------
+# selection the Gram noise cannot fool — the certificate, §2.1
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_tight_clusters_return_the_exact_neighbors(backend, rng):
+    """Clusters whose spread is 1e-3 of their distance from the mean.
+
+    Every member of such a cluster sits inside the Gram noise band together, so a
+    fixed over-selection margin kept arbitrary members: half the rows came back
+    with a wrong neighbor set, on the CPU path too, and nothing was raised. The
+    certificate has to catch every one of those rows.
+    """
+    centers = rng.normal(size=(200, 32))
+    X = (np.repeat(centers, 40, axis=0) + rng.normal(scale=1e-3, size=(8000, 32))).astype(
+        np.float32
+    )
+    Q = (centers[rng.integers(0, 200, 60)] + rng.normal(scale=1e-3, size=(60, 32))).astype(
+        np.float32
+    )
+
+    stats = {}
+    dist, idx = build_index(X, backend=backend).query(Q, 5, stats=stats)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    assert stats["widened_rows"] > 0, "precondition: the first pass was fooled"
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_make_blobs_with_a_small_cluster_std(backend):
+    """The same failure on stock ``make_blobs`` data, as float64 input."""
+    X, _ = make_blobs(n_samples=8000, centers=40, n_features=16, cluster_std=0.01, random_state=0)
+    Q = X[::131] + 0.005
+
+    dist, idx = build_index(X, backend=backend).query(Q, 10)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 10)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_an_unscaled_column_does_not_hide_neighbors(backend, rng):
+    """Ordinary unscaled tabular data: one column spanning 0-1e4 beside unit ones.
+
+    The wide column dominates every norm, so the Gram noise swamps the unit
+    columns' contribution; at 50 000 rows the fixed margin returned a wrong set
+    for 12% of queries and moved regressor predictions by up to 0.85.
+    """
+    X = rng.normal(size=(20_000, 16))
+    X[:, 0] = rng.uniform(0, 1e4, 20_000)
+    Q = rng.normal(size=(100, 16))
+    Q[:, 0] = rng.uniform(0, 1e4, 100)
+
+    dist, idx = build_index(X, backend=backend).query(Q, 5)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_one_far_training_row_does_not_disable_the_first_pass(backend, rng):
+    """The certificate's bound is norm-aware.
+
+    Bounding the Gram error with the single largest training norm would let one
+    outlier make every row uncertifiable — and send all of them to the fallback.
+    Ordinary data must certify on the first pass, outlier or not.
+    """
+    X = rng.normal(size=(20_000, 32)).astype(np.float32)
+    X[123] = 1e3
+    Q = rng.normal(size=(200, 32)).astype(np.float32)
+
+    stats = {}
+    build_index(X, backend=backend).query(Q, 10, stats=stats)
+    assert stats == {"rows": 200, "widened_rows": 0, "exact_rows": 0}
+
+
+# ----------------------------------------------------------------------------------
+# refinement from the input's own coordinates, §2.1
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_cluster_far_from_the_global_mean(backend, rng):
+    """A cluster at the origin with spread 1e-3, and another at 1000.
+
+    The mean sits near 500, where float32's spacing is 3e-5 — thirty times the
+    near cluster's own spread — so translating the rows by it erased the cluster
+    before a distance was computed. Selection has to be certified and refinement
+    has to use the input's own coordinates to get these right.
+    """
+    X = np.vstack(
+        [rng.normal(scale=1e-3, size=(2000, 4)), 1000 + rng.normal(size=(2000, 4))]
+    ).astype(np.float32)
+    Q = np.vstack(
+        [rng.normal(scale=1e-3, size=(30, 4)), 1000 + rng.normal(size=(30, 4))]
+    ).astype(np.float32)
+
+    dist, idx = build_index(X, backend=backend).query(Q, 5)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_refined_distances_are_relative_to_the_input(backend, rng):
+    """Selection is easy here, and the neighbor sets were always right.
+
+    But distances were refined from mean-translated coordinates, whose rounding is
+    set by the distance to the mean (~960) rather than by the data, and most of
+    them missed the documented ``atol=rtol=1e-6``.
+    """
+    X = np.vstack(
+        [rng.normal(scale=10, size=(200, 4)), 1000 + rng.normal(size=(3000, 4))]
+    ).astype(np.float32)
+    Q = rng.normal(scale=10, size=(60, 4)).astype(np.float32)
+
+    dist, idx = build_index(X, backend=backend).query(Q, 5)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, atol=1e-6, rtol=1e-6)
+
+
+# ----------------------------------------------------------------------------------
+# the (distance, index) order across the k-th boundary, §3.1
+# ----------------------------------------------------------------------------------
+
+
+def _subsampled_grid(rng, side=20):
+    """Integer points on a 3-D grid, with 40% removed at random.
+
+    Subsampled so that the mean is not a lattice point: translating a full grid by
+    its own center leaves a symmetric lattice on which the identity happens to be
+    exact, and nothing would be tested.
+    """
+    grid = np.stack(np.meshgrid(*[np.arange(side)] * 3, indexing="ij"), -1).reshape(-1, 3)
+    return grid[rng.random(len(grid)) < 0.6].astype(np.float32)
+
+
+#: (grid spacing, query offset in grid units). Integer data with integer and with
+#: half-integer queries takes the exact small-integer path; half-integer data is not
+#: integral, so quarter-integer queries go through the certificate and its fallback.
+#: Every distance is exact in all three.
+_TIE_CASES = {
+    "integer-queries": (1.0, 0.0),
+    "half-integer-queries": (1.0, 0.5),
+    "certified-path": (0.5, 0.5),
+}
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("case", list(_TIE_CASES))
+def test_boundary_ties_resolve_to_the_smallest_indices(backend, case, rng):
+    """More rows tie at the k-th distance than any fixed margin carries.
+
+    Which of them are returned must follow the global ``(distance, index)`` order —
+    not merely an ordering of whichever tied rows survived selection, which is
+    what the fixed margin produced on a third of these rows.
+    """
+    spacing, offset = _TIE_CASES[case]
+    X = _subsampled_grid(rng) * spacing
+    Q = (rng.integers(0, 20, size=(60, 3)) + offset).astype(np.float32) * spacing
+
+    stats = {}
+    dist, idx = build_index(X, backend=backend).query(Q, 7, stats=stats)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 7)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_array_equal(dist, ref_dist)
+    if case == "certified-path":
+        assert stats["widened_rows"] > 0, "precondition: ties defeated the first pass"
+    else:
+        assert stats["widened_rows"] == 0, "small-integer data should need no fallback"
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_k_neighbors_are_a_prefix_of_more_neighbors(backend, rng):
+    """``kneighbors(k)`` must equal ``kneighbors(k + m)[:, :k]``, ties included."""
+    X = _subsampled_grid(rng)
+    Q = rng.integers(0, 20, size=(60, 3)).astype(np.float32) + 0.5
+    index = build_index(X, backend=backend)
+
+    _, wide = index.query(Q, 16)
+    for k in (1, 2, 5, 9):
+        _, idx = index.query(Q, k)
+        np.testing.assert_array_equal(idx, wide[:, :k], err_msg=f"k={k}")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("spacing", [1.0, 0.5], ids=["integer-path", "certified-path"])
+def test_tie_heavy_results_do_not_depend_on_blocking(backend, spacing, rng):
+    """Binary features: the train block size used to change the CPU path's answer.
+
+    ``{0, 1}`` takes the exact small-integer path; ``{0, 0.5}`` with queries a
+    quarter off it keeps every distance exact but is not integral, so it goes
+    through the certificate and its fallback instead.
+    """
+    X = (rng.random((2000, 12)) < 0.5).astype(np.float32) * spacing
+    Q = (rng.random((30, 12)) < 0.5).astype(np.float32) * spacing
+    if spacing != 1.0:
+        Q = Q + spacing / 2
+    index = build_index(X, backend=backend)
+
+    _, reference = index.query(Q, 7)
+    np.testing.assert_array_equal(reference, _exact_neighbors(X, Q, 7)[1])
+    for query_block in (1, 13, None):
+        for train_block in (64, 257, None):
+            _, idx = index.query(
+                Q, 7, query_block_size=query_block, train_block_size=train_block
+            )
+            np.testing.assert_array_equal(idx, reference, err_msg=f"{query_block=} {train_block=}")
+
+
+def test_exact_ties_resolve_identically_on_both_devices(rng):
+    """Where the refined distances are exact, the device cannot matter.
+
+    It did: on binary data the GPU and CPU returned different neighbor sets in
+    every trial, from identical distances, and KNeighborsClassifier's predictions
+    followed.
+    """
+    X = (rng.random((4000, 12)) < 0.5).astype(np.float32)
+    Q = (rng.random((60, 12)) < 0.5).astype(np.float32)
+
+    _, on_gpu = build_index(X, backend="mlx").query(Q, 7)
+    _, on_cpu = build_index(X, backend="cpu").query(Q, 7)
+    np.testing.assert_array_equal(on_gpu, on_cpu)
+
+
+# ----------------------------------------------------------------------------------
+# magnitudes and offsets the float32 cast used to destroy
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("scale", [1e19, 1e-20])
+def test_magnitudes_whose_squares_leave_float32(backend, scale):
+    """1e19 and 1e-20 are ordinary float32 values; their squares are not.
+
+    At 1e19 every squared distance overflowed to infinity, and at 1e-20 they
+    underflowed — the GPU flushes those to zero — so every neighbor set was
+    arbitrary. Scaling by an exact power of two brings both back.
+    """
+    X, _ = make_classification(n_samples=1000, n_features=8, random_state=0)
+    X = X * scale
+    Q = X[:40] + 0.01 * scale
+
+    dist, idx = build_index(X, backend=backend).query(Q, 5)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+def _timestamps(rng, n):
+    """Unix timestamps inside one hour, beside a column in seconds."""
+    return np.column_stack([1.7e9 + rng.uniform(0, 3600, n), rng.normal(scale=60, size=n)])
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_float64_offsets_survive_the_float32_cast(backend, rng):
+    """float32 spaces values near 1.7e9 128 apart.
+
+    Cast first, 5000 such timestamps collapsed to 29 distinct values and no row had
+    its true neighbors. The index keeps float64 input as a float32 value plus a
+    float32 residual and translates it by its float64 mean, so the answer is
+    relative to the data the caller supplied — to ~2⁻⁴⁸ of the coordinate, which is
+    ~6e-6 here.
+    """
+    X = _timestamps(rng, 5000)
+    Q = _timestamps(rng, 60)
+
+    dist, idx = build_index(X, backend=backend).query(Q, 5)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=0, atol=2e-5)
+
+
+def test_the_estimator_passes_float64_through(rng):
+    """The same data through the public estimator, which must not cast it first."""
+    X = _timestamps(rng, 5000)
+    Q = _timestamps(rng, 60)
+
+    model = NearestNeighbors(n_neighbors=5).fit(X)
+    dist, idx = model.kneighbors(Q)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+
+    assert model.execution_backend_ in ("mlx", "cpu")
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=0, atol=2e-5)
+
+
+def test_a_query_far_outside_the_training_range_is_rejected(rng):
+    """Even after scaling float32 cannot square this, and inference cannot fall back."""
+    X = rng.normal(size=(500, 4)).astype(np.float32)
+    index = build_index(X, backend="cpu")
+    with pytest.raises(UnsupportedInputError, match="float32"):
+        index.query(np.full((1, 4), 1e30, dtype=np.float32), 3)
