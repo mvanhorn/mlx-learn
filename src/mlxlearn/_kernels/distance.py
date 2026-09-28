@@ -1092,9 +1092,12 @@ def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
     which returned a row as its own nearest neighbor whenever the training set
     exceeded one query block.
 
-    A row with no self match — possible when duplicate points push the self index
-    past the retained candidates — drops its nearest neighbor instead, which is
-    what scikit-learn does.
+    A row with no self match — more than ``k`` exact duplicates precede it by index
+    — drops its *last* candidate. Under ``(distance, index)`` the row itself sorts
+    after every candidate kept, so that leaves the first ``k`` excluding it, and a
+    prefix of the answer for any larger ``k``. scikit-learn drops column 0 there,
+    but its column 0 is an arbitrary one of the tied duplicates; mlxlearn's is the
+    lowest-indexed, the one its own order keeps.
     """
     n_rows, width = idx.shape
     global_rows = (np.arange(n_rows, dtype=idx.dtype) + offset)[:, None]
@@ -1102,7 +1105,7 @@ def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
 
     missing = np.all(mask, axis=1)
     if np.any(missing):
-        mask[missing, 0] = False
+        mask[missing, -1] = False
 
     keep = width - 1
     out_idx = idx[mask].reshape(n_rows, keep)

@@ -345,6 +345,31 @@ def test_k_neighbors_are_a_prefix_of_more_neighbors(backend, rng):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+def test_self_query_neighbors_follow_the_order_without_the_row_itself(backend, rng):
+    """``kneighbors()`` with no query, on binary data, where duplicates abound.
+
+    A row with more than ``k`` exact duplicates before it is not among its own
+    ``k + 1`` candidates, so one candidate has to go. Dropping column 0, as
+    scikit-learn does, removed the lowest-indexed duplicate — the one the
+    ``(distance, index)`` order keeps — so k=3 was not a prefix of k=6 on 96 of 3000
+    rows. The answer is the first ``k`` under that order once the row is left out.
+    """
+    X = (rng.random((3000, 5)) < 0.5).astype(np.float32)
+    index = build_index(X, backend=backend)
+
+    order = np.arange(len(X))
+    expected = np.empty((len(X), 12), dtype=np.int64)
+    for row, x in enumerate(X.astype(np.float64)):
+        d2 = np.sum((X - x) ** 2, axis=1)
+        d2[row] = np.inf
+        expected[row] = np.lexsort((order, d2))[:12]
+
+    for k in (1, 2, 3, 6, 12):
+        _, idx = index.query(index.X, k, exclude_self=True)
+        np.testing.assert_array_equal(idx, expected[:, :k], err_msg=f"k={k}")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("spacing", [1.0, 0.5], ids=["integer-path", "certified-path"])
 def test_tie_heavy_results_do_not_depend_on_blocking(backend, spacing, rng):
     """Binary features: the train block size used to change the CPU path's answer.

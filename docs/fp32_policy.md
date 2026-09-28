@@ -292,7 +292,9 @@ for being better, so those assertions are `j_mlxlearn ≤ j_sklearn · (1 + rtol
 mlxlearn returns the first `k` training rows under `(distance, training index)` — a total
 order over the *whole* training set, not merely an ordering of whichever rows it returns.
 Rows tied at the k-th distance are decided by index too, so `kneighbors(k)` is always a
-prefix of `kneighbors(k + m)`, and no answer depends on block sizes. "Distance" is the
+prefix of `kneighbors(k + m)`, and no answer depends on block sizes. That includes
+`kneighbors()` with no query, which is the same order with each row itself left out: a
+row with more than `k` exact duplicates before it gets the first `k` of them. "Distance" is the
 refined float32 value of §2.1. Where that value is exact — integer, binary and one-hot
 features, halves and quarters — the answer is also identical on the GPU and the CPU;
 elsewhere the two devices may round a long sum differently, and so break a near-tie
