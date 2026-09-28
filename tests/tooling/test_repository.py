@@ -92,6 +92,35 @@ def test_the_minimum_versions_job_installs_exactly_the_declared_floors():
     assert ".github/constraints/minimum-versions.txt" in ci
 
 
+def _ci_test_job() -> str:
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    return ci.split("\n  test:\n", 1)[1].split("\n  slow:\n", 1)[0]
+
+
+def _ci_test_cells() -> list[dict[str, str]]:
+    """The test job's matrix entries as ``{key: value}``, read without a YAML parser."""
+    include = _ci_test_job().split("        include:\n", 1)[1].split("    steps:\n", 1)[0]
+    cells: list[dict[str, str]] = []
+    for line in include.splitlines():
+        match = re.match(r'^\s*(- )?(\w+):\s*"?([^"#]*?)"?\s*$', line)
+        if match is None:
+            continue
+        if match.group(1):
+            cells.append({})
+        cells[-1][match.group(2)] = match.group(3)
+    return cells
+
+
+def test_a_ci_cell_tests_the_newest_scikit_learn_the_range_admits():
+    # pip keeps a pinned scikit-learn through a change to the declared range, so with
+    # every cell pinned, a Dependabot PR raising the cap passed CI without one test
+    # running on the release it let in.
+    cells = _ci_test_cells()
+    assert {"3.10", "3.14"} <= {cell["python"] for cell in cells}, cells
+    assert any("sklearn" not in cell and "constraints" not in cell for cell in cells), cells
+    assert 'elif [ -n "${{ matrix.sklearn }}" ]; then' in _ci_test_job()
+
+
 def test_every_ci_test_run_installs_pandas():
     # The pandas cases in tests/unit/test_validation.py (sparse frames, per-column
     # range reads) skip without it, and nothing else pulls it in: before it joined the

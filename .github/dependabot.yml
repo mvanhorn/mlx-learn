@@ -14,9 +14,11 @@ updates:
 
   # pyproject.toml. Its ranges are compatibility claims, not pins, so a range is
   # widened only when a new release falls outside it, and CI on the proposed change
-  # is what says whether the claim holds. The one exact pin, ruff in the dev extra,
-  # is bumped like any other. The floors in .github/constraints/ are deliberately
-  # outside its reach: raising a floor is a decision, not an update.
+  # is what says whether the claim holds: for scikit-learn, whose other test cells
+  # are pinned, that is ci.yml's unpinned "newest scikit-learn in range" cell. The
+  # one exact pin, ruff in the dev extra, is bumped like any other. The floors in
+  # .github/constraints/ are deliberately outside its reach: raising a floor is a
+  # decision, not an update.
   - package-ecosystem: pip
     directory: /
     schedule:
