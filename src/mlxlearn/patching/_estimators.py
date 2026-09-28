@@ -46,10 +46,12 @@ __all__ = [
 #: on an unknown one, so either would break or clutter notebook display.
 _PATCHED_NOTE = """\
 This is the patched variant installed by :func:`mlxlearn.patch_sklearn`. It
-behaves exactly like :class:`{layer1}` except that a *capability* mismatch —
-sparse input, an unimplemented parameter, a problem below the measured crossover
-— is handed to scikit-learn instead of raising. Unexpected MLX failures still
-raise. Import :class:`{layer1}` directly for strict behavior."""
+differs from :class:`{layer1}` only in that it may hand work to scikit-learn: on a
+capability mismatch — sparse input, an unimplemented parameter — where the
+directly imported class raises, and by design on problems stock scikit-learn
+serves faster, such as those below the measured crossover, which the directly
+imported class runs on MLX regardless. Unexpected MLX failures still raise.
+Import :class:`{layer1}` directly for strict behavior."""
 
 #: The first numpydoc section heading: a line of text underlined with dashes.
 _FIRST_SECTION = re.compile(r"^\S[^\n]*\n-{3,}[ \t]*$", re.MULTILINE)

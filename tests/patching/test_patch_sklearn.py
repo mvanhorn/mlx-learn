@@ -428,6 +428,8 @@ def test_mutual_info_is_unbiased_under_patch_first(patch_first):
 
 
 def test_unpatch_restores_sklearn_modules_imported_while_patched(patch_first):
+    """Their module attributes: containers they filled while patched are not rewritten
+    (see ``_restore_internal_bindings``)."""
     late = set(patch_first["late_import"]) - set(patch_names())
     assert late, "the probe no longer imports a module that binds the patched names"
     assert patch_first["after_unpatch"] == []
@@ -476,6 +478,18 @@ def test_patched_class_keeps_its_documentation(name):
     assert doc.startswith(head)
     assert doc.endswith(rest)
     assert "patch_sklearn" in doc
+
+
+@pytest.mark.parametrize("name", layer2.__all__)
+def test_the_patched_note_does_not_call_the_crossover_a_capability_mismatch(name):
+    """It listed "a problem below the measured crossover" among the capability
+    mismatches Layer 1 raises on. Layer 1 runs such a problem on MLX's CPU; the
+    patched class hands it to scikit-learn by design, not for want of capability."""
+    doc = " ".join(inspect.getdoc(getattr(layer2, name)).split())
+    note = doc[doc.index("This is the patched variant") :]
+    capability, _, by_design = note.partition("by design")
+    assert "crossover" not in capability
+    assert "below the measured crossover" in by_design
 
 
 @pytest.mark.parametrize("name", layer2.__all__)
