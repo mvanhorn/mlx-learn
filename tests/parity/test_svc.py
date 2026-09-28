@@ -1063,7 +1063,7 @@ def test_cache_size_shift_is_bounded_and_documented():
 
 @pytest.mark.gpu
 def test_linear_kernel_never_takes_the_mlx_path():
-    """Measured 0.01×–0.06× at every size, so it is excluded outright.
+    """Measured 0.04×–0.09× forced onto MLX (2 000 × 20 and × 256), so it is excluded.
 
     SMO is sequential, and a linear kernel's iterations are the cheapest of all,
     so its per-iteration overhead is the entire cost. A threshold cannot fix
@@ -1073,10 +1073,14 @@ def test_linear_kernel_never_takes_the_mlx_path():
     check that they send a measured win to MLX.
     """
     X_small, y_small = _data(n_samples=300, n_features=8, seed=1)
-    with tuning_context(svc_min_samples=0, svc_min_work=0, svc_min_pair_work=0):
+    no_floor = {
+        "svc_min_features": 0, "svc_min_samples": 0, "svc_min_work": 0,
+        "svc_min_pair_work": 0,
+    }
+    with tuning_context(**no_floor):
         patched = PatchedSVC(kernel="linear").fit(X_small, y_small)
         assert patched.execution_backend_ == "sklearn", (
-            "the linear kernel reached the MLX path, where it is 17x-33x slower"
+            "the linear kernel reached the MLX path"
         )
         assert PatchedSVC(kernel="rbf").fit(X_small, y_small).execution_backend_ == "mlx"
 
@@ -1088,30 +1092,34 @@ def test_linear_kernel_never_takes_the_mlx_path():
 def test_the_svc_crossover_is_above_the_measured_losses():
     """A threshold below the measured loss region is not protection.
 
-    ``svc_min_samples`` was 2 048 while mlxlearn was still 0.14×–0.51× at 2 500,
-    so patched users were routed onto the slower path by the very mechanism meant
-    to prevent it.
+    Width decides: per SMO iteration mlxlearn's cost is nearly flat in the number
+    of features and LIBSVM's grows with it. Measured (M4 Max, scikit-learn 1.9.0),
+    C=10 rbf and poly lost at 4 000 x 16..64 (0.16x-0.85x), and past the kernel
+    cache narrow data lost even at C=1 (16 000 x 2..8: 0.56x-0.85x; poly at
+    16 000 x 64: 0.55x); every kernel and C tried won from 128 features (4 000 x 128
+    at C=10: 1.31x-1.40x). The first release's work floor, ``n·d >= 10⁶``, could
+    not tell 16 000 x 64 from 4 000 x 256.
     """
-    from mlxlearn._common.config import Tuning
-
-    tuning = Tuning()
-    # Measured losses: 2500 x 20 (work 5e4) at 0.17x-0.40x, 4000 x 32 (work
-    # 1.28e5) at 0.47x. Measured win: 4000 x 256 (work 1.02e6) at 2.93x. Width is
-    # what discriminates, so the work floor has to sit above the losses.
-    for n_samples, n_features in ((2_500, 20), (4_000, 32), (1_000, 20)):
-        assert n_samples * n_features < tuning.svc_min_work, (
-            f"{n_samples}x{n_features} was measured slower but is above the crossover"
-        )
-    assert 4_000 * 256 >= tuning.svc_min_work, "the measured 2.93x win is now excluded"
-    assert 4_000 >= tuning.svc_min_samples
+    model = SVC()
+    losses = ((4_000, 16), (4_000, 64), (16_000, 8), (16_000, 64), (2_500, 20))
+    for n_samples, n_features in losses:
+        below, detail = model._below_crossover(n_samples, n_features)
+        assert below, f"{n_samples}x{n_features} was measured slower but is above the crossover"
+        assert "128 features" in detail
+    # Measured wins at every kernel and C tried, and the smallest ones kept.
+    for n_samples, n_features in ((4_000, 128), (2_000, 256), (1_024, 512), (4_000, 256)):
+        assert not model._below_crossover(n_samples, n_features)[0]
+    # 1000 x 128 won by only 1.10x (rbf, C=1); the floors leave it to scikit-learn.
+    assert model._below_crossover(1_000, 128)[0]
 
 
 def test_the_svc_crossover_accounts_for_the_number_of_classes():
     """One-vs-one pays per pair, so many small classes lose despite a large total.
 
-    Measured at 2048 × 512 (rbf, balanced): K=4 2.62x, K=8 1.95x, K=16 0.89x,
-    K=64 0.20x, K=128 0.10x; at 8000 × 256, K=10 1.86x and K=50 0.77x. The total
-    size clears both floors in every case, so only the class count separates them.
+    Measured (rbf, balanced blobs): at 2048 x 512, K=4 2.03x, K=8 1.36x, K=16
+    0.82x, K=32 0.47x, K=64 0.24x; at 8000 x 256, K=8 1.69x, K=16 1.23x and K=32
+    0.77x. The total size clears every floor in each case, so only the class count
+    separates them.
     """
     model = SVC()
     for n_classes in (2, 4, 8):
@@ -1119,8 +1127,8 @@ def test_the_svc_crossover_accounts_for_the_number_of_classes():
     for n_classes in (16, 64, 128):
         below, detail = model._below_crossover(2048, 512, n_classes=n_classes)
         assert below and f"{n_classes} classes" in detail
-    assert not model._below_crossover(8000, 256, n_classes=10)[0]
-    assert model._below_crossover(8000, 256, n_classes=50)[0]
+    assert not model._below_crossover(8000, 256, n_classes=16)[0]
+    assert model._below_crossover(8000, 256, n_classes=32)[0]
 
 
 @pytest.mark.gpu
@@ -1128,7 +1136,9 @@ def test_patched_dispatch_uses_the_class_count():
     X, y2 = _data(n_samples=400, n_features=8, seed=2)
     y8 = np.arange(len(X)) % 8
     # Mean pair: 400 x 8 = 3200 for two classes, 100 x 8 = 800 for eight.
-    with tuning_context(svc_min_samples=0, svc_min_work=0, svc_min_pair_work=1_000):
+    with tuning_context(
+        svc_min_features=0, svc_min_samples=0, svc_min_work=0, svc_min_pair_work=1_000
+    ):
         assert PatchedSVC().fit(X, y2).execution_backend_ == "mlx"
         assert PatchedSVC().fit(X, y8).execution_backend_ == "sklearn"
         # Layer 1 keeps the fit, on the MLX CPU device, as for any small problem.
@@ -1183,7 +1193,9 @@ def test_patched_many_class_handoff_skips_the_mlx_preamble(monkeypatch):
 
     X, _ = _data(n_samples=400, n_features=8, seed=2)
     y8 = np.arange(len(X)) % 8
-    with tuning_context(svc_min_samples=0, svc_min_work=0, svc_min_pair_work=1_000):
+    with tuning_context(
+        svc_min_features=0, svc_min_samples=0, svc_min_work=0, svc_min_pair_work=1_000
+    ):
         patched = PatchedSVC().fit(X.astype(np.float32), y8)
     assert patched.execution_backend_ == "sklearn"
     [event] = [e for e in get_backend_diagnostics() if e.operation == "fit"]

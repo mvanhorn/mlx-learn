@@ -52,7 +52,8 @@ class Case:
     """One benchmarked workload.
 
     ``options`` carries the knobs a case changes from the defaults above —
-    ``sklearn_algorithm`` (the stock ``NearestNeighbors`` baseline), ``kernel`` and
+    ``sklearn_algorithm`` (the ``NearestNeighbors`` algorithm, which selects the
+    stock baseline; the mlxlearn side is given it too), ``kernel`` and
     ``C`` (SVC), ``n_classes`` (classification targets) — and each one appears in
     the label, so two differently configured cases can never share a name.
     ``iterations`` caps the run's iteration count for a case whose single call
@@ -108,18 +109,28 @@ def _svc_grid(shapes, *, kernels=("rbf",), Cs=(1.0,), n_classes=None, iterations
 
 PROFILES: dict[str, list[Case]] = {
     # Fast enough to run on a laptop, or in CI as a harness check, while still
-    # reaching past every Tuning threshold once: the logreg and SVC cases at the end
-    # clear their work floors, so the MLX fit paths are exercised, not only the
-    # scikit-learn handoff. The d=3 case is where stock scikit-learn uses a KD-tree.
+    # landing on both sides of every Tuning threshold (tests/tooling checks it):
+    # each estimator has cases patched dispatch hands to scikit-learn and cases it
+    # sends to MLX, so the MLX fit and query paths are gated, not only the handoffs.
     "smoke": [
-        *_knn_grid([1_000, 8_000, 50_000], [32], [256]),
+        # Neighbors: below the row floor; above both floors (MLX); narrow data the
+        # KD-tree takes whatever its size ("tree-wins"), and below the work floor.
+        *_knn_grid([1_000, 131_072], [32], [256]),
+        *_knn_grid([524_288], [8], [256], operations=("kneighbors",)),
         *_knn_grid([50_000], [3], [256], operations=("kneighbors",)),
+        # Logistic regression: below the sample floor; binary but too wide; binary,
+        # tall and narrow (MLX); multinomial (MLX).
         Case("logreg", "fit", 5_000, 32),
-        Case("logreg", "fit", 50_000, 64),
-        Case("logreg", "fit", 20_000, 1_024),
+        Case("logreg", "fit", 200_000, 128),
+        Case("logreg", "fit", 200_000, 16),
+        Case("logreg", "fit", 60_000, 64, options={"n_classes": 5}),
+        # SVC: below every floor; enough rows but too narrow; wide (MLX); and a
+        # many-class problem each of whose pairs is below the pair floor.
         Case("svc", "fit", 1_000, 32),
-        Case("svc", "fit", 4_000, 32),
+        Case("svc", "fit", 4_000, 64),
         Case("svc", "fit", 4_000, 256),
+        *_svc_grid([(2_048, 512)], n_classes=4),
+        *_svc_grid([(2_048, 512)], n_classes=16),
     ],
     # The regression grid. Hours, on fixed hardware.
     "full": [
@@ -157,43 +168,52 @@ PROFILES: dict[str, list[Case]] = {
     # Layer 1 classes forced onto the MLX device, isolating the kernels from the
     # dispatch decision. That is a kernel comparison, not the patched claim.
     "published": [
-        # Neighbors: queries against scikit-learn's brute-force path, k=10, 256
-        # queries; and the structural fit cost.
+        # Neighbors against scikit-learn's brute force, k=10: each fit, and 256-query
+        # batches, from below the row floor to past both floors; then the batch sizes
+        # a fit-time rule cannot see, 1 and 4096 queries, on either side of them.
         *[
             Case("knn", op, n, d, 256, options={"sklearn_algorithm": "brute"})
             for n, d in (
-                (250, 8),
-                (500, 64),
-                (1_000, 768),
-                (4_000, 64),
-                (8_000, 768),
-                (32_000, 768),
-                (128_000, 768),
+                (1_000, 32),
+                (4_096, 64),
+                (32_768, 16),
                 (50_000, 32),
+                (8_192, 768),
+                (131_072, 128),
+                (128_000, 768),
             )
             for op in ("fit", "kneighbors")
         ],
-        # SVC: the representative slice at 2 500 x 20, four classes. The linear fits
-        # take tens of seconds per call, so they run fewer iterations.
-        *_svc_grid([(2_500, 20)], kernels=("rbf", "sigmoid"), n_classes=4),
-        *_svc_grid([(2_500, 20)], kernels=("rbf", "poly"), Cs=(10.0,), n_classes=4),
-        *_svc_grid(
-            [(2_500, 20)], kernels=("linear",), Cs=(1.0, 10.0), n_classes=4, iterations=5
-        ),
-        # SVC: width decides.
-        *_svc_grid([(4_000, 32), (4_000, 256)]),
-        *_svc_grid([(4_000, 32), (4_000, 256)], kernels=("linear",), iterations=5),
-        # Logistic regression, fit with max_iter=200.
+        *[
+            Case("knn", "kneighbors", n, d, q, options={"sklearn_algorithm": "brute"})
+            for n, d in ((1_000, 32), (8_192, 768), (131_072, 128))
+            for q in (1, 4_096)
+        ],
+        # SVC: width decides. Binary rbf and poly at C=1 and C=10 on either side of
+        # the width floor, the linear kernel (slow on MLX, so fewer iterations), and
+        # one-vs-one pairs on either side of the pair floor.
+        *_svc_grid([(4_000, 32), (4_000, 64), (4_000, 256), (1_000, 512)]),
+        *_svc_grid([(4_000, 64), (4_000, 256)], kernels=("rbf", "poly"), Cs=(10.0,)),
+        *_svc_grid([(2_000, 20), (2_000, 256)], kernels=("linear",), iterations=5),
+        *_svc_grid([(2_048, 512)], n_classes=4),
+        *_svc_grid([(2_048, 512)], n_classes=16),
+        *_svc_grid([(2_500, 20)], n_classes=4),
+        # Logistic regression, fit with max_iter=200: binary fits narrow and wide,
+        # short and tall, and multinomial fits either side of the sample floor.
         *[
             Case("logreg", "fit", n, d)
             for n, d in (
-                (1_000, 16),
-                (5_000, 128),
                 (20_000, 16),
-                (60_000, 128),
+                (200_000, 16),
+                (1_000_000, 16),
+                (200_000, 128),
                 (20_000, 1_024),
-                (60_000, 1_024),
+                (100_000, 1_024),
             )
+        ],
+        *[
+            Case("logreg", "fit", n, 64, options={"n_classes": 5})
+            for n in (20_000, 60_000, 200_000)
         ],
     ],
 }
@@ -238,11 +258,13 @@ def _estimators(case: Case, layer: str):
         from mlxlearn import svm as mlx_svm
 
     if case.algorithm == "knn":
+        # Both sides are built as the user built them: a patched NearestNeighbors
+        # given algorithm="brute" is compared with stock brute force, not with the
+        # KD-tree patched dispatch would otherwise hand the fit to.
+        algorithm = case.option("sklearn_algorithm")
         return (
-            lambda: mlx_neighbors.NearestNeighbors(n_neighbors=10),
-            lambda: sklearn.neighbors.NearestNeighbors(
-                n_neighbors=10, algorithm=case.option("sklearn_algorithm")
-            ),
+            lambda: mlx_neighbors.NearestNeighbors(n_neighbors=10, algorithm=algorithm),
+            lambda: sklearn.neighbors.NearestNeighbors(n_neighbors=10, algorithm=algorithm),
         )
     if case.algorithm == "logreg":
         return (

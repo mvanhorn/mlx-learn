@@ -301,48 +301,40 @@ class MLXSVCMixin(BackendMixin):
     ) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        The thresholds here are **high**, and the linear kernel is excluded
-        outright, because the measurements are unflattering and pretending
-        otherwise would put the slower path in front of users.
+        The linear kernel is excluded outright, and everything else must clear a
+        **width** floor as well as the sample and work floors, because width is
+        what decides.
 
         Where the time goes, measured. Up to the row cache's capacity — about
         7 240 rows per one-vs-one subproblem at the default ``cache_size=200`` — a
         subproblem's whole Gram is built by **one** blocked MLX matmul, and the SMO
-        loop then runs over it in NumPy without touching the device again. MLX's
-        entire contribution is that matmul; what it loses is the loop, about
-        20–40 µs of NumPy overhead per iteration against well under 1 µs for
-        LIBSVM. Iteration counts match, so the loss scales with the count.
+        loop then runs over it in NumPy without touching the device again. Iteration
+        counts match LIBSVM's, so the comparison is per iteration: at 4 000 rows
+        with C=10, mlxlearn spent 27-41 µs an iteration from 16 to 256 features,
+        nearly flat, and LIBSVM 11 µs at 16 features rising to 103 µs at 256,
+        because each kernel row it misses costs ``O(n·d)``. They cross near 100
+        features. C and the kernel change how many iterations there are, and how
+        often LIBSVM misses, not where the width crossover lies: from 128 features
+        rbf, poly and sigmoid won at C=1 and C=10 alike (1.3x-6.8x), while at 16-64
+        features rbf and poly at C=10 lost (0.16x-0.85x) and only rbf at C=1 won
+        (1.1x-1.7x from 4 000 rows). Narrow data past the cache, where rows are
+        fetched on demand, loses at C=1 too: 16 000 x 2..8 ran 0.56x-0.85x, and
+        16 000 x 64 with the poly kernel 0.55x. A work floor alone cannot see any of
+        that: the first release's ``n·d >= 10⁶`` routed that last fit to MLX.
 
-        That is why **width** decides and height does not: LIBSVM pays ``O(n·d)``
-        for every kernel row it misses, and the one matmul is cheap next to that
-        only when ``d`` is large, while mlxlearn's per-iteration cost does not
-        depend on ``d`` at all. rbf at 4 000 × 32 measured 0.47× and the *same
-        sample count* at 4 000 × 256 **2.93×**; over a 64-configuration grid at
-        ``d ∈ {10, 20}`` mlxlearn was slower in 58 of 64, worst 0.013×. Hence
-        both a sample floor and a work floor, with work the one that actually
-        discriminates.
-
-        The linear kernel is excluded at every size — 0.01×–0.06× throughout, and
-        it degrades with C. Its many cheap iterations are exactly the case where
-        per-iteration overhead is the whole cost, and no threshold fixes that.
+        The linear kernel is excluded at every size. Its many cheap iterations are
+        exactly the case where per-iteration overhead is the whole cost.
 
         **Many classes.** One-vs-one solves ``K(K−1)/2`` subproblems of ``2n/K``
         rows on average, each paying its own Gram and its own loop, so a problem
-        whose total clears both floors can still be a pile of tiny losses — at
-        2 048 × 512, ``K=16`` measured 0.89× and ``K=128`` 0.10×. When
+        whose total clears every floor can still be a pile of tiny losses. When
         ``n_classes`` is given, the *mean* pair's work ``(2n/K)·d`` must also
-        clear ``svc_min_pair_work``. The mean, not the largest pair: with
+        clear ``svc_min_pair_work``: at 2 048 x 512, pairs of 512 rows (K=8) ran
+        1.36x and pairs of 256 (K=16) 0.82x; at 8 000 x 256, pairs of 1 000 rows
+        (K=16) 1.23x and of 500 (K=32) 0.77x. The mean, not the largest pair: with
         imbalanced classes one big pair can hide thousands of tiny ones, and it
         is their count that costs. For two classes the mean pair is the whole
-        problem, so binary routing is unchanged.
-
-        Above the cache's capacity the picture changes: rows are evaluated on
-        demand, and the device round trips compete with the NumPy loop. On the
-        GPU a miss fetches the missing row together with up to 32 of the nearest
-        violators in one round trip, and shrinking rebuilds its gradient in bulk;
-        MLX's CPU device fetches one row per miss. The full benchmark grid's
-        binary fits at 8 000 and 32 000 rows run in that regime; it is stated
-        here so that nobody tunes this gate on the wrong cause.
+        problem.
 
         None of this is a property of the objective, which is solved correctly:
         the primal agrees with LIBSVM to 5.2e-07 relative and the KKT conditions
@@ -352,17 +344,21 @@ class MLXSVCMixin(BackendMixin):
 
         if self.kernel == "linear":
             return True, (
-                "the linear kernel is never faster on the MLX path (measured "
-                "0.01x-0.06x across every size tested), so it is always handed to "
-                "scikit-learn"
+                "the linear kernel is never faster on the MLX path, so it is always "
+                "handed to scikit-learn"
             )
 
         work = n_samples * n_features
-        if n_samples < tuning.svc_min_samples or work < tuning.svc_min_work:
+        if (
+            n_features < tuning.svc_min_features
+            or n_samples < tuning.svc_min_samples
+            or work < tuning.svc_min_work
+        ):
             return True, (
                 f"{n_samples} samples x {n_features} features is below the measured "
-                f"SVC crossover ({tuning.svc_min_samples} samples and "
-                f"{tuning.svc_min_work} element-ops, both required)"
+                f"SVC crossover ({tuning.svc_min_features} features, "
+                f"{tuning.svc_min_samples} samples and {tuning.svc_min_work} "
+                "element-ops, all required)"
             )
         if n_classes is not None and n_classes > 2:
             pair_rows = 2.0 * n_samples / n_classes

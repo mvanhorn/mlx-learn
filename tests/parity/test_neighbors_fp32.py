@@ -499,7 +499,7 @@ def test_a_patched_fit_on_fill_values_is_served_or_falls_back(rng):
     y = X[:, 0] + rng.normal(scale=0.1, size=len(X))
     Q = rng.normal(size=(200, 8))
     expected = SkKNeighborsRegressor(n_neighbors=5).fit(X, y).predict(Q)
-    no_handoff = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_tree_density": 0}
+    no_handoff = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_min_features": 0}
 
     with tuning_context(**no_handoff):
         served = patched.KNeighborsRegressor(n_neighbors=5).fit(X, y)

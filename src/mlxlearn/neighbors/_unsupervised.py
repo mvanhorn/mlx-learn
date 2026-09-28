@@ -76,11 +76,12 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
     fallback. Stated rather than left for a user to discover from a profiler; the
     ancestor inherited the same methods and never mentioned it.
 
-    On low-dimensional data scikit-learn's ``algorithm="auto"`` builds a KD-tree,
-    which beats any brute-force scan once the training set is large for its
-    dimension (roughly ``n_samples >= 512 * 2**n_features``). Under
-    ``patch_sklearn()`` such fits are handed to scikit-learn. Imported directly,
-    this class always searches by brute force.
+    With at most 15 features scikit-learn's ``algorithm="auto"`` builds a
+    KD-tree, which answered a single-row query faster than an MLX call at every
+    size measured up to 12 features, and at 2-5 features every batch. Under
+    ``patch_sklearn()`` those fits, and any other with fewer than 16 features, are
+    handed to scikit-learn. Imported directly, this class always searches by brute
+    force.
 
     Examples
     --------

@@ -148,52 +148,75 @@ class MLXNeighborsMixin(BackendMixin):
         without it, kernel-launch and transfer overhead dominates and the
         acceleration is negative.
 
-        Small on *both* counts, rows and rows x features, so a short but wide
-        training set stays on MLX. That second clause is measured too: from 40 x
-        64 to 255 x 16 and 200 x 768, answering 1-256 queries, MLX ran 1.2x-2.1x
-        faster than stock scikit-learn's brute force (interleaved medians).
+        Both floors must be cleared, rows *and* rows x features, because a fit
+        cannot see how its index will be queried, and each floor guards a different
+        query. Below 4 096 rows a 4096-query batch runs 0.25x-0.8x of stock brute
+        force at every width measured (2-768): MLX's per-query cost, not the scan,
+        dominates there. Below about 4 million elements a 256-query batch at 16-32
+        features is no faster, and at 32 768 rows 0.69x-0.84x: an MLX call made
+        after the GPU has idled, as the benchmark's are, pays 1-3.5 ms to wake it,
+        which a stock query on a small index does not. Short, wide training sets
+        used to stay on MLX; measured again they lose too (256 x 768: 0.25x-0.67x).
         """
         tuning = get_tuning()
         work = n_samples * n_features
-        if n_samples < tuning.knn_min_train_samples and work < tuning.knn_min_work:
+        if n_samples < tuning.knn_min_train_samples or work < tuning.knn_min_work:
             return True, (
                 f"{n_samples} training samples x {n_features} features is below the "
-                f"measured KNN crossover ({tuning.knn_min_train_samples} samples)"
+                f"measured KNN crossover ({tuning.knn_min_train_samples} samples and "
+                f"{tuning.knn_min_work} elements, both required)"
             )
         return False, ""
 
-    def _tree_wins(self, n_samples: int, n_features: int) -> tuple[str, str] | None:
-        """``("tree-wins", detail)`` when stock scikit-learn's KD-tree would beat this search.
+    def _narrow_handoff(self, n_samples: int, n_features: int) -> tuple[str, str] | None:
+        """Patched mode's handoff of narrow data: ``(reason, detail)``, or ``None``.
 
-        With ``algorithm="auto"``, scikit-learn builds a KD-tree whenever there are
-        at most 15 features and ``n_neighbors < n_samples // 2``. A tree query costs
-        roughly ``log n`` times something exponential in the dimension; brute force
-        costs ``n * d``. So the tree wins once the data is dense enough for its
-        dimension — the classic ``n >> 2**d`` condition — and loses badly to the
-        GPU scan when it is not. Measured, the scan was 14x-25x slower than the
-        tree at 200 000 x 4 and over 100x slower at 1 000 000 x 3, yet 2.4x-2.8x
-        faster at 20 000 x 8 and 4.7x-5.3x at 200 000 x 12. A feature count alone
-        cannot separate those — at 8 features the answer flips between 20 000 and
-        200 000 rows — and ``knn_tree_density`` is the measured ``n / 2**d`` at
-        which it flips.
+        Below ``knn_min_features`` features stock scikit-learn won some query batch
+        at nearly every size measured, so patched mode hands the fit to it. Mostly
+        that is its KD-tree: with ``algorithm="auto"`` scikit-learn builds one
+        whenever there are at most 15 features, ``n_neighbors < n_samples // 2`` and
+        the metric is one the tree supports, and the tree answers a single-row query
+        in 0.3-1.2 ms where an MLX call costs 1.0-2.3 ms before any arithmetic —
+        slower for MLX at every size measured from 256 x 2 to 1 048 576 x 12. At 2-5
+        features the tree also wins 256- and 4096-query batches. Those fits are
+        recorded as ``"tree-wins"``. The rest — ``algorithm="brute"``, a metric the
+        tree does not take, ``n_neighbors`` of half the rows or more — go to
+        scikit-learn's brute force, which at 2-8 features answers 16-query batches
+        faster than MLX even at 524 288 rows, and are recorded as
+        ``"below-crossover"``.
+
+        What the rule gives up is real, and on Gaussian data — a KD-tree's worst
+        case — large: from 8 features and 1 024 rows the MLX scan answered 256
+        queries 1.2x-30x faster than the tree, from 65 536 rows built its index
+        5x-20x faster, and at 14-15 features and 65 536 rows won single rows too.
+        On data of low intrinsic dimension — three latent dimensions in 8 or 12
+        features — the tree won every batch (0.19x-0.71x for MLX). Imported
+        directly, the estimator searches by brute force on MLX regardless. See
+        ``docs/benchmarks.md``.
 
         Only patched mode acts on this (``_select_backend``'s ``handoff``), because
-        only patched mode has a tree to hand the work to: the Layer 1 CPU path is
-        brute force as well, and slower than the GPU one.
+        only patched mode has scikit-learn to hand the work to: the Layer 1 CPU path
+        is brute force as well.
         """
-        density = get_tuning().knn_tree_density
-        if not density or self.algorithm != "auto" or n_features > _SKLEARN_TREE_MAX_FEATURES:
+        min_features = get_tuning().knn_min_features
+        if n_features >= min_features:
             return None
-        if self.n_neighbors is not None and self.n_neighbors >= n_samples // 2:
-            return None
-        if self._effective_metric()[0] not in VALID_METRICS["kd_tree"]:
-            return None
-        if n_samples < density * 2**n_features:
-            return None
-        return "tree-wins", (
-            f"{n_samples} training samples x {n_features} features with "
-            "algorithm='auto': scikit-learn answers this with a KD-tree, which beats "
-            f"brute-force search once n_samples >= {density} * 2**n_features"
+        if (
+            self.algorithm == "auto"
+            and n_features <= _SKLEARN_TREE_MAX_FEATURES
+            and (self.n_neighbors is None or self.n_neighbors < n_samples // 2)
+            and self._effective_metric()[0] in VALID_METRICS["kd_tree"]
+        ):
+            return "tree-wins", (
+                f"{n_samples} training samples x {n_features} features with "
+                "algorithm='auto': scikit-learn answers this with a KD-tree, which "
+                "answered a single-row query faster than an MLX call at every size "
+                "measured up to 12 features"
+            )
+        return "below-crossover", (
+            f"{n_features} features is below the measured KNN crossover for patched "
+            f"dispatch ({min_features} features): scikit-learn's brute force answers "
+            "small query batches on narrow data faster than an MLX call"
         )
 
     def _minkowski_p(self):
@@ -249,7 +272,7 @@ class MLXNeighborsMixin(BackendMixin):
             "fit",
             shape=shape,
             crossover=self._below_crossover,
-            handoff=self._tree_wins,
+            handoff=self._narrow_handoff,
             capability_check=lambda: self._check_neighbors_capability(X),
             # Before validate_data, so a float64 value that overflows float32 is a
             # capability limit — which scikit-learn's float64 path can serve, and
@@ -311,7 +334,7 @@ class MLXNeighborsMixin(BackendMixin):
                 "fit",
                 shape=X_checked.shape,
                 crossover=self._below_crossover,
-                handoff=self._tree_wins,
+                handoff=self._narrow_handoff,
             )
             if backend == "sklearn":
                 return "sklearn"

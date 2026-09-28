@@ -396,8 +396,8 @@ class BackendMixin:
         handoff : callable, optional
             ``handoff(n_samples, n_features) -> (reason, detail)`` or ``None``: a
             by-design handoff to scikit-learn that only patched mode makes, on
-            the raw shape, after the crossover — the neighbor estimators' KD-tree
-            rule. Directly imported, the estimator runs on MLX regardless.
+            the raw shape, after the crossover — the neighbor estimators'
+            narrow-data rule. Directly imported, the estimator runs on MLX regardless.
         data_check : callable, optional
             Data-dependent capability checks (float32 range, target type). Run
             after the size decision, and skipped when the work is going to

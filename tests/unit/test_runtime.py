@@ -62,8 +62,12 @@ IDS = [layer1.__name__ for layer1, _, _ in ESTIMATORS]
 NO_CROSSOVER = {
     "knn_min_train_samples": 0,
     "knn_min_work": 0,
+    "knn_min_features": 0,
     "logreg_min_samples": 0,
     "logreg_min_work": 0,
+    "logreg_binary_min_samples": 0,
+    "logreg_binary_max_features": 2**31,
+    "svc_min_features": 0,
     "svc_min_samples": 0,
     "svc_min_work": 0,
 }
@@ -344,7 +348,7 @@ def test_a_forked_child_gets_a_device_error_not_a_crash():
                 pass
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                with tuning_context(knn_min_train_samples=0, knn_min_work=0):
+                with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_min_features=0):
                     model = Patched().fit(X, y)   # Layer 2 falls back
             if model.execution_backend_ != "sklearn":
                 code = 11

@@ -43,6 +43,14 @@ def _layer_id(cls):
     return ("L2-" if cls._mlxlearn_allow_fallback else "L1-") + cls.__name__
 
 
+@pytest.fixture
+def mlx_sized():
+    """Every neighbor gate lifted for the test, so a small problem reaches the MLX path
+    by the ordinary route in both layers. For tests about that path, not dispatch."""
+    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_min_features=0):
+        yield
+
+
 def _events(operation=None):
     events = mlxlearn.get_backend_diagnostics()
     return [e for e in events if operation is None or e.operation == operation]
@@ -397,11 +405,19 @@ def test_small_problems_use_the_cpu_path(small_classification_data):
     assert model.execution_backend_ == "cpu"
 
 
+def _mlx_sized_data(rng):
+    """The smallest problem the default thresholds send to MLX: 4 096 rows and
+    4 194 304 elements."""
+    X = rng.normal(size=(4_096, 1_024))
+    return X, (X[:, 0] > 0).astype(int)
+
+
 @pytest.mark.gpu
-def test_large_problems_use_mlx(classification_data):
-    X, y = classification_data
+def test_large_problems_use_mlx(rng):
+    X, y = _mlx_sized_data(rng)
     model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
     assert model.execution_backend_ == "mlx"
+    assert KNeighborsClassifier(n_neighbors=3).fit(X[:-1], y[:-1]).execution_backend_ == "cpu"
 
 
 def test_inference_reuses_the_fitted_backend(classification_data):
@@ -420,9 +436,9 @@ def test_inference_reuses_the_fitted_backend(classification_data):
 
 
 @pytest.mark.gpu
-def test_refit_may_change_backend(small_classification_data, classification_data):
+def test_refit_may_change_backend(small_classification_data, rng):
     small_X, small_y = small_classification_data
-    big_X, big_y = classification_data
+    big_X, big_y = _mlx_sized_data(rng)
 
     model = KNeighborsClassifier(n_neighbors=3).fit(small_X, small_y)
     assert model.execution_backend_ == "cpu"
@@ -556,7 +572,7 @@ def test_classifier_column_vector_y_warns_and_ravels_like_sklearn(cls, rng):
 
 @pytest.mark.parametrize("weights", ["uniform", "distance"])
 @pytest.mark.parametrize("cls", [KNeighborsClassifier, patched.KNeighborsClassifier], ids=_layer_id)
-def test_multi_output_classification_matches_sklearn(cls, weights, rng):
+def test_multi_output_classification_matches_sklearn(cls, weights, rng, mlx_sized):
     """Multi-output targets stay on the MLX path; only the vote runs per output."""
     X = rng.normal(size=(600, 16))
     Y = np.column_stack([rng.integers(0, 3, 600), 10 * rng.integers(0, 2, 600) + 5])
@@ -576,7 +592,7 @@ def test_multi_output_classification_matches_sklearn(cls, weights, rng):
 
 @pytest.mark.parametrize("weights", ["uniform", "distance"])
 @pytest.mark.parametrize("cls", [KNeighborsRegressor, patched.KNeighborsRegressor], ids=_layer_id)
-def test_multi_output_regression_matches_sklearn(cls, weights, rng):
+def test_multi_output_regression_matches_sklearn(cls, weights, rng, mlx_sized):
     X = rng.normal(size=(600, 16))
     Y = rng.normal(size=(600, 3))
     Q = np.vstack([X[:10], rng.normal(size=(40, 16))])
@@ -664,7 +680,7 @@ def _sparse_query_problem(rng):
     return X, y, Q
 
 
-def test_patched_mlx_fit_answers_sparse_queries_like_sklearn(rng):
+def test_patched_mlx_fit_answers_sparse_queries_like_sklearn(rng, mlx_sized):
     """Layer 2 advertises sparse input, and stock brute force serves this query.
 
     The MLX fit populates the state scikit-learn's brute-force search reads, so a
@@ -689,7 +705,7 @@ def test_patched_mlx_fit_answers_sparse_queries_like_sklearn(rng):
     np.testing.assert_allclose(model.predict_proba(sparse.csr_matrix(Q)), ref.predict_proba(Q))
 
 
-def test_patched_sparse_query_honors_fallback_policy_raise(rng):
+def test_patched_sparse_query_honors_fallback_policy_raise(rng, mlx_sized):
     sparse = pytest.importorskip("scipy.sparse")
     X, y, Q = _sparse_query_problem(rng)
     model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
@@ -709,7 +725,7 @@ def test_layer1_mlx_fit_still_raises_on_sparse_queries(rng):
 
 
 @pytest.mark.parametrize("metric", ["euclidean", "sqeuclidean"])
-def test_sparse_queries_reach_sklearns_search_in_the_training_dtype(metric, monkeypatch, rng):
+def test_sparse_queries_reach_sklearns_search_in_the_training_dtype(metric, monkeypatch, rng, mlx_sized):
     """The sparse query used to reach scikit-learn as float64, against float32.
 
     scikit-learn's search needs one dtype on both sides. With two it fell to a
@@ -761,7 +777,7 @@ def test_sparse_queries_reach_sklearns_search_in_the_training_dtype(metric, monk
     assert seen == [model._fit_X.dtype] * 2 == [np.dtype(np.float32)] * 2
 
 
-def test_sparse_query_float32_cannot_hold_is_an_unsupported_input_error(rng):
+def test_sparse_query_float32_cannot_hold_is_an_unsupported_input_error(rng, mlx_sized):
     """As a dense query's is; the cast would otherwise turn it into infinity."""
     sparse = pytest.importorskip("scipy.sparse")
     X, y, Q = _sparse_query_problem(rng)
@@ -780,7 +796,7 @@ def test_sparse_query_float32_cannot_hold_is_an_unsupported_input_error(rng):
     ids=["float64", "fortran", "float32"],
 )
 @pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors], ids=_layer_id)
-def test_radius_neighbors_keeps_feature_names_like_sklearn(cls, make_query, rng):
+def test_radius_neighbors_keeps_feature_names_like_sklearn(cls, make_query, rng, mlx_sized):
     """The float32 cast used to turn a DataFrame query into a bare array.
 
     scikit-learn validates the query again, so a correctly named DataFrame warned
@@ -815,7 +831,7 @@ def test_radius_neighbors_keeps_feature_names_like_sklearn(cls, make_query, rng)
 
 
 @pytest.mark.parametrize("cls", [KNeighborsRegressor, patched.KNeighborsRegressor], ids=_layer_id)
-def test_regressor_refuses_a_string_target(cls, rng):
+def test_regressor_refuses_a_string_target(cls, rng, mlx_sized):
     """A float64 copy of y parsed "1.5" as 1.5. Stock stores it and fails in predict,
     so under patch_sklearn() whether string targets worked depended on the size."""
     X = rng.normal(size=(600, 16))
@@ -880,7 +896,7 @@ def test_list_input_is_converted_once(backend, rng):
     ],
 )
 @pytest.mark.parametrize("layer", ["L1", "L2"])
-def test_callable_weights_match_sklearn(estimator, method, layer, rng):
+def test_callable_weights_match_sklearn(estimator, method, layer, rng, mlx_sized):
     """Weighting is host code on the distances the search returns, so a callable is
     served on MLX. It used to be refused at fit, and set after an MLX fit it made
     predict raise "weights not recognized" where stock scikit-learn predicts."""
@@ -1144,10 +1160,15 @@ def test_patched_mlx_path_passes_sklearn_checks(cls):
 # ----------------------------------------------------------------------------------
 
 
+#: The size floors lifted, so the narrow-data handoff is what decides.
+_NO_SIZE_FLOOR = {"knn_min_train_samples": 0, "knn_min_work": 0}
+
+
 @pytest.mark.parametrize(
-    "shape, reason", [((120, 5), "below-crossover"), ((5000, 3), "tree-wins")]
+    "shape, tuning, reason",
+    [((120, 5), {}, "below-crossover"), ((5000, 3), _NO_SIZE_FLOOR, "tree-wins")],
 )
-def test_patched_handoff_does_not_scan_or_copy_the_data(shape, reason, monkeypatch, rng):
+def test_patched_handoff_does_not_scan_or_copy_the_data(shape, tuning, reason, monkeypatch, rng):
     """Patched mode decides these from ``X.shape`` alone and records one event.
 
     It used to scan for float32 overflow and make a validated float32 copy first —
@@ -1164,7 +1185,7 @@ def test_patched_handoff_does_not_scan_or_copy_the_data(shape, reason, monkeypat
 
     X = rng.normal(size=shape)
     y = (X[:, 0] > 0).astype(int)
-    with warnings.catch_warnings():
+    with warnings.catch_warnings(), tuning_context(**tuning):
         warnings.simplefilter("error", mlxlearn.MLXLearnFallbackWarning)
         model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
 
@@ -1175,14 +1196,17 @@ def test_patched_handoff_does_not_scan_or_copy_the_data(shape, reason, monkeypat
 
 
 def test_patched_low_dimensional_auto_goes_to_sklearns_kd_tree(rng):
-    """Stock ``algorithm='auto'`` answers this with a KD-tree brute force cannot touch.
+    """Stock ``algorithm='auto'`` answers this with a KD-tree, at any size.
 
-    Measured at 200 000 x 4 the MLX scan was 15x-25x slower than the tree it
-    replaced under patch_sklearn(), and about 100x at 1 000 000 x 3.
+    A single-row query on the tree costs 0.3-1.2 ms against 1.0-2.3 ms for an MLX
+    call, measured from 256 x 2 to 1 048 576 x 12, and on data of low intrinsic
+    dimension the tree also wins every batch (0.19x-0.71x for MLX at 8 and 12
+    features). The size floors are lifted so that it is this rule that decides.
     """
     X = rng.normal(size=(5000, 3))
     Q = rng.normal(size=(20, 3))
-    model = patched.NearestNeighbors(n_neighbors=5).fit(X)
+    with tuning_context(**_NO_SIZE_FLOOR):
+        model = patched.NearestNeighbors(n_neighbors=5).fit(X)
 
     assert model.execution_backend_ == "sklearn"
     assert model._fit_method == "kd_tree"
@@ -1193,34 +1217,64 @@ def test_patched_low_dimensional_auto_goes_to_sklearns_kd_tree(rng):
 
 
 @pytest.mark.parametrize(
-    "cls, kwargs, shape",
+    "kwargs, reason",
     [
-        (patched.NearestNeighbors, {"algorithm": "brute"}, (5000, 3)),
-        (NearestNeighbors, {}, (5000, 3)),
-        (patched.NearestNeighbors, {}, (3000, 3)),
-        (patched.NearestNeighbors, {}, (5000, 16)),
-        (patched.NearestNeighbors, {"n_neighbors": 2500}, (5000, 3)),
+        ({"algorithm": "brute"}, "below-crossover"),
+        ({"metric": "sqeuclidean"}, "below-crossover"),
+        ({"n_neighbors": 2500}, "below-crossover"),
+        ({}, "tree-wins"),
     ],
-    ids=["explicit-brute", "layer1", "sparse-for-its-dimension", "wide", "k-over-half-n"],
+    ids=["explicit-brute", "no-tree-metric", "k-over-half-n", "kd-tree"],
 )
-def test_tree_rule_leaves_everything_else_on_mlx(cls, kwargs, shape, rng):
-    """Only where scikit-learn itself would build a tree, and the tree would win.
+def test_narrow_data_goes_to_sklearn_whatever_it_would_build(kwargs, reason, rng):
+    """Below ``knn_min_features``, to the KD-tree where scikit-learn would build one,
+    and to its brute force otherwise: at 2-8 features that answers a 16-query batch
+    faster than MLX up to 524 288 rows."""
+    X = rng.normal(size=(5000, 3))
+    with tuning_context(**_NO_SIZE_FLOOR):
+        model = patched.NearestNeighbors(**kwargs).fit(X)
+    assert model.execution_backend_ == "sklearn"
+    [event] = _events("fit")
+    assert event.reason == reason
+    assert "features" in event.detail
 
-    An explicit ``algorithm='brute'`` is compared brute against brute, where MLX
-    wins; Layer 1 has no tree to hand the work to.
-    """
-    model = cls(**kwargs).fit(rng.normal(size=shape))
+
+@pytest.mark.parametrize(
+    "cls, shape",
+    [(NearestNeighbors, (5000, 3)), (patched.NearestNeighbors, (5000, 16))],
+    ids=["layer1", "wide"],
+)
+def test_the_narrow_rule_leaves_everything_else_on_mlx(cls, shape, rng):
+    """Layer 1 has no scikit-learn to hand the work to, and from 16 features
+    scikit-learn builds no tree."""
+    with tuning_context(**_NO_SIZE_FLOOR):
+        model = cls().fit(rng.normal(size=shape))
     assert model.execution_backend_ != "sklearn"
 
 
-def test_tree_rule_is_a_tuning_knob_that_force_backend_outranks(rng):
+def test_the_narrow_rule_is_a_tuning_knob_that_force_backend_outranks(rng):
     X = rng.normal(size=(5000, 3))
-    with tuning_context(knn_tree_density=0):
+    with tuning_context(**_NO_SIZE_FLOOR, knn_min_features=0):
         assert patched.NearestNeighbors().fit(X).execution_backend_ != "sklearn"
-    with tuning_context(knn_tree_density=4):
-        assert patched.NearestNeighbors().fit(X[:300]).execution_backend_ == "sklearn"
+    with tuning_context(**_NO_SIZE_FLOOR, knn_min_features=3):
+        assert patched.NearestNeighbors().fit(X).execution_backend_ != "sklearn"
+    with tuning_context(**_NO_SIZE_FLOOR, knn_min_features=4):
+        assert patched.NearestNeighbors().fit(X).execution_backend_ == "sklearn"
     with tuning_context(force_backend="mlx"):
         assert patched.NearestNeighbors().fit(X).execution_backend_ == "mlx"
+
+
+def test_the_knn_size_floors_are_both_required(rng):
+    """Rows and elements: a short, wide training set is handed off too, because
+    below 4 096 rows a 4096-query batch loses at every width measured (256 x 768:
+    0.25x)."""
+    model = patched.NearestNeighbors()
+    assert model._below_crossover(4095, 2048)[0]
+    assert model._below_crossover(65_535, 64)[0]
+    assert not model._below_crossover(65_536, 64)[0]
+    assert not model._below_crossover(4096, 1024)[0]
+    below, detail = model._below_crossover(256, 768)
+    assert below and "both required" in detail
 
 
 def test_capability_mismatch_outranks_the_tree_rule(rng):

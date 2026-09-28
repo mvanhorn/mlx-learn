@@ -309,20 +309,25 @@ class MLXLogisticMixin(BackendMixin):
     ) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        Both conditions must be met, and the work proxy is
-        ``n_samples × n_features × n_targets`` — one weight vector for a binary
-        problem, one per class for a multinomial one — because each objective
-        evaluation is a pair of ``(n, d) × (d, n_targets)`` products. Counting only
-        ``n × d`` sent a five-class 60 000 × 128 problem to scikit-learn as
-        "small".
+        Every fit needs ``logreg_min_samples`` rows and ``logreg_min_work``
+        element-ops, the work proxy being ``n_samples × n_features × n_targets`` —
+        one weight vector for a binary problem, one per class for a multinomial
+        one — because each objective evaluation is a pair of
+        ``(n, d) × (d, n_targets)`` products.
 
-        The per-iteration cost is what the threshold has to beat. It used to be
-        dominated by blocking host synchronizations inside the L-BFGS bookkeeping
-        — every inner product was a device round trip of ~120 µs, 12 to 33 per
-        iteration, while the line search averaged only about 1.1 evaluations per
-        iteration — and that bookkeeping is host NumPy now, with one
-        synchronization per objective evaluation. The thresholds themselves are
-        measurements; see ``docs/benchmarks.md``.
+        A binary fit must also be tall and narrow: at least
+        ``logreg_binary_min_samples`` rows and at most
+        ``logreg_binary_max_features`` features. Width is what costs MLX there.
+        scikit-learn's per-iteration cost is a matrix-vector product in float64
+        BLAS plus a per-sample loss; MLX's is the same product on the GPU after a
+        one-off float32 copy and transposition of ``X``, and a synchronization per
+        evaluation. The loss is where the GPU gains, and it does not grow with the
+        width; the copy does. Measured, binary fits won from 50 000-100 000 rows at
+        4-32 features (1.2x-2.7x from 100 000) but lost at 256 and 1 024 features at
+        every size up to 1 000 000 rows (0.52x-0.85x), and reached parity at 64-128
+        only past a million rows. A multinomial fit does ``n_targets`` times the
+        GPU work for the same copy, and won from 60 000 rows at every width
+        measured (1.3x-7.3x).
         """
         tuning = get_tuning()
         work = n_samples * n_features * max(int(n_targets), 1)
@@ -333,21 +338,33 @@ class MLXLogisticMixin(BackendMixin):
                 f"({tuning.logreg_min_samples} samples and {tuning.logreg_min_work} "
                 "element-ops, both required)"
             )
+        if n_targets <= 1 and (
+            n_samples < tuning.logreg_binary_min_samples
+            or n_features > tuning.logreg_binary_max_features
+        ):
+            return True, (
+                f"a binary fit of {n_samples} samples x {n_features} features is outside "
+                "the measured binary logistic-regression crossover (at least "
+                f"{tuning.logreg_binary_min_samples} samples and at most "
+                f"{tuning.logreg_binary_max_features} features)"
+            )
         return False, ""
 
     def _crossover_from_raw(self, shape: tuple[int, int], y) -> tuple[bool, str]:
         """:meth:`_below_crossover` from the raw input, before any validation.
 
-        The class count only changes the answer when there are enough samples and
-        ``n × d`` alone falls short of the work threshold, so ``y`` is only looked
-        at in that band.
+        The class count only changes the answer for a problem that clears the
+        sample floor and would be refused as binary — or would fall short of the
+        work floor with one weight vector — so ``y`` is only looked at then, and
+        cheaply (:func:`_count_targets`).
         """
         n_samples, n_features = shape
         tuning = get_tuning()
         n_targets = 1
-        if (
-            n_samples >= tuning.logreg_min_samples
-            and n_samples * n_features < tuning.logreg_min_work
+        if n_samples >= tuning.logreg_min_samples and (
+            n_samples * n_features < tuning.logreg_min_work
+            or n_samples < tuning.logreg_binary_min_samples
+            or n_features > tuning.logreg_binary_max_features
         ):
             n_targets = _count_targets(y)
         return self._below_crossover(n_samples, n_features, n_targets)
@@ -955,14 +972,20 @@ def _count_targets(y) -> int:
     """Weight vectors the fit will have: 1 for binary, else the class count.
 
     Used only as a size hint for the crossover, before validation, so anything it
-    cannot read cheaply counts as binary — the smaller work estimate, which errs
-    toward handing the problem to scikit-learn.
+    cannot read cheaply counts as binary — which, like any wrong guess here, only
+    moves the fit between two correct backends. Numeric labels with exactly two
+    values are recognized in two vectorized passes rather than a sort: this runs
+    on fits patched mode may hand to scikit-learn, which then labels ``y`` again.
     """
     labels = np.asarray(y)
     if labels.ndim == 2 and labels.shape[1] == 1:
         labels = labels.ravel()
-    if labels.ndim != 1 or labels.dtype.kind not in "biufUS":
+    if labels.ndim != 1 or labels.dtype.kind not in "biufUS" or labels.size == 0:
         return 1
+    if labels.dtype.kind in "biuf":
+        low, high = labels.min(), labels.max()
+        if low == high or not np.any((labels != low) & (labels != high)):
+            return 1
     n_classes = np.unique(labels).shape[0]
     return 1 if n_classes <= 2 else int(n_classes)
 

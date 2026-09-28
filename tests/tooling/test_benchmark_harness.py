@@ -264,9 +264,12 @@ def test_the_full_grid_covers_the_regimes_found_missing():
 def test_the_published_profile_encodes_the_documented_headline_cases():
     labels = {case.label for case in run.PROFILES["published"]}
     assert "knn/kneighbors/128000x768/q256/sklearn_algorithm=brute" in labels
+    assert "knn/kneighbors/1000x32/q4096/sklearn_algorithm=brute" in labels
     assert "svc/fit/4000x256" in labels
-    assert "svc/fit/2500x20/C=10.0/kernel=linear/n_classes=4" in labels
-    assert "logreg/fit/60000x1024" in labels
+    assert "svc/fit/4000x64/C=10.0/kernel=poly" in labels
+    assert "svc/fit/2000x256/kernel=linear" in labels
+    assert "logreg/fit/1000000x16" in labels
+    assert "logreg/fit/60000x64/n_classes=5" in labels
     assert run.PROFILE_SETTINGS["published"] == {
         "layer": "direct",
         "force_backend": "mlx",
@@ -274,23 +277,80 @@ def test_the_published_profile_encodes_the_documented_headline_cases():
     }
 
 
-def test_smoke_reaches_past_every_mlx_threshold():
+def _patched_route(case: run.Case) -> str:
+    """Where patched dispatch sends a case under the configured Tuning, from its shape."""
+    from mlxlearn.patching import _estimators as patched
+
+    n, d = case.n_samples, case.n_features
+    n_classes = case.option("n_classes") or 2
+    if case.algorithm == "knn":
+        model = patched.NearestNeighbors(
+            n_neighbors=10, algorithm=case.option("sklearn_algorithm")
+        )
+        if model._below_crossover(n, d)[0]:
+            return "below-crossover"
+        handed = model._narrow_handoff(n, d)
+        return "narrow:" + handed[0] if handed else "mlx"
+    if case.algorithm == "logreg":
+        model = patched.LogisticRegression()
+        below, detail = model._below_crossover(n, d, 1 if n_classes == 2 else n_classes)
+        return ("binary:" if "binary" in detail else "below-crossover") if below else "mlx"
+    model = patched.SVC(kernel=case.option("kernel"))
+    below, detail = model._below_crossover(n, d, n_classes=n_classes)
+    return ("pair:" if "one-vs-one" in detail else "below-crossover") if below else "mlx"
+
+
+def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
+    """Every floor in Tuning decides at least one smoke case, and every estimator
+    has smoke cases that reach MLX, so a threshold change that stops routing
+    anything to MLX — or routes everything — shows up in the smoke gate."""
     from mlxlearn._common.config import get_tuning
 
     tuning = get_tuning()
     smoke = run.PROFILES["smoke"]
+
+    def cases(algorithm):
+        return [(c, _patched_route(c)) for c in smoke if c.algorithm == algorithm]
+
+    knn = cases("knn")
+    assert any(r == "mlx" for _, r in knn)
+    assert any(c.n_samples < tuning.knn_min_train_samples for c, _ in knn)
     assert any(
-        c.algorithm == "logreg"
-        and c.n_samples >= tuning.logreg_min_samples
-        and c.n_samples * c.n_features >= tuning.logreg_min_work
-        for c in smoke
+        r == "below-crossover"
+        and c.n_samples >= tuning.knn_min_train_samples
+        and c.n_samples * c.n_features < tuning.knn_min_work
+        for c, r in knn
     )
+    assert any(r == "narrow:tree-wins" for _, r in knn)
+
+    logreg = cases("logreg")
+    assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in logreg)
+    assert any(r == "mlx" and (c.option("n_classes") or 2) > 2 for c, r in logreg)
+    assert any(c.n_samples < tuning.logreg_min_samples for c, _ in logreg)
     assert any(
-        c.algorithm == "svc"
+        r == "binary:" and c.n_features > tuning.logreg_binary_max_features for c, r in logreg
+    )
+
+    svc = cases("svc")
+    assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in svc)
+    assert any(r == "mlx" and (c.option("n_classes") or 2) > 2 for c, r in svc)
+    assert any(
+        r == "below-crossover"
         and c.n_samples >= tuning.svc_min_samples
-        and c.n_samples * c.n_features >= tuning.svc_min_work
-        for c in smoke
+        and c.n_features < tuning.svc_min_features
+        for c, r in svc
     )
+    assert any(r == "pair:" for _, r in svc)
+
+
+def test_the_published_profile_brackets_every_estimators_crossover():
+    """Its tables show each estimator on both sides of patched dispatch's decision:
+    the forced-MLX timings where dispatch would not use MLX are the evidence for
+    the thresholds, and the gate judges the rest."""
+    routes = {}
+    for case in run.PROFILES["published"]:
+        routes.setdefault(case.algorithm, set()).add(_patched_route(case) == "mlx")
+    assert routes == {"knn": {True, False}, "svc": {True, False}, "logreg": {True, False}}
 
 
 # --------------------------------------------------------------------- end to end

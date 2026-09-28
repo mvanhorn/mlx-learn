@@ -50,9 +50,12 @@ KNN = ["KNeighborsClassifier", "KNeighborsRegressor", "NearestNeighbors"]
 NO_CROSSOVER = {
     "knn_min_train_samples": 0,
     "knn_min_work": 0,
-    "knn_tree_density": 0,
+    "knn_min_features": 0,
     "logreg_min_samples": 0,
     "logreg_min_work": 0,
+    "logreg_binary_min_samples": 0,
+    "logreg_binary_max_features": 2**31,
+    "svc_min_features": 0,
     "svc_min_samples": 0,
     "svc_min_work": 0,
     "svc_min_pair_work": 0,
@@ -227,7 +230,7 @@ def test_knn_tree_wins_handoff(data, name):
     """Patched low-dimensional algorithm="auto" fits go to scikit-learn's KD-tree."""
     X, y = data
     model = _make(name, "L2")
-    tuning = {**NO_CROSSOVER, "knn_tree_density": 1}  # n=240 >= 1 * 2**6
+    tuning = {**NO_CROSSOVER, "knn_min_features": 16}  # 6 features, a KD-tree config
     events = _fit(model, X, _target(name, y), tuning)
     _assert_one_fit_event(model, events, "sklearn")
     assert model.fit_event_.reason == "tree-wins"
@@ -243,7 +246,9 @@ def test_svc_per_pair_gate(data, layer):
     """
     X, y = data
     model = _make("SVC", layer)
-    tuning = {"svc_min_samples": 0, "svc_min_work": 0, "svc_min_pair_work": 10**9}
+    tuning = {
+        "svc_min_features": 0, "svc_min_samples": 0, "svc_min_work": 0, "svc_min_pair_work": 10**9
+    }
     events = _fit(model, X, y, tuning)
     _assert_one_fit_event(model, events, "sklearn" if layer == "L2" else "cpu")
     assert model.fit_event_.reason == "below-crossover"

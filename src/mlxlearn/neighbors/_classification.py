@@ -68,12 +68,13 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
     Multi-output targets are accelerated: the neighbor search does not depend on
     ``y``, and the vote is taken per output, as scikit-learn takes it.
 
-    On low-dimensional data scikit-learn's ``algorithm="auto"`` builds a KD-tree,
-    which beats any brute-force scan once the training set is large for its
-    dimension (roughly ``n_samples >= 512 * 2**n_features``). Under
-    ``patch_sklearn()`` such fits are handed to scikit-learn. Imported directly,
-    this class always searches by brute force, so on that kind of data stock
-    scikit-learn is the faster choice.
+    With at most 15 features scikit-learn's ``algorithm="auto"`` builds a
+    KD-tree, which answered a single-row query faster than an MLX call at every
+    size measured up to 12 features, and at 2-5 features every batch. Under
+    ``patch_sklearn()`` those fits, and any other with fewer than 16 features, are
+    handed to scikit-learn. Imported directly, this class always searches by brute
+    force, so on that kind of data stock scikit-learn is the faster choice unless
+    the queries come in large batches.
 
     Examples
     --------

@@ -46,7 +46,12 @@ MIN_AGREEMENT = 0.995
 BACKENDS = ["cpu", "mlx"]
 
 #: Everything MLX-side is in play: no crossover can hand a problem to scikit-learn.
-_NO_CROSSOVER = {"logreg_min_samples": 0, "logreg_min_work": 0}
+_NO_CROSSOVER = {
+    "logreg_min_samples": 0,
+    "logreg_min_work": 0,
+    "logreg_binary_min_samples": 0,
+    "logreg_binary_max_features": 2**31,
+}
 
 #: scikit-learn 1.7 still has ``multi_class``; 1.8 removed it.
 _HAS_MULTI_CLASS = hasattr(SkLogisticRegression(), "multi_class")
@@ -131,14 +136,16 @@ def test_parity_across_regularization(C, n_classes):
 def test_a_wide_problem_agrees_on_the_objective_then_on_probabilities_at_tight_tol():
     """docs/fp32_policy.md §3: the probability tolerance at default ``tol`` is the grid's.
 
-    On a wide problem above the crossover, where lbfgs stops moves the
-    probabilities by up to 5e-3 at default ``tol`` — scikit-learn's own lbfgs and
-    newton-cg differ as much — so the objective is what agrees there; at
-    ``tol=1e-6`` every axis does.
+    On a wide problem on the MLX path, where lbfgs stops moves the probabilities
+    by up to 5e-3 at default ``tol`` — scikit-learn's own lbfgs and newton-cg
+    differ as much — so the objective is what agrees there; at ``tol=1e-6`` every
+    axis does. Patched dispatch hands a binary fit this wide to scikit-learn, so
+    the crossover is lifted, and the fit still takes the ordinary route to MLX.
     """
     X, y = make_classification(25_000, 1_000, random_state=2)
     for tol in (1e-4, 1e-6):
-        mlx = LogisticRegression(tol=tol, max_iter=1000).fit(X, y)
+        with tuning_context(**_NO_CROSSOVER):
+            mlx = LogisticRegression(tol=tol, max_iter=1000).fit(X, y)
         ref = SkLogisticRegression(tol=tol, max_iter=1000).fit(X, y)
         assert _objective(mlx, X, y, C=1.0) == pytest.approx(
             _objective(ref, X, y, C=1.0), rel=OBJECTIVE_RTOL
