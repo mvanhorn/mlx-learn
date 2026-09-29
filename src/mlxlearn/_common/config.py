@@ -186,82 +186,99 @@ class Tuning:
 
     # ---- dispatch crossovers: below these, stock scikit-learn is used ----------------
     #
-    # Measured, not guessed: patched dispatch against stock scikit-learn in
-    # interleaved, order-alternated pairs (benchmarks/_harness.compare: a garbage
-    # collection before every timed call, mx.synchronize inside it), median of 5-9,
-    # on an Apple M4 Max (16 cores, 128 GiB, macOS 26.6.2) with MLX 0.32.2, against
-    # scikit-learn 1.9.0 (Python 3.13.3, NumPy 2.5.2) and 1.7.2 (Python 3.10.19,
-    # NumPy 2.2.6). A threshold routes to MLX only where it won, or tied within
-    # noise, on both versions. docs/benchmarks.md has the grids; benchmarks/run.py
-    # reproduces the published cases.
+    # Measured, not guessed: the MLX path patched dispatch would run against stock
+    # scikit-learn in interleaved, order-alternated pairs (benchmarks/_harness.compare:
+    # a garbage collection before every timed call, mx.synchronize inside it, so every
+    # MLX call pays to wake an idled GPU), median of 5-9, on an Apple M4 Max (16 cores,
+    # 128 GiB, macOS 26.6.2) with MLX 0.32.2, against scikit-learn 1.9.0 (Python
+    # 3.13.3, NumPy 2.5.2) and 1.7.2 (Python 3.10.19, NumPy 2.2.6). A threshold routes
+    # to MLX only where every configuration measured won, or tied within noise, on
+    # both versions. Each value below names the calibration table in
+    # docs/benchmarks.md that justifies it, and `python -m benchmarks.calibrate`
+    # regenerates that table (the grid of the same name).
     #
-    # KNN, k=10, Gaussian data. Both floors are required (see
+    # KNN, k=10, Gaussian data. Both floors bind in both layers (see
     # MLXNeighborsMixin._below_crossover), because a fit cannot see how it will be
-    # queried and each floor guards a different batch size: below 4096 rows a
-    # 4096-query batch runs 0.25x-0.8x of stock brute force at every width from 2
-    # to 768, and below ~4.2e6 elements a 256-query batch at 16-32 features ties
-    # or loses (0.69x-0.84x at 32768 rows). Above both floors, every width and
-    # batch of 1-4096 queries measured 1.0x-7.4x on both versions. The first
-    # release's 256 rows with a work clause keeping short wide sets on MLX lost at
-    # 256 x 768 (0.25x-0.67x).
+    # queried and each floor guards a different batch size (table `knn-rows`: 256 to
+    # 1024 features, 2048-131072 rows, every batch of 1-4096 queries). Below 4096
+    # rows a 4096-query batch lost at every width (0.44x-0.79x at 2048 rows). Below
+    # 6e6 elements batches of 1-32 queries lost at 4096-8192 rows (0.70x-0.95x), and
+    # at 4 194 304 elements, the floor this one replaced, single rows only tied
+    # (0.90x-0.99x). Above both, at 256-1024 features, every batch won on both
+    # versions or tied (1.02x-8.5x).
     knn_min_train_samples: int = 4_096
-    knn_min_work: int = 4_194_304  # n_train * n_features
+    knn_min_work: int = 6_000_000  # n_train * n_features
     #
-    # Patched mode only: a fit with fewer features is handed to scikit-learn at any
-    # size (see MLXNeighborsMixin._narrow_handoff) — to its KD-tree where
-    # algorithm='auto' would build one (reason "tree-wins"), else to its brute
-    # force. A single-row query on the tree costs 0.3-1.2 ms, on MLX 1.0-2.3 ms:
-    # 0.16x-0.58x for MLX from 256 x 2 to 1e6 x 12. At 2-5 features 256- and
-    # 4096-query batches lose to the tree too, and brute force at 2-8 features
-    # answers 16-query batches 0.78x-0.86x up to 524288 rows. 16 is the first width
-    # where scikit-learn uses no tree and MLX lost no batch; 0 disables the rule.
-    # It replaces a density rule, n >= 512 * 2**d, calibrated against the 0.1.0a2
-    # scan: the tree losses it cited at 200000 x 8 and 1e6 x 8..10 no longer
-    # reproduce, and the tree's single-row wins below that density it never saw.
+    # Patched mode only (MLXNeighborsMixin._patched_handoff), two more rules. A fit
+    # with fewer than knn_min_features features goes to scikit-learn at any size: to
+    # its KD-tree where algorithm='auto' would build one (reason "tree-wins"), else to
+    # its brute force (tables `knn-tree`, `knn-tree-lowrank`, `knn-narrow-brute`).
+    # 16 is the first width where scikit-learn builds no tree; 0 disables the rule.
     knn_min_features: int = 16
     #
+    # And a fit with fewer than knn_wide_features features needs
+    # knn_narrow_min_samples rows (table `knn`: 16-256 features, 12 000-1.6 million
+    # rows, every batch of 1-4096 queries). An idled GPU runs a call of a few
+    # milliseconds' work up to two or three times slower, so at 16-128 features
+    # batches of 8-512 queries lost on one version or both at 42 of the 50 sizes
+    # measured below a million rows (down to 0.44x; 600 000 rows at 16, 24 and 48
+    # features among them), while from 1 000 000 rows every batch won or tied on
+    # both (the worst batch 1.08x-1.9x). At 256 features every batch won or tied
+    # from 12 000 rows. The previous floors alone sent 180 000 x 32 to MLX, where
+    # 32-query batches ran 0.57x-0.64x.
+    knn_wide_features: int = 256
+    knn_narrow_min_samples: int = 1_000_000
+    #
     # Logistic regression, max_iter=200 (see LogisticRegression._below_crossover).
-    # Every fit needs both floors. Multinomial fits (3, 5, 10 classes, overlapping
-    # blobs) won at every width measured from 60000 rows, 1 to 1024 features
-    # (1.3x-12.7x), and lost at 5000 (0.35x-0.85x, but 1.26x at 512 features);
-    # 20000 was mixed (0.70x-1.83x). The work floor is the smallest fit measured to
-    # win, binary 100000 x 1 (1.9x-2.0x); above the row floors it does not bind.
+    # Every fit needs both floors. Table `logreg-multi`: multinomial fits (3, 5 and
+    # 10 classes, overlapping blobs) won at every width measured from 60000 rows, 1
+    # to 512 features (1.31x-7.0x on both versions), lost at 5000 (0.35x-0.96x) and
+    # were mixed at 20000 (0.52x-2.0x). The work floor is the smallest fit measured
+    # to win, binary 100000 x 1 (1.70x-1.89x, table `logreg-binary`); above the row
+    # floors it does not bind.
     logreg_min_samples: int = 60_000
     logreg_min_work: int = 100_000  # n_samples * n_features * weight vectors
     #
-    # Binary fits must also be tall and narrow. MLX won from 100000 rows at 1-32
-    # features (1.08x-4.5x; 0.68x-1.45x at 50000), tied or lost at 48-64 features
-    # up to 500000 rows (0.86x-1.02x), lost at 256 and 1024 features at every size
-    # tried, up to 1e6 x 256 (0.46x-0.85x), and at 64-128 features reached parity
-    # only past a million rows. Width costs MLX once, not per iteration: at
+    # Binary fits must also be tall and narrow (table `logreg-binary`). MLX won
+    # from 100000 rows at 1-32 features on both versions (1.10x-4.6x; 0.85x-1.40x
+    # at 50000), tied or lost at 64 features up to 200000 rows (0.88x-1.00x), lost
+    # at 256 and 1024 features at every size tried, up to 1e6 x 256 (0.45x-0.85x),
+    # and at 64-128 features reached parity only at a million rows (0.93x-1.29x).
+    # Width costs MLX once, not per iteration: at
     # 100000 x 1024 the float32 copy and transposition of X took 64 ms and its range
     # check 20 ms of a 127 ms fit whose 7 iterations took 19 ms (stock: 92 ms). The
     # 0.1.0a2 rule, 20000 samples and 2e7 elements with no width limit, sent
-    # 20000 x 1024 (0.52x) and 200000 x 128 (0.88x) to MLX and kept 1e6 x 16 (2.37x)
-    # from it.
+    # 20000 x 1024 (0.45x-0.56x) and 200000 x 128 (0.80x-0.86x) to MLX and kept
+    # 1e6 x 16 (2.37x-2.47x) from it.
     logreg_binary_min_samples: int = 100_000
     logreg_binary_max_features: int = 32
     #
     # SVC: the axis that matters is *width* (see SVC._below_crossover). Per SMO
     # iteration mlxlearn costs about the same at any width while LIBSVM pays O(n*d)
-    # per kernel row it misses. From 128 features rbf, poly and sigmoid at C=1 and
-    # C=10 all won on both versions (1.2x-6.8x at 1000-8000 rows, 8x-17x at
-    # 16000-32000 x 256); at 16-64 features rbf and poly at C=10 lost (0.15x-0.85x),
-    # and 2-8 features lost at C=1 past 8000 rows. All three floors are required,
-    # and the linear kernel (0.04x-0.09x forced onto MLX) is excluded at every size.
-    # The work floor sits at the smallest wins, 1000 x 256 (1.75x-1.87x) and
-    # 2000 x 128 (1.67x); 1000 x 128 won by only 1.02x-1.10x.
+    # per kernel row it misses. Table `svc`: binary rbf and poly fits at C = 1 and
+    # 10 everywhere, 0.1 and 100 around the floors. At 16-64 features both lost at
+    # C = 10 and 100 on both versions (0.15x-0.85x), and poly at C = 1 up to 32
+    # features. From 128 features they won at every C — once the fit had rows: at
+    # 128 features 1 000-2 000 rows lost at C = 10 and above on one version or
+    # both (0.61x-0.95x), and from 3 000 rows every kernel and C won or tied. The
+    # work floor is that corner, 3000 x 128, which also keeps 1000 x 256 (a 1.04x
+    # win at worst) and lets 1500 x 256 (1.36x-5.0x) and 1024 x 512 through. Above
+    # all three floors every binary fit measured won or tied on both versions,
+    # 1.04x-8.4x (1.04x-4.4x at C of 1 and 10, up to 8 000 rows). The linear kernel
+    # (table `svc-linear`) and the sigmoid kernel (table `svc-sigmoid`: won at
+    # C = 0.1, lost at C = 10 and 100 nearly everywhere, down to 0.06x) are excluded
+    # at every size: no rule here looks at C.
     svc_min_features: int = 128
     svc_min_samples: int = 1_024
-    svc_min_work: int = 250_000  # n_samples * n_features
+    svc_min_work: int = 384_000  # n_samples * n_features
     #
     # One-vs-one fits K(K-1)/2 subproblems of 2n/K rows on average, each paying a
     # fixed Gram dispatch and its own Python SMO loop, so many small classes lose
-    # even when the total clears the floors above: pairs of 512 x 512 (2048 rows,
-    # K=8) ran 1.21x-1.36x and 1000 x 256 (8000 rows, K=16) 1.10x-1.23x, while
-    # 256 x 512 (K=16) ran 0.73x-0.82x and 500 x 256 (K=32) 0.70x-0.77x. This floor
-    # is on the *mean* pair's work, (2n/K) * n_features, which ignores class
-    # imbalance by construction.
+    # even when the total clears the floors above (table `svc-multi`): pairs of
+    # 512 x 512 (2048 rows, K=8) ran 1.28x-1.39x and 1000 x 256 (8000 rows, K=16)
+    # 1.17x-1.21x, while 256 x 512 (K=16) ran 0.73x-0.81x and 500 x 256 (K=32)
+    # 0.70x-0.77x. This floor is on the *mean* pair's work, (2n/K) * n_features,
+    # which ignores class imbalance by construction.
     svc_min_pair_work: int = 250_000
 
     # ---- blocking ---------------------------------------------------------------------

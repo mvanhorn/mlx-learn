@@ -120,6 +120,12 @@ come first under **Changed**.
   `__cause__` and `__context__`, as scikit-learn re-raises it, not reported as a
   `BackendExecutionError`; the failed fit's device copy of `X` is not kept alive in a
   reference cycle until the next garbage collection.
+- Under `patch_sklearn()`, where a fit ran no longer depends on how its labels are
+  spelled. The size rules counted string and object labels — a pandas `Series` of class
+  names, a categorical — as binary, so a multinomial fit that integer labels sent to MLX
+  went to scikit-learn under the binary rule. Labels are now counted whatever their type,
+  binary ones in two vectorized passes without a sort. `SVC`'s many-class rule reads them
+  the same way before validation, where it used to wait for it.
 
 #### SVC
 
@@ -336,8 +342,17 @@ come first under **Changed**.
 - 0.1.0a1 attributed `LogisticRegression`'s per-iteration cost to one host
   synchronization per line-search evaluation. The cost was 12–33 blocking
   synchronizations per iteration in the L-BFGS bookkeeping; the line search averaged about
-  1.1 evaluations per iteration. The fix is under **Performance**; the benchmark write-up
-  is marked for rewrite when the numbers are re-measured.
+  1.1 evaluations per iteration. The fix is under **Performance**, and
+  [`docs/benchmarks.md`](docs/benchmarks.md) describes the cost as it now is.
+- [`docs/benchmarks.md`](docs/benchmarks.md) is rendered from the calibration grids (see
+  **Added**), and every range the README, this changelog, `Tuning` and the dispatch
+  docstrings quote cites one of its tables by grid name. Ranges it used to quote did not
+  all hold: that every batch of 1–4 096 queries won above the neighbor floors (batches of
+  8–512 lost, at sizes the calibration had not timed); that a KD-tree answers a single
+  row faster than MLX up to 12 features (it holds up to 8, and at 12 up to 65 536 rows —
+  one fixed query row had stood for what a row costs the tree); that the sigmoid kernel
+  won at C = 10; an index-build range its own table contradicted; and lower bounds that
+  left out one version's worse figure.
 - 0.1.0a1 listed cold-start measurements among the benchmark outputs. The harness never
   implemented them; see **Removed**.
 - The README's links were relative and 404ed on the PyPI page; they are absolute now. It
@@ -352,7 +367,7 @@ come first under **Changed**.
 - [`docs/fp32_policy.md`](docs/fp32_policy.md) §3 gave `LogisticRegression`'s probability
   tolerance, `atol=2e-3` at default `tol`, without saying it was measured on a fixed grid
   (n ≤ 5 000, d ≤ 20). At default `tol` a wide problem stops elsewhere: at
-  25 000 × 1 000, which the crossover sends to MLX, the probabilities differed by up to
+  25 000 × 1 000, which 0.1.0a2's crossover sent to MLX, the probabilities differed by up to
   4.9e-3, as much as stock lbfgs and stock newton-cg differ from each other. Such a
   problem is judged on the objective, and on probabilities at `tol=1e-6` (7.2e-5).
 
@@ -373,29 +388,49 @@ come first under **Changed**.
   `KNeighborsRegressor`: the neighbor search does not depend on `y`, and votes and averages
   are taken per output. The Layer 1 tags now advertise multi-output (and, for the
   classifier, multi-label) targets.
-- **Patched dispatch thresholds re-measured, and three rules reshaped.** Measured against
-  scikit-learn 1.9.0 and 1.7.2 on an M4 Max ([`docs/benchmarks.md`](docs/benchmarks.md)),
-  each threshold now sends a problem to MLX only where MLX won or tied against both, in
-  every configuration measured at that shape.
-  - Neighbor estimators need at least 4 096 rows **and** 4 194 304 elements (was 256 rows
-    **or** 2 048 elements), and patched mode hands every fit with fewer than 16 features
-    to scikit-learn, at any size: to its KD-tree where `algorithm="auto"` would build one
-    (diagnostics reason `"tree-wins"`), to its brute force otherwise. The private knob is
-    `knn_min_features` (`MLXLEARN_KNN_MIN_FEATURES`). Below 4 096 rows a 4096-query batch
-    ran 0.25×–0.8× of stock at every width measured, short wide training sets included,
-    and a KD-tree answered single-row queries faster than an MLX call at every size
-    measured up to 12 features. Before, a patched fit and 1 000-row predict at
-    200 000 × 3 ran at 0.40× of stock (see **Performance**). A directly imported class
-    still searches by brute force.
+- **Patched dispatch thresholds re-measured, and four rules reshaped.** Measured against
+  scikit-learn 1.9.0 and 1.7.2 on an M4 Max, on grids `python -m benchmarks.calibrate`
+  regenerates ([`docs/benchmarks.md`](docs/benchmarks.md) has every table, named by
+  grid), each threshold now sends a problem to MLX only where MLX won or tied against
+  both, in every configuration measured at that shape — for the neighbor estimators,
+  every batch of 1 to 4 096 queries.
+  - Neighbor estimators need at least 4 096 rows **and** 6 000 000 elements (was 256 rows
+    **or** 2 048 elements; table `knn-rows`): below 4 096 rows a 4096-query batch ran
+    0.44×–0.79× of stock at every width from 256 to 1 024, and below 6 million elements
+    batches of 1–32 queries lost at 4 096–8 192 rows (0.70×–0.95×).
+  - Patched mode hands every neighbor fit with fewer than 256 features and fewer than
+    1 000 000 rows to scikit-learn (`knn_wide_features`, `knn_narrow_min_samples`;
+    `MLXLEARN_KNN_WIDE_FEATURES`, `MLXLEARN_KNN_NARROW_MIN_SAMPLES`; table `knn`). Every
+    MLX call in the benchmark follows an idle GPU, as one made after other work does, and
+    that costs a call of a few milliseconds most: at 16–128 features a batch of 8–512
+    queries lost on one version or both at 42 of the 50 sizes measured below a million
+    rows, down to 0.44× — mostly at batch sizes the previous calibration, which timed 1,
+    16, 256 and 4 096 queries, never tried. From a million rows, and at 256 features from
+    12 000 rows, every batch won or tied on both versions. A directly imported class
+    searches on MLX regardless.
+  - Patched mode hands every neighbor fit with fewer than 16 features to scikit-learn, at
+    any size: to its KD-tree where `algorithm="auto"` would build one (diagnostics reason
+    `"tree-wins"`), to its brute force otherwise (`knn_min_features`,
+    `MLXLEARN_KNN_MIN_FEATURES`; tables `knn-tree`, `knn-tree-lowrank`,
+    `knn-narrow-brute`). A KD-tree answered single rows faster than an MLX call at every
+    size measured up to 8 features, and at 12 features up to 65 536 rows; at 2–5 features
+    it won every batch. Before, a patched fit and 1 000-row predict at 200 000 × 3 ran at
+    0.40× of stock (see **Performance**).
   - `LogisticRegression` needs at least 60 000 rows and 100 000 element-ops (was 20 000
     rows and 2·10⁷), and a binary fit also at least 100 000 rows and at most 32 features
-    (`logreg_binary_min_samples`, `logreg_binary_max_features`). Binary fits on wide data
-    are slower on MLX at every size measured, and the old rule sent them there while
-    keeping tall, narrow binary fits, which win, from it.
-  - `SVC` needs at least 128 features (`svc_min_features`), 1 024 rows and 250 000
-    elements (was 2 048 rows and 10⁶ elements, with no width floor). Below 128 features
-    rbf and poly fits at C=10 are slower on MLX, and narrow fits past the kernel cache
-    are at C=1 too.
+    (`logreg_binary_min_samples`, `logreg_binary_max_features`; tables `logreg-binary`,
+    `logreg-multi`). Binary fits on wide data are slower on MLX at every size measured,
+    and the old rule sent them there while keeping tall, narrow binary fits, which win,
+    from it.
+  - `SVC` needs the rbf or poly kernel, at least 128 features (`svc_min_features`),
+    1 024 rows and 384 000 elements (was any kernel but linear, 2 048 rows and 10⁶
+    elements, with no width floor; table `svc`). Below 128 features rbf and poly fits at
+    C = 10 and 100 are slower on MLX, and narrow fits past the kernel cache are at C = 1
+    too; at 128 features, fits of 1 000–2 000 rows lost at C = 10 and above
+    (0.61×–0.95×), and from 3 000 rows every kernel and C from 0.1 to 100 won or tied on
+    both versions. The sigmoid kernel now stays on LIBSVM at every size, as the linear
+    kernel does: it lost at C = 10 and 100 nearly everywhere, down to 0.06×, and the
+    rules cannot see C (table `svc-sigmoid`).
 - **Patched fits below the crossover are decided from `X.shape`**, before any data scan or
   copy, for all three estimator families, and record a single event. A consequence: a
   sub-crossover fit whose only mismatch is data-dependent — values past 3.4e38, or for
@@ -595,6 +630,17 @@ come first under **Changed**.
   `--force-backend` flag. A case may carry its own iteration count, which caps
   `--iterations` and never raises it. New benchmark cases: low-dimensional KNN
   (`d` = 2, 3), large query batches (10 000 and 50 000), and many-class SVC.
+- `python -m benchmarks.calibrate`, the calibration grids behind every dispatch
+  threshold: `run` measures a named grid (the dense neighbor grid times twelve batch
+  sizes, 1 to 4 096 queries, on every index), resuming where an interrupted run stopped;
+  `table` renders it for one or more scikit-learn versions side by side, with where
+  patched dispatch now sends each row; `update` re-renders every such table in
+  `docs/benchmarks.md`. The raw results those tables come from are committed in
+  `benchmarks/results/calibration/`, and every threshold, docstring and headline range
+  cites its table by grid name.
+- `benchmarks/ab.py`, the release-over-release A/B behind **Performance**: two source
+  trees in alternating fresh processes. Its results against 0.1.0a2 are
+  `benchmarks/results/ab-0.1.0a2.jsonl`.
 - README notes on fork safety, MLX's buffer cache, and pickles of patched models needing
   mlxlearn to load.
 - A `Documentation` project URL.
@@ -635,8 +681,10 @@ Measured on an Apple M4 Max (16 cores, 128 GiB), macOS 26.6.2, with MLX 0.32.2, 
 processes alternating between 0.1.0a2 and this release, three of each (two for the
 slowest SVC fits), at least 7 timed calls per process after warm-up (3 for those fits),
 each call after a garbage collection as [`docs/benchmarks.md`](docs/benchmarks.md)
-describes; medians. Against 0.1.0a2 unless an entry names another baseline. Where
-patched dispatch now sends each problem is under **Changed**.
+describes; medians. Against 0.1.0a2 unless an entry names another baseline. The tool is
+`benchmarks/ab.py` and every raw timing is in `benchmarks/results/ab-0.1.0a2.jsonl`,
+named by case (`nnq:100000:32:20000:5` is 20 000 queries, k = 5, against 100 000 × 32).
+Where patched dispatch now sends each problem is under **Changed**.
 
 - Neighbor queries on the GPU use two-stage segmented selection and fused tile
   expressions: 100 000 × 32 with 20 000 queries went from 953 to 337 ms, 200 000 × 64

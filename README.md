@@ -242,19 +242,23 @@ of the supported scikit-learn range, published in [`docs/benchmarks.md`](https:/
 dispatch thresholds: patched dispatch uses MLX only where it measured faster or even, and
 hands everything else to scikit-learn on purpose.
 
-Measured on an M4 Max (MLX 0.32.2, scikit-learn 1.9.0; thresholds checked against 1.7.2
-too), for the problems patched dispatch sends to MLX:
+Measured on an M4 Max (MLX 0.32.2) against scikit-learn 1.9.0 and 1.7.2, for the problems
+patched dispatch sends to MLX; every range is read off a calibration table in
+[`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md),
+named in brackets, which `python -m benchmarks.calibrate` regenerates:
 
 | | |
 |---|---|
-| **Neighbor queries** | **1.2×–3.8× for single rows, 1.4×–7.4× for 4096-query batches**, against scikit-learn's brute-force search, from 16 features, 4 096 training rows and about 4 million elements up — wide data such as embeddings. Below that stock scikit-learn is faster for some query batch a fit cannot foresee, and with at most 15 features its KD-tree answers a single row in 0.3–1.2 ms against 1–2 ms for an MLX call; patched dispatch hands all of those fits to it. |
-| Neighbor `fit` | 0.06×–0.09× of stock brute force, which stores a reference where mlxlearn uploads and prepares the index. Repaid after roughly 300–900 queries. |
-| `SVC` | **1.2×–4.3× from 128 features** up to 8 000 rows (rbf, poly and sigmoid, C of 1 and 10), **8×–17×** at 16 000–32 000 × 256. Narrower data is slower on MLX at C = 10 or past the kernel cache, so patched dispatch keeps it on LIBSVM; `kernel="linear"` never leaves it. |
-| `LogisticRegression` | **Multinomial: 1.3×–13× from 60 000 rows. Binary: 1.1×–4.5× on tall, narrow data** (100 000 rows or more, at most 32 features). Binary fits on wider data are slower on MLX — 0.46×–0.85× at 256–1 024 features — and go to scikit-learn. |
+| **Neighbor queries** | **1.0×–5.7× for single rows, 1.2×–7.7× for 256-query batches, 1.2×–6.2× for 4096-query batches**, and every batch size between won or tied, against scikit-learn's brute-force search, on wide data — 256 features or more, from 4 096 rows and 6 million elements, such as embeddings — and on tall data, a million rows or more from 16 features [`knn`, `knn-rows`]. Short of a million rows below 256 features, a mid-size batch of 8–512 queries loses once the GPU has idled (down to 0.44×), and with at most 15 features scikit-learn's KD-tree answers single rows faster than an MLX call [`knn-tree`]; patched dispatch hands all of those fits to it. |
+| Neighbor `fit` | 0.05×–0.09× of stock brute force, which stores a reference where mlxlearn uploads and prepares the index [`knn`, `knn-rows`]. Repaid after roughly 180–950 queries in batches. |
+| `SVC` | **1.04×–8.4× from 128 features** (rbf and poly, C from 0.1 to 100, from 3 000 rows at 128 features and 1 500 at 256) up to 8 000 rows, 1.04×–4.4× at C of 1 and 10 [`svc`]; **10×–20×** at 16 000–32 000 × 256 [`svc-large`]. Narrower or smaller data is slower on MLX at C = 10 or past the kernel cache, so patched dispatch keeps it on LIBSVM, and `kernel="linear"` and `kernel="sigmoid"` never leave it [`svc-linear`, `svc-sigmoid`]. |
+| `LogisticRegression` | **Multinomial: 1.3×–7.0× from 60 000 rows** [`logreg-multi`]. **Binary: 1.1×–4.6× on tall, narrow data** (100 000 rows or more, at most 32 features) [`logreg-binary`]. Binary fits on wider data are slower on MLX — 0.45×–0.85× at 256–1 024 features — and go to scikit-learn. |
 
 Reproduce them from a clone of the repository (the benchmarks are not in the wheel):
 
 ```bash
+python -m benchmarks.calibrate list                # the grids, one per threshold
+python -m benchmarks.calibrate run knn --output bench/knn.jsonl
 python -m benchmarks.run --profile published --report bench/published.md
 ```
 

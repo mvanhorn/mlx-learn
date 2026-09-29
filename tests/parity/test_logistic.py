@@ -906,6 +906,42 @@ def test_the_crossover_counts_one_weight_vector_per_class():
     assert multi.execution_backend_ in ("mlx", "cpu") and multi.execution_backend_ != "sklearn"
 
 
+@pytest.mark.parametrize("spelling", ["int", "str", "object", "series", "category"])
+def test_the_crossover_counts_classes_however_the_labels_are_spelled(spelling):
+    """Where a fit runs does not depend on the labels' dtype.
+
+    A pandas ``Series`` of class names is an object array, which the class count
+    used to read as binary: a five-class fit then went to scikit-learn under the
+    binary rule while the same labels as integers went to MLX.
+    """
+    n, d = 1000, 20
+    X5, y5 = _data(n_classes=5, n_samples=n, n_features=d)
+    X2, y2 = _data(n_classes=2, n_samples=n, n_features=d)
+    names = np.array(["ant", "bee", "cat", "dog", "eel"], dtype=object)
+
+    def spell(y):
+        if spelling == "int":
+            return y
+        if spelling == "str":
+            return names[y].astype(str)
+        if spelling == "object":
+            return names[y]
+        pd = pytest.importorskip("pandas")
+        return pd.Series(names[y], dtype="category" if spelling == "category" else object)
+
+    # Thresholds that send a multinomial fit of this size to MLX and a binary one
+    # to scikit-learn, as the binary row floor does at 60 000-100 000 rows.
+    with tuning_context(
+        logreg_min_samples=n, logreg_min_work=0, logreg_binary_min_samples=n + 1
+    ):
+        multi = PatchedLogisticRegression().fit(X5, spell(y5))
+        binary = PatchedLogisticRegression().fit(X2, spell(y2))
+    assert multi.execution_backend_ != "sklearn", multi.fit_event_
+    assert binary.execution_backend_ == "sklearn"
+    assert "binary" in binary.fit_event_.detail
+    np.testing.assert_array_equal(multi.classes_, np.unique(spell(y5)))
+
+
 def test_backends_agree():
     """The CPU and GPU devices run the same code on different streams."""
     X, y = _data(n_samples=3000)

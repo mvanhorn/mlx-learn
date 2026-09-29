@@ -1,0 +1,756 @@
+"""Calibration grids: the measurements every dispatch threshold rests on.
+
+Usage::
+
+    python -m benchmarks.calibrate list
+    python -m benchmarks.calibrate run knn --output bench/calibration/knn-1.9.0.jsonl
+    python -m benchmarks.calibrate table knn bench/calibration/knn-*.jsonl
+    python -m benchmarks.calibrate update docs/benchmarks.md bench/calibration/*.jsonl
+
+``run`` measures one named grid and appends a JSON line per measurement to
+``--output``; a run that is interrupted, or split into pieces, picks up where the
+file left off, because a measurement already in it is not taken again. ``table``
+renders the Markdown tables of ``docs/benchmarks.md`` from one or more such files —
+typically one per scikit-learn version, each cell then reading ``1.9.0 / 1.7.2`` —
+with a ``dispatch`` column computed from the rules and ``Tuning`` of the mlxlearn
+that renders it, so a table can be checked against the thresholds it justifies.
+``update`` re-renders, in place, every such table a document already holds. The
+results the published tables were rendered from are ``benchmarks/results/calibration/``.
+
+**What is compared.** The mlxlearn side is the *patched* class — what
+``patch_sklearn()`` installs — forced onto its MLX path
+(``MLXLEARN_FORCE_BACKEND=mlx``), which is the path patched dispatch runs when a
+threshold sends a problem to MLX; the stock side is scikit-learn's class with the
+same parameters. Forcing, rather than lowering the thresholds, keeps the grids
+measurable whatever the rules become: the linear and sigmoid ``SVC`` kernels, which
+no threshold sends to MLX, are measured the same way. For the neighbor estimators
+the stock side uses ``algorithm="auto"`` unless a grid says otherwise, which is
+brute force from 16 features and a KD-tree below.
+
+**How.** With the benchmark harness, :func:`benchmarks._harness.compare`: warm-up
+calls, then interleaved pairs whose order alternates, a garbage collection before
+every timed call and a synchronization inside its window. The collection idles
+the GPU, so every MLX call pays to wake it, as a call made after other work does;
+the thresholds are set against that. A neighbor model is fitted once per shape on
+each side and every query batch of the grid is timed against that pair of fits;
+the fit is timed separately where the grid asks for it. ``SVC`` and
+``LogisticRegression`` time the fit.
+
+**Reading a result.** ``speedup`` is stock time over mlxlearn time, medians, so
+above 1 mlxlearn is faster; ``significant`` is the gate's test (three standard
+errors of the median apart); a *loss* in the tables is what the gate would fail —
+significant and more than 5% slower. The grids are named for the thresholds they
+calibrate; ``docs/benchmarks.md`` cites each table by grid.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import platform
+import re
+import sys
+import time
+import warnings
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+from ._harness import compare
+
+__all__ = ["GRIDS", "Point", "main"]
+
+#: A loss, as the gate counts one: significant, and more than this much slower.
+_LOSS_TOLERANCE = 0.05
+
+#: Neighbors, k.
+_K = 10
+
+#: Untimed calls per side before a comparison (the harness's default).
+_WARMUP = 2
+
+
+# --------------------------------------------------------------------------- points
+
+
+@dataclass(frozen=True)
+class Point:
+    """One shape of one estimator, and what to measure there.
+
+    A neighbor point is a pair of fits and one timed query batch per entry of
+    ``queries`` — plus the fit itself when ``fit`` is set. An ``SVC`` or
+    ``LogisticRegression`` point is one timed fit.
+    """
+
+    estimator: str  # "knn" | "svc" | "logreg"
+    n: int
+    d: int
+    queries: tuple[int, ...] = ()
+    fit: bool = False
+    algorithm: str = "auto"  # knn: the scikit-learn algorithm, given to both sides
+    # knn: "gauss" or "lowrank"; svc and logreg: "binary" (benchmarks/run.py's binary
+    # target), "blobs" or "separated-blobs". The estimator's first, by default.
+    data: str = ""
+    kernel: str = "rbf"
+    C: float = 1.0
+    n_classes: int = 2
+
+    def __post_init__(self) -> None:
+        if not self.data:
+            object.__setattr__(self, "data", "gauss" if self.estimator == "knn" else "binary")
+
+    def keys(self) -> list[str]:
+        """The keys of the measurements this point produces, one per record."""
+        if self.estimator == "knn":
+            base = f"knn/{self.n}x{self.d}/{self.algorithm}/{self.data}"
+            ops = (["fit"] if self.fit else []) + [f"q{q}" for q in self.queries]
+            return [f"{base}/{op}" for op in ops]
+        if self.estimator == "svc":
+            return [f"svc/{self.n}x{self.d}/{self.kernel}/C={self.C:g}/K={self.n_classes}"]
+        return [f"logreg/{self.n}x{self.d}/K={self.n_classes}/{self.data}"]
+
+    @property
+    def seed(self) -> int:
+        return self.n * 131 + self.d * 7 + self.n_classes
+
+
+@dataclass(frozen=True)
+class Grid:
+    """A named list of points, and how ``table`` lays its results out."""
+
+    description: str
+    points: tuple[Point, ...]
+    layout: str  # "knn-q" | "knn-worst" | "svc" | "logreg"
+    iterations: int = 9
+
+
+def _knn_points(shapes: Iterable[tuple[int, int]], queries, *, fit=False, max_work=2.5e11, **kw):
+    """Neighbor points, dropping query batches whose stock cost would take minutes."""
+    points = []
+    for n, d in shapes:
+        qs = tuple(q for q in queries if n * d * q <= max_work)
+        points.append(Point("knn", n, d, qs, fit=fit, **kw))
+    return tuple(points)
+
+
+#: Batch sizes the dense neighbor grid times on every shape: a fit cannot see which
+#: will follow it, so a threshold has to hold for all of them.
+DENSE_QUERIES = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096)
+
+#: Rows of the dense grid. Not powers of two, apart from the old floor at 16
+#: features, so that nothing about a block size lines up by construction.
+_DENSE_ROWS = (
+    12_000, 20_000, 33_000, 50_000, 80_000, 120_000, 180_000, 262_144,
+    400_000, 600_000, 1_000_000, 1_600_000,
+)
+_DENSE_FEATURES = (16, 24, 32, 48, 64, 96, 128, 256)
+
+
+def _dense_shapes() -> list[tuple[int, int]]:
+    """From ~2.5x below 0.1.0a3's work floor (4 194 304 elements) to 1.3e8 elements."""
+    return [
+        (n, d)
+        for d in _DENSE_FEATURES
+        for n in _DENSE_ROWS
+        if n * d * 2.5 >= 4_194_304 and n * d <= 1.3e8
+    ]
+
+
+def _svc_points(shapes, kernels, Cs, n_classes=2, data="binary") -> tuple[Point, ...]:
+    return tuple(
+        Point("svc", n, d, kernel=kernel, C=C, n_classes=n_classes, data=data)
+        for n, d in shapes
+        for kernel in kernels
+        for C in Cs
+    )
+
+
+GRIDS: dict[str, Grid] = {
+    "knn": Grid(
+        "Neighbor queries on MLX against stock brute force, 16-256 features, every batch "
+        "size from 1 to 4096, rows from below the work floor to 1.6 million: the "
+        "`knn_min_work` / `knn_wide_features` rule.",
+        _knn_points(_dense_shapes(), DENSE_QUERIES, fit=True, max_work=1.2e11),
+        layout="knn-worst",
+    ),
+    "knn-rows": Grid(
+        "Neighbor queries on MLX against stock brute force on wide, short training sets, "
+        "2 048-131 072 rows at 256-1 024 features, every batch size from 1 to 4096: the "
+        "row floor, and how wide data must be for the work floor alone to decide.",
+        _knn_points(
+            [
+                (n, d)
+                for d in (256, 384, 512, 768, 1_024)
+                for n in (2_048, 4_096, 8_192, 16_384, 32_768, 65_536, 131_072)
+            ],
+            DENSE_QUERIES,
+            fit=True,
+            max_work=1.2e11,
+        ),
+        layout="knn-worst",
+    ),
+    "knn-tree": Grid(
+        "Neighbor queries on MLX against scikit-learn's KD-tree (`algorithm='auto'` below "
+        "16 features), Gaussian data: the `knn_min_features` handoff.",
+        _knn_points(
+            [(4_096, 2), (65_536, 2), (1_048_576, 3), (65_536, 4), (1_048_576, 5),
+             (65_536, 6), (262_144, 6), (4_096, 8), (65_536, 8), (262_144, 8),
+             (1_048_576, 8), (4_096, 12), (65_536, 12), (262_144, 12), (1_048_576, 12),
+             (16_384, 14), (262_144, 14), (65_536, 15)],
+            (1, 16, 256, 4_096),
+            fit=True,
+            max_work=1.2e11,
+        ),
+        layout="knn-q",
+    ),
+    "knn-tree-lowrank": Grid(
+        "The same against the KD-tree on data of low intrinsic dimension: three latent "
+        "dimensions embedded in 8 or 12 features, plus 5% noise.",
+        _knn_points(
+            [(65_536, 8), (262_144, 8), (65_536, 12), (262_144, 12)],
+            (1, 16, 256, 4_096),
+            fit=True,
+            data="lowrank",
+        ),
+        layout="knn-q",
+    ),
+    "knn-narrow-brute": Grid(
+        "Neighbor queries on MLX against stock brute force (`algorithm='brute'`) at 2-8 "
+        "features: what patched mode hands to scikit-learn's brute force below 16 features.",
+        _knn_points(
+            [(n, d) for d in (2, 8) for n in (8_192, 131_072, 524_288, 2_097_152)],
+            (1, 16, 256, 4_096),
+            algorithm="brute",
+        ),
+        layout="knn-q",
+    ),
+    "svc": Grid(
+        "Binary `SVC` fits (y = x0 + noise > 0) on MLX against LIBSVM, rbf and poly at "
+        "C = 1 and 10 everywhere, and at C = 0.1 and 100 around the floors: the width, "
+        "sample and work floors.",
+        _svc_points(
+            [(4_000, 64), (1_000, 128), (2_000, 128), (2_500, 128), (3_000, 128),
+             (4_000, 128), (1_000, 256), (1_500, 256), (2_000, 256), (4_000, 256),
+             (1_000, 512), (2_000, 512)],
+            ("rbf", "poly"),
+            (0.1, 1.0, 10.0, 100.0),
+        )
+        + _svc_points(
+            [(4_000, 16), (4_000, 32), (8_000, 32), (1_500, 128), (8_000, 128), (8_000, 256)],
+            ("rbf", "poly"),
+            (1.0, 10.0),
+        ),
+        layout="svc",
+        iterations=5,
+    ),
+    "svc-sigmoid": Grid(
+        "Binary `SVC` fits with the sigmoid kernel on MLX against LIBSVM, C = 0.1-100: "
+        "why patched dispatch never sends it to MLX.",
+        _svc_points(
+            [(4_000, 16), (4_000, 64), (2_000, 128), (4_000, 128), (1_000, 256),
+             (4_000, 256), (8_000, 256), (2_000, 512)],
+            ("sigmoid",),
+            (0.1, 1.0, 10.0, 100.0),
+        ),
+        layout="svc",
+        iterations=5,
+    ),
+    "svc-linear": Grid(
+        "Binary `SVC` fits with the linear kernel on MLX against LIBSVM.",
+        _svc_points([(2_000, 20), (2_000, 256)], ("linear",), (1.0,)),
+        layout="svc",
+        iterations=5,
+    ),
+    "svc-narrow": Grid(
+        "Binary rbf `SVC` fits at 2-8 features, past the kernel cache (about 7 240 rows "
+        "at `cache_size=200`) and below it.",
+        _svc_points(
+            [(n, d) for d in (2, 4, 8) for n in (2_000, 4_000, 8_000, 16_000)], ("rbf",), (1.0,)
+        ),
+        layout="svc",
+        iterations=5,
+    ),
+    "svc-large": Grid(
+        "Binary rbf `SVC` fits past the kernel cache at 256 features. A stock fit at "
+        "32 000 rows takes nearly two minutes, so three pairs, too few for the "
+        "significance test: the ratio is the evidence.",
+        _svc_points([(16_000, 256), (32_000, 256)], ("rbf",), (1.0,)),
+        layout="svc",
+        iterations=3,
+    ),
+    "svc-multi": Grid(
+        "One-vs-one `SVC` fits, rbf, C = 1, on well-separated Gaussian blobs (the "
+        "benchmark's multiclass data): the `svc_min_pair_work` floor.",
+        tuple(
+            Point("svc", n, d, n_classes=K, data="separated-blobs")
+            for n, d in ((4_000, 32), (8_000, 32), (8_000, 256), (2_048, 512))
+            for K in (4, 8, 16, 32, *((64,) if (n, d) == (2_048, 512) else ()))
+        ),
+        layout="svc",
+        iterations=5,
+    ),
+    "logreg-binary": Grid(
+        "Binary `LogisticRegression` fits (y = x0 + noise > 0, max_iter=200) on MLX "
+        "against lbfgs: the binary row and width limits.",
+        tuple(
+            Point("logreg", n, d, data="binary")
+            for n in (5_000, 20_000, 50_000, 100_000, 200_000, 1_000_000)
+            for d in (1, 4, 16, 32, 64, 128, 256, 1_024)
+            if n * d <= 2.6e8 and not (n == 5_000 and d > 32)
+        ),
+        layout="logreg",
+    ),
+    "logreg-multi": Grid(
+        "Multinomial `LogisticRegression` fits (max_iter=200) on MLX against lbfgs: "
+        "overlapping Gaussian blobs, one per class, whose separation does not grow with "
+        "the width: the sample floor.",
+        tuple(
+            Point("logreg", n, d, n_classes=K, data="blobs")
+            for n in (5_000, 20_000, 60_000, 200_000)
+            for K, d in ((3, 1), (3, 4), (3, 16), (3, 64), (3, 512), (5, 64), (10, 16),
+                         (10, 128))
+        ),
+        layout="logreg",
+    ),
+}
+
+
+# ----------------------------------------------------------------------------- data
+
+
+def _knn_data(point: Point, q: int, rng: np.random.Generator) -> np.ndarray:
+    if point.data == "lowrank":
+        basis = np.random.default_rng(point.seed + 1).normal(size=(3, point.d))
+        return rng.normal(size=(q, 3)) @ basis + 0.05 * rng.normal(size=(q, point.d))
+    return rng.normal(size=(q, point.d))
+
+
+def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(point.seed)
+    n, d, K = point.n, point.d, point.n_classes
+    if point.data == "binary":  # benchmarks/run.py's binary target
+        X = rng.normal(size=(n, d))
+        return X, (X[:, 0] + rng.normal(scale=0.5, size=n) > 0).astype(int)
+    y = rng.integers(0, K, size=n)
+    if point.data == "separated-blobs":  # benchmarks/run.py's n_classes target
+        centers = rng.normal(scale=2.0, size=(K, d))
+    elif point.data == "blobs":  # overlapping at every width
+        centers = rng.normal(scale=2.0, size=(K, d)) / np.sqrt(d) * 3
+    else:
+        raise ValueError(f"unknown data {point.data!r}")
+    return centers[y] + rng.normal(size=(n, d)), y
+
+
+# -------------------------------------------------------------------------- running
+
+
+def _forced():
+    from mlxlearn._common.config import tuning_context
+
+    return tuning_context(force_backend="mlx")
+
+
+def _summary(comparison) -> dict:
+    return {
+        "mlxlearn_ms": comparison.mlxlearn.median_s * 1e3,
+        "mlxlearn_iqr_ms": comparison.mlxlearn.iqr_s * 1e3,
+        "mlxlearn_min_ms": comparison.mlxlearn.min_s * 1e3,
+        "sklearn_ms": comparison.sklearn.median_s * 1e3,
+        "sklearn_iqr_ms": comparison.sklearn.iqr_s * 1e3,
+        "sklearn_min_ms": comparison.sklearn.min_s * 1e3,
+        "speedup": comparison.speedup,
+        "speedup_best": comparison.speedup_best,
+        "significant": comparison.significant,
+        "iterations": comparison.mlxlearn.iterations,
+    }
+
+
+def _versions() -> dict:
+    import mlx.core as mx
+    import sklearn
+
+    import mlxlearn
+
+    return {
+        "sklearn": sklearn.__version__,
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "mlx": getattr(mx, "__version__", "unknown"),
+        "mlxlearn": mlxlearn.__version__,
+    }
+
+
+def _measure_knn(point: Point, iterations: int, todo: set[str]):
+    import sklearn.neighbors
+
+    from mlxlearn.patching import _estimators as patched
+
+    rng = np.random.default_rng(point.seed)
+    X = _knn_data(point, point.n, rng)
+
+    def make_mlx():
+        return patched.NearestNeighbors(n_neighbors=_K, algorithm=point.algorithm)
+
+    def make_sk():
+        return sklearn.neighbors.NearestNeighbors(n_neighbors=_K, algorithm=point.algorithm)
+
+    def mlx_fit():
+        with _forced():
+            return make_mlx().fit(X)
+
+    model, stock = mlx_fit(), make_sk().fit(X)
+    assert model.execution_backend_ == "mlx", model.fit_event_
+    extra = {"stock_method": stock._fit_method}
+    keys = point.keys()
+    if point.fit:
+        key = keys.pop(0)
+        if key in todo:
+            result = compare(mlx_fit, lambda: make_sk().fit(X), label=key,
+                             shape=(point.n, point.d), iterations=min(iterations, 7))
+            yield key, {"operation": "fit", **extra, **_summary(result)}
+    for q, key in zip(point.queries, keys, strict=True):
+        if key not in todo:
+            continue
+        if q == 1:
+            # A different row for every pair, the same one on both sides: what one
+            # row costs a tree depends on where it lands, so a single fixed row can
+            # stand for the tree's best case or its worst.
+            batches = _knn_data(point, _WARMUP + iterations, rng)[:, None, :]
+        else:
+            batches = _knn_data(point, q, rng)[None, :, :]
+        result = compare(_queries(model, batches), _queries(stock, batches), label=key,
+                         shape=(point.n, point.d), iterations=iterations, warmup=_WARMUP)
+        yield key, {"operation": "kneighbors", "q": q, **extra, **_summary(result)}
+
+
+def _queries(model, batches: np.ndarray) -> Callable[[], object]:
+    """``model.kneighbors`` on the next of ``batches`` at each call, cycling."""
+    position = iter(range(1 << 62))
+
+    def query():
+        return model.kneighbors(batches[next(position) % len(batches)])
+
+    return query
+
+
+def _measure_fit(point: Point, iterations: int, todo: set[str]):
+    import sklearn.linear_model
+    import sklearn.svm
+
+    from mlxlearn.patching import _estimators as patched
+
+    (key,) = point.keys()
+    if key not in todo:
+        return
+    X, y = _fit_data(point)
+    if point.estimator == "svc":
+        params = {"kernel": point.kernel, "C": point.C}
+        make_mlx, make_sk = (lambda: patched.SVC(**params)), (lambda: sklearn.svm.SVC(**params))
+    else:
+        make_mlx = lambda: patched.LogisticRegression(max_iter=200)  # noqa: E731
+        make_sk = lambda: sklearn.linear_model.LogisticRegression(max_iter=200)  # noqa: E731
+    seen: dict = {}
+
+    def mlx_fit():
+        with _forced():
+            model = make_mlx().fit(X, y)
+        seen["backend"] = model.execution_backend_
+        seen["n_iter"] = int(np.max(model.n_iter_))
+        return model
+
+    def sk_fit():
+        model = make_sk().fit(X, y)
+        seen["sklearn_n_iter"] = int(np.max(model.n_iter_))
+        return model
+
+    start = time.perf_counter()
+    mlx_fit()
+    sk_fit()
+    once = time.perf_counter() - start
+    # A pair of fits that takes more than 20 s is timed fewer times: never under 5,
+    # the fewest the significance test accepts, unless the grid asks for fewer.
+    count = iterations if once < 20 else max(min(5, iterations), min(iterations, int(300 / once)))
+    result = compare(mlx_fit, sk_fit, label=key, shape=(point.n, point.d), iterations=count,
+                     warmup=1)
+    assert seen["backend"] == "mlx", seen
+    yield key, {"operation": "fit", **seen, **_summary(result)}
+
+
+def _done(path: Path, sklearn_version: str) -> set[str]:
+    if not path.exists():
+        return set()
+    done = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            record = json.loads(line)
+            if record.get("sklearn") == sklearn_version:
+                done.add(record["key"])
+    return done
+
+
+def run(name: str, output: Path, *, iterations: int | None = None, limit: int | None = None,
+        echo: Callable[[str], None] = print) -> int:
+    """Measure grid ``name`` into ``output``; return the number of new records."""
+    warnings.simplefilter("ignore")
+    grid = GRIDS[name]
+    versions = _versions()
+    iterations = iterations or grid.iterations
+    output.parent.mkdir(parents=True, exist_ok=True)
+    done = _done(output, versions["sklearn"])
+    written = 0
+    for index, point in enumerate(grid.points, 1):
+        todo = {key for key in point.keys() if key not in done}
+        if not todo:
+            continue
+        measure = _measure_knn if point.estimator == "knn" else _measure_fit
+        for key, record in measure(point, iterations, todo):
+            record = {
+                "grid": name, "key": key, "estimator": point.estimator, "n": point.n,
+                "d": point.d, "algorithm": point.algorithm, "data": point.data,
+                "kernel": point.kernel, "C": point.C, "n_classes": point.n_classes,
+                **versions, "time": time.time(), **record,
+            }
+            with output.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record) + "\n")
+            written += 1
+            marker = "" if record["significant"] else " ~"
+            echo(f"[{index}/{len(grid.points)}] {key}: {record['mlxlearn_ms']:.2f} / "
+                 f"{record['sklearn_ms']:.2f} ms, {record['speedup']:.2f}x{marker}")
+            if limit is not None and written >= limit:
+                return written
+    return written
+
+
+# --------------------------------------------------------------------------- tables
+
+
+def load(paths: Iterable[Path], grid: str | None = None) -> list[dict]:
+    """The records in ``paths``, optionally only those of ``grid``."""
+    records = []
+    for path in paths:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                record = json.loads(line)
+                if grid is None or record.get("grid") == grid:
+                    records.append(record)
+    return records
+
+
+def is_loss(record: dict) -> bool:
+    """What the gate would fail: significant, and more than 5% slower."""
+    return bool(record["significant"]) and record["speedup"] < 1.0 - _LOSS_TOLERANCE
+
+
+def _cell(record: dict | None) -> str:
+    if record is None:
+        return "—"
+    text = f"{record['speedup']:.2f}"
+    if is_loss(record):
+        return f"**{text}**"
+    return text if record["significant"] else f"{text}~"
+
+
+def dispatch(record: dict) -> str:
+    """Where patched dispatch, as configured now, sends the fit a record measured."""
+    from mlxlearn.patching import _estimators as patched
+
+    n, d = record["n"], record["d"]
+    if record["estimator"] == "knn":
+        model = patched.NearestNeighbors(n_neighbors=_K, algorithm=record["algorithm"])
+        below = model._below_crossover(n, d)[0] or model._patched_handoff(n, d) is not None
+    elif record["estimator"] == "svc":
+        model = patched.SVC(kernel=record["kernel"], C=record["C"])
+        below = model._below_crossover(n, d, n_classes=record["n_classes"])[0]
+    else:
+        K = record["n_classes"]
+        below = patched.LogisticRegression()._below_crossover(n, d, 1 if K == 2 else K)[0]
+    return "scikit-learn" if below else "MLX"
+
+
+def _shape(n: int, d: int | None = None) -> str:
+    rows = f"{n:,}".replace(",", " ")
+    return rows if d is None else f"{rows} × {d}"
+
+
+# Each layout maps a record to (row sort key, row label) and (column sort key,
+# column label); a cell holds one record per scikit-learn version.
+def _knn_row(r):
+    return (r["d"], r["n"]), _shape(r["n"], r["d"])
+
+
+def _knn_column(r):
+    if r["operation"] == "fit":
+        return (1, 0), "fit"
+    return (0, r["q"]), f"{r['q']} {'query' if r['q'] == 1 else 'queries'}"
+
+
+def _svc_row(r):
+    return (r["d"], r["n"]), _shape(r["n"], r["d"])
+
+
+_KERNEL_ORDER = {"rbf": 0, "poly": 1, "sigmoid": 2, "linear": 3}
+
+
+def _svc_column(r):
+    if r["n_classes"] != 2:
+        return (r["n_classes"], 0, 0), f"K = {r['n_classes']}"
+    kernel = _KERNEL_ORDER.get(r["kernel"], len(_KERNEL_ORDER))
+    return (0, kernel, r["C"]), f"{r['kernel']}, C = {r['C']:g}"
+
+
+def _logreg_row(r):
+    return (r["n"],), _shape(r["n"])
+
+
+def _logreg_column(r):
+    if r["n_classes"] == 2:
+        return (0, r["d"]), f"{r['d']} feature{'' if r['d'] == 1 else 's'}"
+    return (r["n_classes"], r["d"]), f"{r['n_classes']} classes × {r['d']}"
+
+
+_LAYOUTS = {
+    "knn-q": (_knn_row, _knn_column, "rows × features"),
+    "knn-worst": (_knn_row, _knn_column, "rows × features"),
+    "svc": (_svc_row, _svc_column, "rows × features"),
+    "logreg": (_logreg_row, _logreg_column, "rows"),
+}
+
+
+def render(name: str, records: list[dict]) -> str:
+    """The Markdown table for grid ``name`` from ``records`` (other grids' are ignored).
+
+    One row per shape, one column per configuration. A cell is stock time over MLX
+    time for each scikit-learn version in the records, newest first — ``1.9.0 /
+    1.7.2`` — **bold** where that is a loss by the gate's test and ``~`` where it is
+    within noise. The dense neighbor grids (layout ``knn-worst``) have a dozen batch
+    sizes, so each of their cells is the worse version's ratio instead: its loss,
+    if either version lost, else the lower of the two. The
+    ``dispatch`` column is where patched dispatch as configured now sends the fit;
+    where it differs across a row's columns it names the columns sent to MLX.
+    """
+    grid = GRIDS[name]
+    records = [r for r in records if r.get("grid") == name]
+    if not records:
+        return f"(no results for grid {name!r})\n"
+    versions = sorted(
+        {r["sklearn"] for r in records},
+        key=lambda v: tuple(int(p) if p.isdigit() else -1 for p in v.split(".")),
+        reverse=True,
+    )
+    row_of, column_of, first = _LAYOUTS[grid.layout]
+    table: dict = {}
+    rows: dict = {}
+    columns: dict = {}
+    for record in records:
+        row_key, row_label = row_of(record)
+        column_key, column_label = column_of(record)
+        rows[row_key] = row_label
+        columns[column_key] = column_label
+        table.setdefault(row_key, {}).setdefault(column_key, {})[record["sklearn"]] = record
+    order = sorted(columns)
+    worst = grid.layout == "knn-worst"
+    lines = [
+        f"<!-- python -m benchmarks.calibrate table {name}: scikit-learn "
+        f"{' / '.join(versions)}{', the worse of them' if worst and len(versions) > 1 else ''}"
+        " -->",
+        f"| {first} | " + " | ".join(columns[c] for c in order) + " | dispatch |",
+        "|---" * (len(order) + 2) + "|",
+    ]
+    for row_key in sorted(rows):
+        row = table[row_key]
+        cells = []
+        routes = {}
+        for column in order:
+            by_version = row.get(column, {})
+            if not by_version:
+                cells.append("—")
+                continue
+            routes[column] = dispatch(next(iter(by_version.values())))
+            if worst:
+                # A loss on either version shows, even beside a lower ratio within noise.
+                shown = min(by_version.values(), key=lambda r: (not is_loss(r), r["speedup"]))
+                cells.append(_cell(shown))
+            else:
+                cells.append(" / ".join(_cell(by_version.get(v)) for v in versions))
+        if len(set(routes.values())) == 1:
+            route = next(iter(routes.values()))
+        else:
+            route = "MLX at " + ", ".join(columns[c] for c in order if routes.get(c) == "MLX")
+        lines.append(f"| {rows[row_key]} | " + " | ".join(cells) + f" | {route} |")
+    return "\n".join(lines) + "\n"
+
+
+# ----------------------------------------------------------------------------- main
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("list", help="list the grids")
+    run_parser = sub.add_parser("run", help="measure a grid, appending to --output")
+    run_parser.add_argument("grid", choices=sorted(GRIDS))
+    run_parser.add_argument("--output", type=Path, required=True)
+    run_parser.add_argument("--iterations", type=int, default=None)
+    run_parser.add_argument("--limit", type=int, default=None,
+                            help="stop after this many new measurements (resume later)")
+    table_parser = sub.add_parser("table", help="render a grid's Markdown table")
+    table_parser.add_argument("grid", choices=sorted(GRIDS))
+    table_parser.add_argument("results", type=Path, nargs="+")
+    update_parser = sub.add_parser(
+        "update", help="re-render, in place, every calibration table a Markdown file holds"
+    )
+    update_parser.add_argument("document", type=Path)
+    update_parser.add_argument("results", type=Path, nargs="+")
+    args = parser.parse_args(argv)
+
+    if args.command == "list":
+        for name, grid in GRIDS.items():
+            count = sum(len(p.keys()) for p in grid.points)
+            print(f"{name:18} {count:5} measurements  {grid.description}")
+        return 0
+    if args.command == "run":
+        print(json.dumps(_versions()), flush=True)
+        run(args.grid, args.output, iterations=args.iterations, limit=args.limit,
+            echo=lambda s: print(s, flush=True))
+        return 0
+    if args.command == "update":
+        text = args.document.read_text(encoding="utf-8")
+        updated, count = update_document(text, load(args.results))
+        args.document.write_text(updated, encoding="utf-8")
+        print(f"re-rendered {count} table(s) in {args.document}")
+        return 0
+    sys.stdout.write(render(args.grid, load(args.results)))
+    return 0
+
+
+#: A rendered table in a document: the comment line ``render`` starts it with, then
+#: its rows.
+_RENDERED = re.compile(
+    r"^<!-- python -m benchmarks\.calibrate table ([\w-]+):[^\n]*-->\n(?:\|[^\n]*\n)+",
+    re.MULTILINE,
+)
+
+
+def update_document(text: str, records: list[dict]) -> tuple[str, int]:
+    """``text`` with every calibration table it holds re-rendered from ``records``.
+
+    A table whose grid ``records`` has no results for is left as it is, so updating
+    from one grid's results does not erase the others.
+    """
+    grids = {record.get("grid") for record in records}
+    count = 0
+
+    def replace(match: re.Match) -> str:
+        nonlocal count
+        if match.group(1) not in grids:
+            return match.group(0)
+        count += 1
+        return render(match.group(1), records)
+
+    return _RENDERED.sub(replace, text), count
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

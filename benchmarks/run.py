@@ -113,10 +113,14 @@ PROFILES: dict[str, list[Case]] = {
     # each estimator has cases patched dispatch hands to scikit-learn and cases it
     # sends to MLX, so the MLX fit and query paths are gated, not only the handoffs.
     "smoke": [
-        # Neighbors: below the row floor; above both floors (MLX); narrow data the
-        # KD-tree takes whatever its size ("tree-wins"), and below the work floor.
-        *_knn_grid([1_000, 131_072], [32], [256]),
-        *_knn_grid([524_288], [8], [256], operations=("kneighbors",)),
+        # Neighbors: below the row floor; wide and above both floors (MLX); below
+        # 256 features, short (scikit-learn) and tall (MLX); narrow data the KD-tree
+        # takes whatever its size ("tree-wins"), and below the work floor.
+        *_knn_grid([1_000], [32], [256]),
+        *_knn_grid([65_536], [256], [256]),
+        *_knn_grid([262_144], [32], [256], operations=("kneighbors",)),
+        *_knn_grid([1_048_576], [16], [256], operations=("kneighbors",)),
+        *_knn_grid([1_048_576], [8], [256], operations=("kneighbors",)),
         *_knn_grid([50_000], [3], [256], operations=("kneighbors",)),
         # Logistic regression: below the sample floor; binary but too wide; binary,
         # tall and narrow (MLX); multinomial (MLX).
@@ -169,8 +173,10 @@ PROFILES: dict[str, list[Case]] = {
     # dispatch decision. That is a kernel comparison, not the patched claim.
     "published": [
         # Neighbors against scikit-learn's brute force, k=10: each fit, and 256-query
-        # batches, from below the row floor to past both floors; then the batch sizes
-        # a fit-time rule cannot see, 1 and 4096 queries, on either side of them.
+        # batches, from below the row floor to past the floors, wide and tall; then
+        # the batch sizes a fit-time rule cannot see, 1, 64 and 4096 queries, on
+        # either side of them — 64 queries is where short data below 256 features
+        # loses once the GPU has idled.
         *[
             Case("knn", op, n, d, 256, options={"sklearn_algorithm": "brute"})
             for n, d in (
@@ -181,19 +187,26 @@ PROFILES: dict[str, list[Case]] = {
                 (8_192, 768),
                 (131_072, 128),
                 (128_000, 768),
+                (1_000_000, 16),
             )
             for op in ("fit", "kneighbors")
         ],
         *[
             Case("knn", "kneighbors", n, d, q, options={"sklearn_algorithm": "brute"})
-            for n, d in ((1_000, 32), (8_192, 768), (131_072, 128))
-            for q in (1, 4_096)
+            for n, d in ((1_000, 32), (8_192, 768), (131_072, 128), (1_000_000, 16))
+            for q in (1, 64, 4_096)
         ],
         # SVC: width decides. Binary rbf and poly at C=1 and C=10 on either side of
-        # the width floor, the linear kernel (slow on MLX, so fewer iterations), and
-        # one-vs-one pairs on either side of the pair floor.
+        # the width and work floors, the sigmoid kernel at C=10 and the linear kernel
+        # (slow on MLX, so fewer iterations), and one-vs-one pairs on either side of
+        # the pair floor.
         *_svc_grid([(4_000, 32), (4_000, 64), (4_000, 256), (1_000, 512)]),
-        *_svc_grid([(4_000, 64), (4_000, 256)], kernels=("rbf", "poly"), Cs=(10.0,)),
+        *_svc_grid(
+            [(4_000, 64), (2_000, 128), (4_000, 128), (4_000, 256)],
+            kernels=("rbf", "poly"),
+            Cs=(10.0,),
+        ),
+        *_svc_grid([(4_000, 256)], kernels=("sigmoid",), Cs=(10.0,)),
         *_svc_grid([(2_000, 20), (2_000, 256)], kernels=("linear",), iterations=5),
         *_svc_grid([(2_048, 512)], n_classes=4),
         *_svc_grid([(2_048, 512)], n_classes=16),

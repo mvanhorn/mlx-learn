@@ -37,6 +37,7 @@ from .._common.validation import (
     check_is_fitted,
     check_sample_weight,
     compute_class_weight,
+    count_labels,
     require_dense,
     require_nonnegative_weights,
     require_supported_params,
@@ -322,12 +323,13 @@ class MLXLogisticMixin(BackendMixin):
         BLAS plus a per-sample loss; MLX's is the same product on the GPU after a
         one-off float32 copy and transposition of ``X``, and a synchronization per
         evaluation. The loss is where the GPU gains, and it does not grow with the
-        width; the copy does. Measured, binary fits won from 50 000-100 000 rows at
-        4-32 features (1.2x-2.7x from 100 000) but lost at 256 and 1 024 features at
-        every size up to 1 000 000 rows (0.52x-0.85x), and reached parity at 64-128
-        only past a million rows. A multinomial fit does ``n_targets`` times the
-        GPU work for the same copy, and won from 60 000 rows at every width
-        measured (1.3x-7.3x).
+        width; the copy does. Measured against scikit-learn 1.9.0 and 1.7.2
+        (``docs/benchmarks.md``, the ``logreg-binary`` and ``logreg-multi`` tables),
+        binary fits won from 100 000 rows at 1-32 features (1.10x-4.6x) but lost at
+        256 and 1 024 features at every size up to 1 000 000 rows (0.45x-0.85x), and
+        reached parity at 64-128 only at a million rows. A multinomial fit does
+        ``n_targets`` times the GPU work for the same copy, and won from 60 000 rows
+        at every width measured (1.31x-7.0x).
         """
         tuning = get_tuning()
         work = n_samples * n_features * max(int(n_targets), 1)
@@ -971,23 +973,16 @@ class _CallbackBridge:
 def _count_targets(y) -> int:
     """Weight vectors the fit will have: 1 for binary, else the class count.
 
-    Used only as a size hint for the crossover, before validation, so anything it
-    cannot read cheaply counts as binary — which, like any wrong guess here, only
-    moves the fit between two correct backends. Numeric labels with exactly two
-    values are recognized in two vectorized passes rather than a sort: this runs
-    on fits patched mode may hand to scikit-learn, which then labels ``y`` again.
+    Used only as a size hint for the crossover, before validation, so labels it
+    cannot read (:func:`~mlxlearn._common.validation.count_labels` returns ``None``)
+    count as binary — which, like any wrong guess here, only moves the fit between
+    two correct backends. Any label type scikit-learn accepts is counted, strings
+    and Python objects included: a pandas ``Series`` of class names is an object
+    array, and read as binary it sent a multinomial fit to the binary rule, so
+    where the fit ran depended on the labels' dtype rather than their number.
     """
-    labels = np.asarray(y)
-    if labels.ndim == 2 and labels.shape[1] == 1:
-        labels = labels.ravel()
-    if labels.ndim != 1 or labels.dtype.kind not in "biufUS" or labels.size == 0:
-        return 1
-    if labels.dtype.kind in "biuf":
-        low, high = labels.min(), labels.max()
-        if low == high or not np.any((labels != low) & (labels != high)):
-            return 1
-    n_classes = np.unique(labels).shape[0]
-    return 1 if n_classes <= 2 else int(n_classes)
+    n_classes = count_labels(y)
+    return 1 if n_classes is None or n_classes <= 2 else n_classes
 
 
 def _check_classification_target(y: np.ndarray) -> None:

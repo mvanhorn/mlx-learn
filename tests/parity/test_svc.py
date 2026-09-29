@@ -1062,15 +1062,18 @@ def test_cache_size_shift_is_bounded_and_documented():
 
 
 @pytest.mark.gpu
-def test_linear_kernel_never_takes_the_mlx_path():
-    """Measured 0.04×–0.09× forced onto MLX (2 000 × 20 and × 256), so it is excluded.
+@pytest.mark.parametrize("kernel", ["linear", "sigmoid"])
+def test_linear_and_sigmoid_kernels_never_take_the_mlx_path(kernel):
+    """Measured slower on MLX at sizes where rbf and poly win, so they are excluded.
 
-    SMO is sequential, and a linear kernel's iterations are the cheapest of all,
-    so its per-iteration overhead is the entire cost. A threshold cannot fix
-    that. The exclusion does not depend on size, so it is checked with every size
-    floor at zero — otherwise it would be the floor, not the exclusion, routing
-    the fit. The rbf half keeps the real thresholds: it is the one end-to-end
-    check that they send a measured win to MLX.
+    The linear kernel ran 0.07×–0.10× forced onto MLX (2 000 × 20 and × 256): SMO
+    is sequential, and its iterations are the cheapest of all, so per-iteration
+    overhead is the entire cost. The sigmoid kernel lost at C = 10 and 100 from 128
+    features, and at C = 1 at 1 000 × 256, while it won at C = 0.1; the rule cannot
+    see C. A threshold cannot fix either. The exclusion does not depend on size, so
+    it is checked with every size floor at zero — otherwise it would be the floor,
+    not the exclusion, routing the fit. The rbf half keeps the real thresholds: it
+    is the one end-to-end check that they send a measured win to MLX.
     """
     X_small, y_small = _data(n_samples=300, n_features=8, seed=1)
     no_floor = {
@@ -1078,10 +1081,11 @@ def test_linear_kernel_never_takes_the_mlx_path():
         "svc_min_pair_work": 0,
     }
     with tuning_context(**no_floor):
-        patched = PatchedSVC(kernel="linear").fit(X_small, y_small)
+        patched = PatchedSVC(kernel=kernel).fit(X_small, y_small)
         assert patched.execution_backend_ == "sklearn", (
-            "the linear kernel reached the MLX path"
+            f"the {kernel} kernel reached the MLX path"
         )
+        assert f"the {kernel} kernel" in patched.fit_event_.detail
         assert PatchedSVC(kernel="rbf").fit(X_small, y_small).execution_backend_ == "mlx"
 
     X, y = _data(n_samples=4_000, n_features=256, seed=1)
@@ -1093,12 +1097,15 @@ def test_the_svc_crossover_is_above_the_measured_losses():
     """A threshold below the measured loss region is not protection.
 
     Width decides: per SMO iteration mlxlearn's cost is nearly flat in the number
-    of features and LIBSVM's grows with it. Measured (M4 Max, scikit-learn 1.9.0),
-    C=10 rbf and poly lost at 4 000 x 16..64 (0.16x-0.85x), and past the kernel
-    cache narrow data lost even at C=1 (16 000 x 2..8: 0.56x-0.85x; poly at
-    16 000 x 64: 0.55x); every kernel and C tried won from 128 features (4 000 x 128
-    at C=10: 1.31x-1.40x). The first release's work floor, ``n·d >= 10⁶``, could
-    not tell 16 000 x 64 from 4 000 x 256.
+    of features and LIBSVM's grows with it. Measured on scikit-learn 1.9.0 and
+    1.7.2 (docs/benchmarks.md, the ``svc`` and ``svc-narrow`` tables), rbf and poly
+    at C = 10 lost at 4 000 x 16..64, and past the kernel cache narrow data lost
+    even at C = 1. At 128 features the fit also needs rows: 2 000 x 128 lost at
+    C = 10 and 100 on 1.7.2 (0.90x-0.95x) and 1 500 x 128 on both, while from
+    3 000 x 128 — and 1 500 x 256, and 1 000 x 512 — every kernel and C won or tied
+    on both versions (1.04x at worst, poly at C = 10 and 100 on 1.7.2). The first
+    release's work floor, ``n·d >= 10⁶``, could not tell 16 000 x 64 from
+    4 000 x 256.
     """
     model = SVC()
     losses = ((4_000, 16), (4_000, 64), (16_000, 8), (16_000, 64), (2_500, 20))
@@ -1106,20 +1113,25 @@ def test_the_svc_crossover_is_above_the_measured_losses():
         below, detail = model._below_crossover(n_samples, n_features)
         assert below, f"{n_samples}x{n_features} was measured slower but is above the crossover"
         assert "128 features" in detail
+    for n_samples, n_features in ((1_500, 128), (2_000, 128), (1_000, 128)):
+        below, detail = model._below_crossover(n_samples, n_features)
+        assert below, f"{n_samples}x{n_features} lost at C=10 but is above the crossover"
+        assert "384000 element-ops" in detail
     # Measured wins at every kernel and C tried, and the smallest ones kept.
-    for n_samples, n_features in ((4_000, 128), (2_000, 256), (1_024, 512), (4_000, 256)):
+    for n_samples, n_features in ((3_000, 128), (1_500, 256), (1_024, 512), (4_000, 256)):
         assert not model._below_crossover(n_samples, n_features)[0]
-    # 1000 x 128 won by only 1.10x (rbf, C=1); the floors leave it to scikit-learn.
-    assert model._below_crossover(1_000, 128)[0]
+    # 1000 x 256 won by only 1.04x (poly, C=10, on 1.7.2); the work floor leaves it.
+    assert model._below_crossover(1_000, 256)[0]
 
 
 def test_the_svc_crossover_accounts_for_the_number_of_classes():
     """One-vs-one pays per pair, so many small classes lose despite a large total.
 
-    Measured (rbf, balanced blobs): at 2048 x 512, K=4 2.03x, K=8 1.36x, K=16
-    0.82x, K=32 0.47x, K=64 0.24x; at 8000 x 256, K=8 1.69x, K=16 1.23x and K=32
-    0.77x. The total size clears every floor in each case, so only the class count
-    separates them.
+    Measured (rbf, balanced blobs, scikit-learn 1.9.0 / 1.7.2): at 2048 x 512, K=4
+    2.07x / 1.92x, K=8 1.39x / 1.28x, K=16 0.81x / 0.73x, K=32 0.47x / 0.40x, K=64
+    0.23x / 0.22x; at 8000 x 256, K=8 1.65x / 1.55x, K=16 1.21x / 1.17x and K=32
+    0.77x / 0.70x. The total size clears every floor in each case, so only the class
+    count separates them.
     """
     model = SVC()
     for n_classes in (2, 4, 8):
@@ -1176,12 +1188,14 @@ def test_patched_fit_below_the_crossover_skips_the_mlx_preamble(monkeypatch):
             PatchedSVC(kernel="precomputed").fit(X @ X.T, y)
 
 
-def test_patched_many_class_handoff_skips_the_mlx_preamble(monkeypatch):
+@pytest.mark.parametrize("spelling", ["int", "object"])
+def test_patched_many_class_handoff_skips_the_mlx_preamble(monkeypatch, spelling):
     """The many-class rule is decided from the raw labels, before any scan of X.
 
     It needs the class count, so it was applied only after mlxlearn had copied X
     to float64 and scanned it — work scikit-learn then repeats, on a fit patched
-    mode hands it by design.
+    mode hands it by design. Labels given as Python objects (class names in a
+    pandas ``Series``, say) are counted too; they used to wait for validation.
     """
     import mlxlearn.svm._classes as svc_module
 
@@ -1193,6 +1207,8 @@ def test_patched_many_class_handoff_skips_the_mlx_preamble(monkeypatch):
 
     X, _ = _data(n_samples=400, n_features=8, seed=2)
     y8 = np.arange(len(X)) % 8
+    if spelling == "object":
+        y8 = np.array([f"class {k}" for k in y8], dtype=object)
     with tuning_context(
         svc_min_features=0, svc_min_samples=0, svc_min_work=0, svc_min_pair_work=1_000
     ):

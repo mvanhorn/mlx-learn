@@ -265,8 +265,13 @@ def test_the_published_profile_encodes_the_documented_headline_cases():
     labels = {case.label for case in run.PROFILES["published"]}
     assert "knn/kneighbors/128000x768/q256/sklearn_algorithm=brute" in labels
     assert "knn/kneighbors/1000x32/q4096/sklearn_algorithm=brute" in labels
+    # The mid-size batch the width rule is about, on both sides of it.
+    assert "knn/kneighbors/131072x128/q64/sklearn_algorithm=brute" in labels
+    assert "knn/kneighbors/1000000x16/q64/sklearn_algorithm=brute" in labels
     assert "svc/fit/4000x256" in labels
     assert "svc/fit/4000x64/C=10.0/kernel=poly" in labels
+    assert "svc/fit/2000x128/C=10.0/kernel=poly" in labels
+    assert "svc/fit/4000x256/C=10.0/kernel=sigmoid" in labels
     assert "svc/fit/2000x256/kernel=linear" in labels
     assert "logreg/fit/1000000x16" in labels
     assert "logreg/fit/60000x64/n_classes=5" in labels
@@ -289,8 +294,8 @@ def _patched_route(case: run.Case) -> str:
         )
         if model._below_crossover(n, d)[0]:
             return "below-crossover"
-        handed = model._narrow_handoff(n, d)
-        return "narrow:" + handed[0] if handed else "mlx"
+        handed = model._patched_handoff(n, d)
+        return "handoff:" + handed[0] if handed else "mlx"
     if case.algorithm == "logreg":
         model = patched.LogisticRegression()
         below, detail = model._below_crossover(n, d, 1 if n_classes == 2 else n_classes)
@@ -313,7 +318,13 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         return [(c, _patched_route(c)) for c in smoke if c.algorithm == algorithm]
 
     knn = cases("knn")
-    assert any(r == "mlx" for _, r in knn)
+    assert any(r == "mlx" and c.n_features >= tuning.knn_wide_features for c, r in knn)
+    assert any(
+        r == "mlx"
+        and c.n_features < tuning.knn_wide_features
+        and c.n_samples >= tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
     assert any(c.n_samples < tuning.knn_min_train_samples for c, _ in knn)
     assert any(
         r == "below-crossover"
@@ -321,7 +332,13 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         and c.n_samples * c.n_features < tuning.knn_min_work
         for c, r in knn
     )
-    assert any(r == "narrow:tree-wins" for _, r in knn)
+    assert any(
+        r == "handoff:below-crossover"
+        and tuning.knn_min_features <= c.n_features < tuning.knn_wide_features
+        and c.n_samples < tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
+    assert any(r == "handoff:tree-wins" for _, r in knn)
 
     logreg = cases("logreg")
     assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in logreg)

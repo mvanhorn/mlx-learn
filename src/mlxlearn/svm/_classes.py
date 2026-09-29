@@ -66,6 +66,7 @@ from .._common.validation import (
     check_is_fitted,
     check_sample_weight,
     compute_class_weight,
+    count_labels,
     is_sparse,
     require_dense,
     require_supported_params,
@@ -95,6 +96,16 @@ from ..exceptions import (
 __all__ = ["SVC", "MLXSVCMixin"]
 
 _SUPPORTED_SHAPES = ("ovo", "ovr")
+
+#: Kernels patched dispatch never sends to MLX, whatever the size, with the fit that
+#: shows why (``docs/benchmarks.md``, the ``svc-linear`` and ``svc-sigmoid`` tables).
+_NEVER_ON_MLX = {
+    "linear": "every size tried (0.07x-0.10x of LIBSVM)",
+    "sigmoid": (
+        "C = 10 and 100 at nearly every size tried from 128 features (down to 0.06x "
+        "of LIBSVM), and at C = 1 at 1 000 x 256 (0.40x-0.44x)"
+    ),
+}
 
 #: scikit-learn's message for a non-finite fitted model, verbatim so that code
 #: matching on it keeps working, plus what went wrong on the MLX path.
@@ -301,9 +312,11 @@ class MLXSVCMixin(BackendMixin):
     ) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        The linear kernel is excluded outright, and everything else must clear a
-        **width** floor as well as the sample and work floors, because width is
-        what decides.
+        The linear and sigmoid kernels are excluded outright, and rbf and poly must
+        clear a **width** floor as well as the sample and work floors, because
+        width is what decides. The calibration is ``docs/benchmarks.md``'s ``svc``,
+        ``svc-sigmoid``, ``svc-linear``, ``svc-narrow`` and ``svc-multi`` tables,
+        measured against scikit-learn 1.9.0 and 1.7.2.
 
         Where the time goes, measured. Up to the row cache's capacity — about
         7 240 rows per one-vs-one subproblem at the default ``cache_size=200`` — a
@@ -314,24 +327,30 @@ class MLXSVCMixin(BackendMixin):
         nearly flat, and LIBSVM 11 µs at 16 features rising to 103 µs at 256,
         because each kernel row it misses costs ``O(n·d)``. They cross near 100
         features. C and the kernel change how many iterations there are, and how
-        often LIBSVM misses, not where the width crossover lies: from 128 features
-        rbf, poly and sigmoid won at C=1 and C=10 alike (1.3x-6.8x), while at 16-64
-        features rbf and poly at C=10 lost (0.16x-0.85x) and only rbf at C=1 won
-        (1.1x-1.7x from 4 000 rows). Narrow data past the cache, where rows are
-        fetched on demand, loses at C=1 too: 16 000 x 2..8 ran 0.56x-0.85x, and
-        16 000 x 64 with the poly kernel 0.55x. A work floor alone cannot see any of
-        that: the first release's ``n·d >= 10⁶`` routed that last fit to MLX.
+        often LIBSVM misses, not where the width crossover lies: at 16-64 features
+        rbf and poly lost at C = 10 and 100, while from 128 features they won at
+        every C tried, 0.1 to 100 — once the fit is large enough. At 128 features a
+        fit of 1 000-2 000 rows still lost at C = 10 and above on one version or
+        both (0.61x-0.95x), and from 3 000 rows won or tied on both. The work floor,
+        3 000 x 128, keeps that corner on LIBSVM and lets 1 500 x 256 (1.36x-2.4x at
+        C of 1 to 100) and 1 024 x 512 through. Narrow data past the cache, where
+        rows are fetched on demand, loses at C = 1 too. A work floor alone cannot
+        see any of that: the first release's ``n·d >= 10⁶`` could not tell
+        16 000 x 64 from 4 000 x 256.
 
-        The linear kernel is excluded at every size. Its many cheap iterations are
-        exactly the case where per-iteration overhead is the whole cost.
+        The rule cannot see C, which is why two kernels are excluded at every size.
+        The linear kernel's many cheap iterations are exactly the case where
+        per-iteration overhead is the whole cost. The sigmoid kernel won at
+        C = 0.1 and lost at C = 10 and 100 at nearly every width, down to 0.06x.
 
         **Many classes.** One-vs-one solves ``K(K−1)/2`` subproblems of ``2n/K``
         rows on average, each paying its own Gram and its own loop, so a problem
         whose total clears every floor can still be a pile of tiny losses. When
         ``n_classes`` is given, the *mean* pair's work ``(2n/K)·d`` must also
         clear ``svc_min_pair_work``: at 2 048 x 512, pairs of 512 rows (K=8) ran
-        1.36x and pairs of 256 (K=16) 0.82x; at 8 000 x 256, pairs of 1 000 rows
-        (K=16) 1.23x and of 500 (K=32) 0.77x. The mean, not the largest pair: with
+        1.28x-1.39x and pairs of 256 (K=16) 0.73x-0.81x; at 8 000 x 256, pairs of
+        1 000 rows (K=16) 1.17x-1.21x and of 500 (K=32) 0.70x-0.77x (the
+        ``svc-multi`` table). The mean, not the largest pair: with
         imbalanced classes one big pair can hide thousands of tiny ones, and it
         is their count that costs. For two classes the mean pair is the whole
         problem.
@@ -342,10 +361,10 @@ class MLXSVCMixin(BackendMixin):
         """
         tuning = get_tuning()
 
-        if self.kernel == "linear":
+        if self.kernel in _NEVER_ON_MLX:
             return True, (
-                "the linear kernel is never faster on the MLX path, so it is always "
-                "handed to scikit-learn"
+                f"the {self.kernel} kernel was measured slower on the MLX path at "
+                f"{_NEVER_ON_MLX[self.kernel]}, so it is always handed to scikit-learn"
             )
 
         work = n_samples * n_features
@@ -376,21 +395,21 @@ class MLXSVCMixin(BackendMixin):
         """:meth:`_below_crossover` from the raw input, before any validation.
 
         The class count only matters once both floors are cleared, so ``y`` is
-        read only then, and only as a size hint: labels it cannot count cheaply
-        count as two classes, which leaves the many-class rule to the check
-        :meth:`fit` repeats after validation. Counting them there instead cost a
-        float64 copy and a finiteness scan of ``X`` on every many-class fit
-        patched mode hands to scikit-learn by design.
+        read only then, and only as a size hint
+        (:func:`~mlxlearn._common.validation.count_labels`, which counts strings
+        and Python objects too): labels it cannot read count as two classes, which
+        leaves the many-class rule to the check :meth:`fit` repeats after
+        validation. Counting them there instead cost a float64 copy and a
+        finiteness scan of ``X`` on every many-class fit patched mode hands to
+        scikit-learn by design.
         """
         below, detail = self._below_crossover(*shape)
         if below:
             return below, detail
-        labels = np.asarray(y)
-        if labels.ndim == 2 and labels.shape[1] == 1:
-            labels = labels.ravel()
-        if labels.ndim != 1 or labels.dtype.kind not in "biufUS":
+        n_classes = count_labels(y)
+        if n_classes is None:
             return below, detail
-        return self._below_crossover(*shape, n_classes=int(np.unique(labels).shape[0]))
+        return self._below_crossover(*shape, n_classes=n_classes)
 
     # ------------------------------------------------------------------ targets
 

@@ -51,6 +51,7 @@ NO_CROSSOVER = {
     "knn_min_train_samples": 0,
     "knn_min_work": 0,
     "knn_min_features": 0,
+    "knn_narrow_min_samples": 0,
     "logreg_min_samples": 0,
     "logreg_min_work": 0,
     "logreg_binary_min_samples": 0,

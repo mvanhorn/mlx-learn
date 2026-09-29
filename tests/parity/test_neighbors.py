@@ -47,7 +47,9 @@ def _layer_id(cls):
 def mlx_sized():
     """Every neighbor gate lifted for the test, so a small problem reaches the MLX path
     by the ordinary route in both layers. For tests about that path, not dispatch."""
-    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_min_features=0):
+    with tuning_context(
+        knn_min_train_samples=0, knn_min_work=0, knn_min_features=0, knn_narrow_min_samples=0
+    ):
         yield
 
 
@@ -406,9 +408,9 @@ def test_small_problems_use_the_cpu_path(small_classification_data):
 
 
 def _mlx_sized_data(rng):
-    """The smallest problem the default thresholds send to MLX: 4 096 rows and
-    4 194 304 elements."""
-    X = rng.normal(size=(4_096, 1_024))
+    """About the smallest problem the default thresholds send to MLX: 4 096 rows and
+    6 000 000 elements."""
+    X = rng.normal(size=(4_096, 1_465))
     return X, (X[:, 0] > 0).astype(int)
 
 
@@ -1161,12 +1163,17 @@ def test_patched_mlx_path_passes_sklearn_checks(cls):
 
 
 #: The size floors lifted, so the narrow-data handoff is what decides.
-_NO_SIZE_FLOOR = {"knn_min_train_samples": 0, "knn_min_work": 0}
+_NO_SIZE_FLOOR = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_narrow_min_samples": 0}
 
 
 @pytest.mark.parametrize(
     "shape, tuning, reason",
-    [((120, 5), {}, "below-crossover"), ((5000, 3), _NO_SIZE_FLOOR, "tree-wins")],
+    [
+        ((120, 5), {}, "below-crossover"),
+        ((5000, 3), _NO_SIZE_FLOOR, "tree-wins"),
+        ((5000, 32), {"knn_min_train_samples": 0, "knn_min_work": 0}, "below-crossover"),
+    ],
+    ids=["small", "narrow", "short"],
 )
 def test_patched_handoff_does_not_scan_or_copy_the_data(shape, tuning, reason, monkeypatch, rng):
     """Patched mode decides these from ``X.shape`` alone and records one event.
@@ -1198,10 +1205,10 @@ def test_patched_handoff_does_not_scan_or_copy_the_data(shape, tuning, reason, m
 def test_patched_low_dimensional_auto_goes_to_sklearns_kd_tree(rng):
     """Stock ``algorithm='auto'`` answers this with a KD-tree, at any size.
 
-    A single-row query on the tree costs 0.3-1.2 ms against 1.0-2.3 ms for an MLX
-    call, measured from 256 x 2 to 1 048 576 x 12, and on data of low intrinsic
-    dimension the tree also wins every batch (0.19x-0.71x for MLX at 8 and 12
-    features). The size floors are lifted so that it is this rule that decides.
+    The tree answered single rows faster than an MLX call at every size measured up
+    to 8 features, and at 12 features up to 65 536 rows; on data of low intrinsic
+    dimension it won every batch (0.12x-0.68x for MLX at 8 and 12 features). The
+    size floors are lifted so that it is this rule that decides.
     """
     X = rng.normal(size=(5000, 3))
     Q = rng.normal(size=(20, 3))
@@ -1265,16 +1272,55 @@ def test_the_narrow_rule_is_a_tuning_knob_that_force_backend_outranks(rng):
 
 
 def test_the_knn_size_floors_are_both_required(rng):
-    """Rows and elements: a short, wide training set is handed off too, because
-    below 4 096 rows a 4096-query batch loses at every width measured (256 x 768:
-    0.25x)."""
+    """Rows and elements, in both layers: below 4 096 rows a 4096-query batch lost
+    at every width measured (2 048 x 256-1 024: 0.44x-0.79x), and below 6 million
+    elements batches of 1-32 queries lost at 4 096-8 192 rows and 256-1 024 features
+    (0.70x-0.95x), and at 4 194 304 elements single rows only tied (0.90x-0.99x)."""
+    for model in (patched.NearestNeighbors(), NearestNeighbors()):
+        assert model._below_crossover(4095, 2048)[0]
+        assert model._below_crossover(8_192, 512)[0]
+        assert model._below_crossover(4_096, 1_024)[0]
+        assert not model._below_crossover(16_384, 384)[0]
+        assert not model._below_crossover(4_096, 1_465)[0]
+        below, detail = model._below_crossover(256, 768)
+        assert below and "both required" in detail
+
+
+def test_patched_dispatch_needs_a_million_rows_below_256_features():
+    """Measured with the GPU idle before every call, as the benchmark times it: at
+    16-128 features a batch of 8-512 queries lost to stock brute force, on one
+    version or both, at most sizes measured below 1 000 000 rows — at 600 000 rows
+    still, at 16, 24 and 48 features; from 1 000 000 rows every batch of 1-4096
+    queries won on both; at 256 features every batch won or tied from 12 000 rows."""
     model = patched.NearestNeighbors()
-    assert model._below_crossover(4095, 2048)[0]
-    assert model._below_crossover(65_535, 64)[0]
-    assert not model._below_crossover(65_536, 64)[0]
-    assert not model._below_crossover(4096, 1024)[0]
-    below, detail = model._below_crossover(256, 768)
-    assert below and "both required" in detail
+    for n_samples, n_features in ((600_000, 16), (600_000, 48), (400_000, 128), (131_072, 64)):
+        reason, detail = model._patched_handoff(n_samples, n_features)
+        assert reason == "below-crossover", (n_samples, n_features)
+        assert "256 features" in detail and "1000000 samples" in detail
+        # The size floors alone would have sent every one of these to MLX.
+        assert not model._below_crossover(n_samples, n_features)[0]
+    for n_samples, n_features in ((1_000_000, 16), (1_000_000, 128), (32_768, 256), (8_192, 768)):
+        assert model._patched_handoff(n_samples, n_features) is None
+        assert not model._below_crossover(n_samples, n_features)[0]
+
+
+@pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors])
+def test_the_row_rule_below_256_features_is_patched_only(cls, rng):
+    """Layer 1 has no scikit-learn to hand the work to, and its CPU path is slower
+    than the GPU at every batch; patched mode records the handoff as a size decision."""
+    X = rng.normal(size=(5000, 32))
+    with tuning_context(knn_min_train_samples=0, knn_min_work=0):
+        model = cls().fit(X)
+    if cls is NearestNeighbors:
+        assert model.execution_backend_ != "sklearn"
+        return
+    assert model.execution_backend_ == "sklearn"
+    [event] = _events("fit")
+    assert event.reason == "below-crossover" and "1000000 samples" in event.detail
+    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_narrow_min_samples=5000):
+        assert cls().fit(X).execution_backend_ != "sklearn"
+    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_wide_features=32):
+        assert cls().fit(X).execution_backend_ != "sklearn"
 
 
 def test_capability_mismatch_outranks_the_tree_rule(rng):

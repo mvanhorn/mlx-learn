@@ -67,6 +67,7 @@ __all__ = [
     "require_supported_params",
     "require_nonnegative_weights",
     "check_sample_weight",
+    "count_labels",
     "check_float32_range",
     "check_squared_float32_range",
     "finite_range",
@@ -257,6 +258,47 @@ def check_sample_weight(
     if np.any(weights < 0):
         raise _negative_weight_error(None)
     return weights
+
+
+# ------------------------------------------------------------------ class counts
+
+
+def count_labels(y: Any) -> int | None:
+    """How many distinct labels ``y`` holds, read cheaply from the raw target; or ``None``.
+
+    A size hint for dispatch, taken before validation, so it must neither fail nor
+    cost what validation costs. Two vectorized passes find the common case, two
+    labels, with no sort: every label either equals the first one or, failing that,
+    the first one that differs. Only a target with more labels than that is counted
+    in full — a sort for numbers and fixed-width strings, a hash set for Python
+    objects, which is what a pandas ``Series`` of strings or categories arrives as.
+    Counting object labels as binary, as the dispatch rules once did, made where a
+    fit ran depend on whether its labels were integers or strings.
+
+    ``None`` when the labels cannot be read that way — not a single column, not
+    hashable, not comparable — leaving the decision to the caller and the error, if
+    there is one, to scikit-learn's validation.
+    """
+    try:
+        labels = np.asarray(y)
+        if labels.ndim == 2 and labels.shape[1] == 1:
+            labels = labels.ravel()
+        if labels.ndim != 1 or labels.dtype.kind not in "biufUSO":
+            return None
+        if labels.size == 0:
+            return 0
+        other = np.asarray(labels != labels[0], dtype=bool)
+        rest = np.flatnonzero(other)
+        if rest.size == 0:
+            return 1
+        more = np.asarray(labels != labels[rest[0]], dtype=bool)
+        if not np.any(other & more):
+            return 2
+        if labels.dtype.kind == "O":
+            return len(set(labels.tolist()))
+        return int(np.unique(labels).shape[0])
+    except (TypeError, ValueError):
+        return None
 
 
 # ------------------------------------------------------------------ float32 range

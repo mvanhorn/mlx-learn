@@ -39,6 +39,7 @@ from mlxlearn._common.diagnostics import get_backend_diagnostics
 from mlxlearn._common.validation import (
     check_float32_range,
     check_sample_weight,
+    count_labels,
     is_sparse,
     require_dense,
     require_nonnegative_weights,
@@ -646,6 +647,65 @@ def test_require_nonnegative_weights():
         with pytest.raises(UnsupportedInputError, match="LogisticRegression") as excinfo:
             require_nonnegative_weights(weights, estimator="LogisticRegression")
         assert excinfo.value.reason == "negative-sample-weight"
+
+
+def _labels(kind, values):
+    if kind == "numpy":
+        return np.asarray(values)
+    if kind == "object":
+        return np.asarray(values, dtype=object)
+    if kind == "column":
+        return np.asarray(values).reshape(-1, 1)
+    if kind == "list":
+        return list(values)
+    pd = pytest.importorskip("pandas")
+    if kind == "series":
+        return pd.Series(values)
+    if kind == "string":
+        return pd.Series(values, dtype="string")
+    return pd.Series(values, dtype="category")
+
+
+@pytest.mark.parametrize(
+    "kind", ["numpy", "object", "column", "list", "series", "string", "category"]
+)
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        (["cat"] * 5, 1),
+        (["cat", "dog", "cat", "dog", "dog"], 2),
+        (["cat", "dog", "cat", "bird", "dog", "fish"], 4),
+        ([3, 3, 1, 3], 2),
+        ([0.5, 1.5, 2.5, 0.5], 3),
+    ],
+    ids=["one", "two", "four", "two-ints", "three-floats"],
+)
+def test_count_labels_counts_every_label_type(kind, values, expected):
+    """A pandas Series of class names arrives as an object array. Read as binary, it
+    sent a five-class LogisticRegression fit to the binary rule, so where the fit ran
+    depended on whether its labels were integers or strings."""
+    assert count_labels(_labels(kind, values)) == expected
+
+
+@pytest.mark.parametrize(
+    "y",
+    [
+        np.ones((4, 2)),  # not a single column
+        np.empty((0, 2)),
+        np.array([{1}, {2}, {3}], dtype=object),  # unhashable, and not comparable
+        np.array([1 + 1j, 2 + 0j]),  # complex: not a label type scikit-learn takes
+    ],
+    ids=["two-columns", "empty-2d", "unhashable", "complex"],
+)
+def test_count_labels_gives_up_on_what_it_cannot_read(y):
+    assert count_labels(y) is None
+
+
+def test_count_labels_reads_binary_labels_without_sorting(monkeypatch):
+    """Binary is the common case, and it is decided in two vectorized passes."""
+    labels = np.array(["no", "yes"] * 50_000, dtype=object)
+    monkeypatch.setattr(np, "unique", lambda *a, **k: pytest.fail("sorted binary labels"))
+    assert count_labels(labels) == 2
 
 
 def test_check_sample_weight():

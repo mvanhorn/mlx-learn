@@ -291,6 +291,21 @@ threshold (`tests/tooling` checks that it does); `full` is the regression grid;
 `published` holds the cases `docs/benchmarks.md` reports, with the settings they were
 measured under (Layer 1, forced onto MLX).
 
+The thresholds themselves come from `benchmarks/calibrate.py`, one named grid per rule:
+
+```bash
+python -m benchmarks.calibrate run knn --output bench/calibration/knn-1.9.0.jsonl
+# ...again under the other end of the supported scikit-learn range, then:
+python -m benchmarks.calibrate update docs/benchmarks.md bench/calibration/*.jsonl
+```
+
+A change to a `Tuning` threshold, or to the rule that reads it, comes with the grid that
+justifies it, run under both scikit-learn versions, its raw results in
+`benchmarks/results/calibration/`, and the table in `docs/benchmarks.md` re-rendered from
+them; `tests/tooling` fails while that table is stale, and checks that every threshold's
+grid straddles it. `benchmarks/ab.py` times one source tree against another in fresh
+processes, for the CHANGELOG's release-over-release numbers.
+
 Each result records the backend the mlxlearn side ran on, and the gate judges those
 decisions — the configured `Tuning` — rather than a crossover inferred from the run it is
 judging: a problem `Tuning` sends to MLX that loses, and a patched handoff whose own

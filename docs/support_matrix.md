@@ -152,23 +152,28 @@ Separately from capability, `patch_sklearn()` hands problems to scikit-learn on 
 where scikit-learn is faster: small ones, and — depending on the estimator — narrow or
 wide ones. These are decided from the input's shape before any scan or copy of `X` —
 `SVC`'s many-class rule from the number of distinct raw labels in `y` too, and
-`LogisticRegression`'s binary rule from whether the raw labels hold two values — recorded
-with reason `"below-crossover"` (or `"tree-wins"`), and never warned about. The thresholds are private `Tuning` values, measured in
-[`benchmarks.md`](benchmarks.md) and overridable with `MLXLEARN_*` environment variables.
+`LogisticRegression`'s binary rule from whether the raw labels hold two values, whatever
+their type (strings and a pandas `Series` of class names included) — recorded with reason
+`"below-crossover"` (or `"tree-wins"`), and never warned about. The thresholds are private
+`Tuning` values, each calibrated on a table in [`benchmarks.md`](benchmarks.md) that
+`python -m benchmarks.calibrate` regenerates, and overridable with `MLXLEARN_*`
+environment variables.
 
 | Estimator | Goes to scikit-learn when |
 |---|---|
 | neighbor estimators | fewer than `knn_min_train_samples` rows **or** fewer than `knn_min_work` rows × features |
 | neighbor estimators | fewer than `knn_min_features` features, at any size: to scikit-learn's KD-tree where `algorithm="auto"` would build one (at most 15 features, `n_neighbors < n_samples // 2`, a KD-tree metric; reason `"tree-wins"`), to its brute force otherwise |
+| neighbor estimators | fewer than `knn_wide_features` features **and** fewer than `knn_narrow_min_samples` rows: mid-size query batches lose there once the GPU has idled |
 | `LogisticRegression` | fewer than `logreg_min_samples` rows **or** fewer than `logreg_min_work` rows × features × weight vectors (one per class for multinomial); or a binary fit with fewer than `logreg_binary_min_samples` rows **or** more than `logreg_binary_max_features` features |
-| `SVC` | `kernel="linear"`, at any size; fewer than `svc_min_features` features, `svc_min_samples` rows **or** `svc_min_work` rows × features; or, with more than two classes, a mean one-vs-one pair `(2n/K)·n_features` below `svc_min_pair_work` |
+| `SVC` | `kernel="linear"` or `kernel="sigmoid"`, at any size; fewer than `svc_min_features` features, `svc_min_samples` rows **or** `svc_min_work` rows × features; or, with more than two classes, a mean one-vs-one pair `(2n/K)·n_features` below `svc_min_pair_work` |
 
 `device` does not change any of this: `device="cpu"` selects MLX's CPU device for work
 that is sent to MLX, not scikit-learn. A directly imported class never dispatches to
 scikit-learn; below its crossover it runs on MLX's CPU device instead, and a directly
-imported neighbor estimator always searches by brute force, so on low-dimensional data
-stock scikit-learn's KD-tree is the faster choice unless the queries come in large
-batches.
+imported neighbor estimator always searches by brute force — on the GPU at any width once
+it clears `knn_min_train_samples` and `knn_min_work`, since the two width rules above are
+patched-only — so on low-dimensional data stock scikit-learn's KD-tree is the faster
+choice unless the queries come in large batches.
 `MLXLEARN_FORCE_BACKEND` outranks every size rule; it is for tests and bisection.
 
 ### Deliberate differences from scikit-learn
