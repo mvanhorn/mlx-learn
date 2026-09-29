@@ -249,13 +249,23 @@ def _cubic_minimum(
     return candidate if math.isfinite(candidate) else None
 
 
+#: How close to either end of the bracket, as a fraction of its width, an interpolated
+#: trial step may fall before the zoom bisects instead. The first trial of a fit is a
+#: unit move (L-BFGS-B's first step); where the minimum lies far inside it — labels
+#: that carry no signal, whose optimum is a coefficient vector of norm ~1e-2 — the
+#: cubic lands at 1-2% of the bracket, and a 10% margin bisected three times before
+#: accepting it: six objective evaluations for one iteration, against scikit-learn's
+#: three or four.
+_ZOOM_MARGIN = 0.01
+
+
 def _safeguard(candidate: float | None, lo: float, hi: float) -> float:
     """Keep a trial step strictly inside ``[lo, hi]``, bisecting when it is not."""
     low, high = (lo, hi) if lo <= hi else (hi, lo)
     width = high - low
     if width <= 0.0:
         return low
-    margin = 0.1 * width
+    margin = _ZOOM_MARGIN * width
     if candidate is None or not (low + margin <= candidate <= high - margin):
         return low + 0.5 * width
     return candidate
@@ -541,14 +551,20 @@ def minimize(
             direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
             gtd = float(grad @ direction)
 
-        # Nocedal & Wright's initial step: unit for a quasi-Newton direction,
-        # scaled by 1/‖d‖₁ on the first (steepest-descent) iteration where the
-        # direction carries no curvature information and unit length is arbitrary.
+        # Unit for a quasi-Newton direction. With no curvature pairs — the first
+        # (steepest-descent) iteration — the direction's length is arbitrary, and the
+        # first trial moves the parameters a unit distance: 1/‖d‖₂, L-BFGS-B's own
+        # first step, which scikit-learn's lbfgs takes. The 1/‖d‖₁ this replaced,
+        # capped at 1, started up to √p times shorter: on well-separated classes,
+        # where that one long step already meets scikit-learn's tolerance, the fit
+        # took 11-15 iterations to get where scikit-learn's single one did (60 000 x
+        # 256, three to ten classes), while on the pinned problems of
+        # tests/unit/test_lbfgs.py it saved two or three of 16-47.
         if s_history:
             t_init = 1.0
         else:
-            d_l1 = float(np.sum(np.abs(direction)))
-            t_init = min(1.0, 1.0 / d_l1) if d_l1 > 0.0 else 1.0
+            d_l2 = float(np.sqrt(direction @ direction))
+            t_init = 1.0 / d_l2 if d_l2 > 0.0 and math.isfinite(1.0 / d_l2) else 1.0
 
         def probe(t: float, _x=x, _d=direction):
             # Rounded to float32 here, not by the upload, so that ``s`` and ``y``

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 
 import pytest
@@ -60,16 +61,20 @@ def _pair_work(p):
     [
         (("knn-rows",), "knn_min_train_samples", _rows),
         (("knn-rows",), "knn_min_work", _work),
-        (("knn-tree", "knn"), "knn_min_features", _width),
+        (("knn-tree", "knn", "knn-narrow"), "knn_min_features", _width),
         (("knn",), "knn_wide_features", _width),
         (("knn",), "knn_narrow_min_samples", _rows),
         (("svc",), "svc_min_features", _width),
         (("svc",), "svc_min_samples", _rows),
         (("svc",), "svc_min_work", _work),
-        (("svc-multi",), "svc_min_pair_work", _pair_work),
+        (("svc-multi", "svc-multi-overlap"), "svc_min_pair_work", _pair_work),
+        (("svc-params",), "svc_min_gamma_ratio", lambda p: p.gamma or 1.0),
+        # A ceiling: C at most the knob stays on MLX, so C = 1 must sort below it.
+        (("svc-params",), "svc_low_gamma_max_c", lambda p: math.nextafter(p.C, 0.0)),
+        (("svc-params",), "svc_poly_min_degree", lambda p: p.degree),
         (("logreg-multi",), "logreg_min_samples", _rows),
-        (("logreg-binary",), "logreg_binary_min_samples", _rows),
-        (("logreg-binary",), "logreg_binary_max_features", lambda p: p.d - 1),
+        (("logreg-binary", "logreg-labels"), "logreg_binary_min_samples", _rows),
+        (("logreg-binary", "logreg-labels"), "logreg_binary_max_features", lambda p: p.d - 1),
     ],
     ids=lambda value: value if isinstance(value, str) else None,
 )
@@ -78,6 +83,35 @@ def test_every_threshold_has_a_grid_on_both_sides_of_it(names, knob, size):
     points = [p for name in names for p in GRIDS[name].points]
     floor = getattr(get_tuning(), knob)
     assert min(map(size, points)) < floor <= max(map(size, points))
+
+
+def _committed(grid):
+    results = sorted((REPO / "benchmarks" / "results" / "calibration").glob(f"{grid}-*.jsonl"))
+    return calibrate.load(results, grid)
+
+
+def test_the_data_probe_threshold_has_measurements_on_both_sides_of_it():
+    """The data rule's knobs are read off what the probe found, so the committed
+    results must hold data it passed and data it did not, on both versions, and
+    integer data on both sides of the width it keeps on MLX from."""
+    tuning = get_tuning()
+    records = _committed("knn-data")
+    for version in ("1.9.0", "1.7.2"):
+        mine = [r for r in records if r["sklearn"] == version]
+        fractions = {r["probe_uncertified"] / r["probe_rows"] for r in mine if r["probe_rows"]}
+        assert min(fractions) <= tuning.knn_probe_max_uncertified < max(fractions)
+        widths = {r["d"] for r in mine if r["integer_path"]}
+        assert min(widths) < tuning.knn_wide_features <= max(widths)
+
+
+def test_the_host_inference_threshold_has_measurements_on_both_sides_of_it():
+    tuning = get_tuning()
+    for version in ("1.9.0", "1.7.2"):
+        works = [
+            r["q"] * r["n_sv"] * r["d"] for r in _committed("svc-predict")
+            if r["sklearn"] == version
+        ]
+        assert min(works) <= tuning.svc_host_inference_work < max(works)
 
 
 def _record(grid, n, d, speedup, significant=True, version="1.9.0", **extra):
@@ -189,5 +223,6 @@ def test_every_calibration_table_in_the_docs_names_a_grid():
     assert cited, "docs/benchmarks.md cites no calibration grid"
     assert cited <= set(GRIDS)
     # Every grid that calibrates a threshold is on the record.
-    assert {"knn", "knn-rows", "knn-tree", "svc", "svc-sigmoid", "svc-multi",
-            "logreg-binary", "logreg-multi"} <= cited
+    assert {"knn", "knn-rows", "knn-tree", "knn-narrow", "knn-data", "knn-k", "svc",
+            "svc-sigmoid", "svc-multi", "svc-multi-overlap", "svc-params", "svc-predict",
+            "logreg-binary", "logreg-multi", "logreg-separable", "logreg-labels"} <= cited

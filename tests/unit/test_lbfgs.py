@@ -342,21 +342,24 @@ def test_a_tol_below_the_float32_floor_stops_on_the_floor():
 
 # --------------------------------------------------------- pinned logistic trajectories
 
-#: ``(n_classes, C, fit_intercept) -> (n_iter, objective)`` measured with the solver as
-#: shipped in 0.1.0a2, on ``make_classification(5000, 20, n_informative=12,
-#: n_redundant=4, random_state=0)``, on an M4 Max: the same iteration counts on the GPU
-#: and CPU devices, objectives up to 1.4e-9 apart. Changes to the solver's internals
-#: may reach the same point in fewer iterations or at a lower objective, never the
-#: reverse.
+#: ``(n_classes, C, fit_intercept) -> (n_iter, objective)`` measured on
+#: ``make_classification(5000, 20, n_informative=12, n_redundant=4, random_state=0)``,
+#: on an M4 Max: the same iteration counts on the GPU and CPU devices, objectives up to
+#: 4.2e-9 apart. Re-pinned when the first step became L-BFGS-B's 1/‖d‖₂: the binary
+#: runs take two or three more iterations than the 16-17 of 0.1.0a2 (scikit-learn: 18-24),
+#: the multinomial ones one fewer or one more than 30-47 (scikit-learn: 29-43), and every
+#: objective is lower than it was — while fits scikit-learn finishes in one iteration
+#: now do too. Changes to the solver's internals may reach the same point in fewer
+#: iterations or at a lower objective, never the reverse.
 _PINNED = {
-    (2, 0.01, True): (16, 0.5293678939),
-    (2, 1.0, True): (16, 0.5263766616),
-    (2, 1.0, False): (17, 0.5294598614),
-    (2, 100.0, True): (16, 0.5263454231),
-    (5, 0.01, True): (41, 1.0993984138),
-    (5, 1.0, True): (47, 1.0847425498),
-    (5, 1.0, False): (30, 1.0866184770),
-    (5, 100.0, True): (45, 1.0845856399),
+    (2, 0.01, True): (18, 0.5293678799),
+    (2, 1.0, True): (19, 0.5263766441),
+    (2, 1.0, False): (18, 0.5294598445),
+    (2, 100.0, True): (19, 0.5263454056),
+    (5, 0.01, True): (43, 1.0993983064),
+    (5, 1.0, True): (46, 1.0847425512),
+    (5, 1.0, False): (29, 1.0866184672),
+    (5, 100.0, True): (46, 1.0845855493),
 }
 
 

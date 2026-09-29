@@ -316,20 +316,22 @@ class MLXLogisticMixin(BackendMixin):
         one — because each objective evaluation is a pair of
         ``(n, d) × (d, n_targets)`` products.
 
-        A binary fit must also be tall and narrow: at least
+        A binary fit must also be tall, and not too wide: at least
         ``logreg_binary_min_samples`` rows and at most
-        ``logreg_binary_max_features`` features. Width is what costs MLX there.
-        scikit-learn's per-iteration cost is a matrix-vector product in float64
-        BLAS plus a per-sample loss; MLX's is the same product on the GPU after a
-        one-off float32 copy and transposition of ``X``, and a synchronization per
-        evaluation. The loss is where the GPU gains, and it does not grow with the
-        width; the copy does. Measured against scikit-learn 1.9.0 and 1.7.2
-        (``docs/benchmarks.md``, the ``logreg-binary`` and ``logreg-multi`` tables),
-        binary fits won from 100 000 rows at 1-32 features (1.10x-4.6x) but lost at
-        256 and 1 024 features at every size up to 1 000 000 rows (0.45x-0.85x), and
-        reached parity at 64-128 only at a million rows. A multinomial fit does
-        ``n_targets`` times the GPU work for the same copy, and won from 60 000 rows
-        at every width measured (1.31x-7.0x).
+        ``logreg_binary_max_features`` features. What MLX saves is per iteration —
+        the loss and its gradient on the GPU — and what it pays is once: the float32
+        copy of ``X`` (centered, split across threads), its upload, and a device
+        round trip per evaluation. A fit that converges in an iteration or two is
+        mostly that fixed cost, and labels that carry no signal converge that fast.
+        Measured against scikit-learn 1.9.0 and 1.7.2 (``docs/benchmarks.md``, the
+        ``logreg-binary``, ``logreg-labels``, ``logreg-multi`` and
+        ``logreg-separable`` tables): binary fits of the benchmark's target won
+        from 100 000 rows at every width up to 1 024 (1.30x-6.2x), but random and
+        noisy labels lost at 100 000 rows (0.61x-0.90x, most on 1.7.2) and, at 256
+        features, stood at 0.96x-1.17x from 200 000; up to 64 features from 200 000
+        rows they won or tied. A multinomial fit does ``n_targets`` times the GPU
+        work for the same copy, and won from 60 000 rows at every width measured,
+        overlapping classes or well separated (1.00x-8.6x).
         """
         tuning = get_tuning()
         work = n_samples * n_features * max(int(n_targets), 1)
@@ -412,11 +414,16 @@ class MLXLogisticMixin(BackendMixin):
         A fit that started and did not complete, which can leave new ``classes_``
         next to the previous ``coef_``, is not that: ``check_is_fitted`` raises.
         """
+        if "_execution_backend_" in self.__dict__:
+            # Fitted by mlxlearn, so nothing to check. A call nested in one that
+            # has recorded its event already (scikit-learn's predict reaching
+            # decision_function) returns inside _note_inference, before any work.
+            self._note_inference(
+                operation, shape=_safe_shape(X), host=True, compute="numpy-float64"
+            )
+            return
         check_is_fitted(self)
         shape = _safe_shape(X)
-        if "_execution_backend_" in self.__dict__:
-            self._note_inference(operation, shape=shape, host=True, compute="numpy-float64")
-            return
         operation = self._claim_call_event(operation)
         if operation is not None:
             self._backend_event(
@@ -581,7 +588,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         )
         _check_classification_target(y_checked)
 
-        self.classes_, y_encoded = np.unique(y_checked, return_inverse=True)
+        self.classes_, y_encoded = _encode_labels(y_checked)
         n_classes = self.classes_.shape[0]
         if n_classes < 2:
             # scikit-learn's wording, verbatim: code written against its error
@@ -985,6 +992,19 @@ def _count_targets(y) -> int:
     return 1 if n_classes is None or n_classes <= 2 else n_classes
 
 
+def _encode_labels(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``np.unique(y, return_inverse=True)``, without sorting ``y`` for numeric labels.
+
+    The classes are sorted either way; the codes of numeric labels come from a
+    binary search of them instead of a sort of every label, which at 100 000 labels
+    took half the time. Other dtypes keep NumPy's own path.
+    """
+    if y.ndim != 1 or y.dtype.kind not in "biuf":
+        return np.unique(y, return_inverse=True)
+    classes = np.unique(y)
+    return classes, np.searchsorted(classes, y)
+
+
 def _check_classification_target(y: np.ndarray) -> None:
     """Reject non-classification targets with scikit-learn's own message and warning.
 
@@ -994,12 +1014,18 @@ def _check_classification_target(y: np.ndarray) -> None:
     "Unknown label type" error and emits its "more than 50% unique classes"
     warning.
     """
-    target_type = type_of_target(y, input_name="y")
-    if target_type in ("multilabel-indicator", "multiclass-multioutput", "continuous-multioutput"):
-        raise UnsupportedInputError(
-            "LogisticRegression implements single-output classification only; got a "
-            f"{target_type!r} target.",
-            reason="multi-label-target",
-        )
+    # A one-dimensional target is never multi-output, and check_classification_targets
+    # classifies it itself: typing it here first cost a second pass over the labels,
+    # a measurable share of a fit that converges in an iteration or two.
+    if np.ndim(y) != 1:
+        target_type = type_of_target(y, input_name="y")
+        if target_type in (
+            "multilabel-indicator", "multiclass-multioutput", "continuous-multioutput"
+        ):
+            raise UnsupportedInputError(
+                "LogisticRegression implements single-output classification only; got a "
+                f"{target_type!r} target.",
+                reason="multi-label-target",
+            )
     check_classification_targets(y)
 

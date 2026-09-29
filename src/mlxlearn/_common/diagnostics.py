@@ -143,7 +143,17 @@ class _Recorder:
         )
         self._warned: set[tuple[str, str]] = set()
 
-    def record(self, event: BackendEvent, replacing: BackendEvent | None = None) -> None:
+    def record(
+        self, event: BackendEvent | tuple, replacing: BackendEvent | None = None
+    ) -> None:
+        """Append ``event`` — or the field tuple of one, built only when it is read.
+
+        An inference call records its event as the tuple (:func:`record_inference`):
+        building the frozen dataclass cost a few microseconds on every call, a
+        measurable share of a 0.1 ms single-row ``predict``, for an event that is
+        usually never read. :meth:`events` and :meth:`last` build it on first read,
+        in place, so it is the same object on every read after that.
+        """
         capacity = _process_tuning().diagnostics_capacity
         with self._lock:
             if self._events.maxlen != capacity:
@@ -155,6 +165,14 @@ class _Recorder:
                         self._events[position] = event
                         return
             self._events.append(event)
+
+    def _built(self, position: int) -> BackendEvent:
+        # Under the lock.
+        event = self._events[position]
+        if type(event) is tuple:
+            event = BackendEvent(*event)
+            self._events[position] = event
+        return event
 
     def has_warned(self, key: tuple[str, str]) -> bool:
         with self._lock:
@@ -174,11 +192,11 @@ class _Recorder:
 
     def events(self) -> list[BackendEvent]:
         with self._lock:
-            return list(self._events)
+            return [self._built(position) for position in range(len(self._events))]
 
     def last(self) -> BackendEvent | None:
         with self._lock:
-            return self._events[-1] if self._events else None
+            return self._built(-1) if self._events else None
 
     def clear(self) -> None:
         with self._lock:
@@ -334,6 +352,26 @@ def record_event(
             "call mlxlearn.get_backend_diagnostics() for the full record.",
         )
     return event
+
+
+def record_inference(
+    estimator: str,
+    operation: str,
+    backend: Backend,
+    reason: str,
+    detail: str,
+    shape: tuple[int, ...] | None,
+    extra: dict[str, Any],
+) -> None:
+    """:func:`record_event` for an inference call: never a warning, nothing returned.
+
+    The event is kept as its field tuple until someone reads it
+    (:meth:`_Recorder.record`). ``extra`` is taken as given, not copied.
+    """
+    if get_config().diagnostics:
+        _recorder.record(
+            (estimator, operation, backend, reason, detail, shape, backend == "sklearn", extra)
+        )
 
 
 def get_backend_diagnostics() -> list[BackendEvent]:

@@ -63,7 +63,7 @@ from .device import (
     physical_memory_bytes,
     resolve_device,
 )
-from .diagnostics import BackendEvent, record_event
+from .diagnostics import BackendEvent, record_event, record_inference
 
 __all__ = ["BackendMixin", "Backend", "mlx_guard", "release_mlx_cache"]
 
@@ -734,15 +734,14 @@ class BackendMixin:
         fit_event = self.__dict__.get("_fit_event_")
         if fit_event is not None:
             extra["fit_reason"] = fit_event.reason
-        record_event(
+        record_inference(
             type(self).__name__,
             operation,
             backend,
-            reason=reason,
-            detail=detail,
-            shape=shape,
-            fallback=backend == "sklearn",
-            **extra,
+            reason,
+            detail,
+            None if shape is None else tuple(shape),
+            extra,
         )
         return backend
 

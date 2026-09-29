@@ -52,6 +52,8 @@ NO_CROSSOVER = {
     "knn_min_work": 0,
     "knn_min_features": 0,
     "knn_narrow_min_samples": 0,
+    "knn_probe_max_uncertified": 1.0,
+    "knn_wide_features": 0,
     "logreg_min_samples": 0,
     "logreg_min_work": 0,
     "logreg_binary_min_samples": 0,
@@ -338,22 +340,31 @@ def test_gpu_fitted_inference_without_a_gpu_is_one_event(monkeypatch, data, name
     monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
     # LogisticRegression predicts in host NumPy float64 on every backend: no GPU is
     # wanted, so none is missed. NearestNeighbors.radius_neighbors* are
-    # scikit-learn's code on the fitted state, likewise host-side.
+    # scikit-learn's code on the fitted state, likewise host-side. So is SVC's
+    # inference on batches this small (svc_host_inference_work); with that threshold
+    # at 0 it takes the device path, and the GPU is missed there.
     for method, call in _public_calls(name, X, y).items():
-        events = _events(lambda call=call: call(model))
-        assert [(e.operation, e.backend) for e in events] == [(method, "mlx")], events
-        host_side = name == "LogisticRegression" or method.startswith("radius")
-        expected = "sticky" if host_side else "gpu-unavailable"
-        assert events[0].reason == expected, events[0]
+        for host_work in (None, 0) if name == "SVC" else (None,):
+            overrides = {} if host_work is None else {"svc_host_inference_work": host_work}
+            with tuning_context(**overrides):
+                events = _events(lambda call=call: call(model))
+                assert [(e.operation, e.backend) for e in events] == [(method, "mlx")], events
+                host_side = (
+                    name == "LogisticRegression"
+                    or method.startswith("radius")
+                    or (name == "SVC" and host_work is None)
+                )
+                expected = "sticky" if host_side else "gpu-unavailable"
+                assert events[0].reason == expected, events[0]
 
-        # An explicit device="gpu" is refused where MLX would have to run, and has
-        # nothing to refuse where the call is host code on the fitted state.
-        with mlxlearn.config_context(device="gpu"):
-            if host_side:
-                call(model)
-            else:
-                with pytest.raises(mlxlearn.DeviceError):
-                    call(model)
+                # An explicit device="gpu" is refused where MLX would have to run, and
+                # has nothing to refuse where the call is host code on the fitted state.
+                with mlxlearn.config_context(device="gpu"):
+                    if host_side:
+                        call(model)
+                    else:
+                        with pytest.raises(mlxlearn.DeviceError):
+                            call(model)
 
 
 # ======================================================================================

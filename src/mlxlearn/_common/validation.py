@@ -35,9 +35,11 @@ from sklearn.utils.multiclass import check_classification_targets, type_of_targe
 from sklearn.utils.validation import (
     check_array,
     check_consistent_length,
-    check_is_fitted,
     check_random_state,
     validate_data,
+)
+from sklearn.utils.validation import (
+    check_is_fitted as _sklearn_check_is_fitted,
 )
 
 from ..exceptions import SparseInputError, UnsupportedInputError, UnsupportedParameterError
@@ -76,6 +78,22 @@ __all__ = [
     "FLOAT32_MAX",
     "FLOAT32_TINY",
 ]
+
+
+def check_is_fitted(estimator: Any, *args: Any, **kwargs: Any) -> None:
+    """scikit-learn's ``check_is_fitted``, answered at once for an mlxlearn-fitted estimator.
+
+    An estimator whose fit completed carries ``_execution_backend_``
+    (:meth:`~mlxlearn._common.base.BackendMixin.__sklearn_is_fitted__`), and
+    scikit-learn's check would read that same fact after building the estimator's
+    tags — a few microseconds on every inference call, twice for a ``predict`` that
+    reaches ``decision_function``, which on a 0.2 ms single-row call was a
+    measurable share of it. Everything else — unfitted, mid-fit, state assigned
+    from outside, explicit ``attributes`` — goes to scikit-learn's check unchanged.
+    """
+    if not args and not kwargs and "_execution_backend_" in getattr(estimator, "__dict__", ()):
+        return
+    _sklearn_check_is_fitted(estimator, *args, **kwargs)
 
 
 def _is_pandas(X: Any) -> bool:

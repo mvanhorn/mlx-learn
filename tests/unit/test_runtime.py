@@ -64,6 +64,8 @@ NO_CROSSOVER = {
     "knn_min_work": 0,
     "knn_min_features": 0,
     "knn_narrow_min_samples": 0,
+    "knn_probe_max_uncertified": 1.0,
+    "knn_wide_features": 0,
     "logreg_min_samples": 0,
     "logreg_min_work": 0,
     "logreg_binary_min_samples": 0,
@@ -400,7 +402,12 @@ def test_a_gpu_fitted_model_answers_on_the_mlx_cpu_without_a_gpu(monkeypatch, da
         model = SVC().fit(X, y) if kind == "SVC" else NearestNeighbors(n_neighbors=3).fit(X)
 
     def answer(m):
-        return m.kneighbors(X[:20])[1] if kind == "NearestNeighbors" else m.decision_function(X[:20])
+        if kind == "NearestNeighbors":
+            return m.kneighbors(X[:20])[1]
+        # Twenty rows are a batch SVC would answer on the host; this is about the
+        # device path (test_small_svc_batches_are_answered_on_the_host is the other).
+        with tuning_context(svc_host_inference_work=0):
+            return m.decision_function(X[:20])
 
     expected = answer(model)
     payload = pickle.dumps(model)
@@ -420,6 +427,32 @@ def test_gpu_fitted_inference_on_a_gpu_less_host_is_recorded(monkeypatch, data):
     monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
     model.predict(X[:10])
     assert mlxlearn.get_last_backend_event().reason == "gpu-unavailable"
+
+
+@needs_gpu
+def test_small_svc_batches_are_answered_on_the_host(monkeypatch, data):
+    """At or below svc_host_inference_work SVC evaluates the batch in NumPy float32.
+
+    The same arithmetic as the device tiles, so the answer agrees with the device
+    path's to float32 rounding; no device is used, so a GPU-less host, even under
+    device="gpu", answers it.
+    """
+    X, y = data
+    with tuning_context(force_backend="mlx"):
+        model = SVC().fit(X, y)
+    with tuning_context(svc_host_inference_work=0):
+        device = model.decision_function(X[:7])
+    host = model.decision_function(X[:7])
+    event = mlxlearn.get_last_backend_event()
+    assert (event.backend, event.reason) == ("mlx", "sticky")
+    assert event.extra["compute"] == "numpy-float32"
+    np.testing.assert_allclose(host, device, rtol=1e-5, atol=1e-5)
+
+    monkeypatch.setattr("mlxlearn._common.device.gpu_available", lambda: False)
+    restored = pickle.loads(pickle.dumps(model))
+    with mlxlearn.config_context(device="gpu"):
+        np.testing.assert_allclose(restored.decision_function(X[:7]), host, rtol=1e-6, atol=1e-6)
+    assert mlxlearn.get_last_backend_event().extra["compute"] == "numpy-float32"
 
 
 def test_host_side_inference_is_not_gpu_unavailable(monkeypatch, data):

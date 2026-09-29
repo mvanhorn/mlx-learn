@@ -521,6 +521,71 @@ class NeighborIndex:
         # never touches a device, and on the device that query runs on; see
         # _compute_device.
 
+    # ------------------------------------------------------------------ probe
+
+    def probe(self, k: int, *, device: str | None = None) -> dict:
+        """How the first pass fares on the index's own rows: what a query will cost.
+
+        Searches ``_PROBE_ROWS`` training rows, spread evenly over the index, for
+        their ``k`` nearest (each row finds itself, or a duplicate, first) with the
+        first float32 pass alone, and counts the rows its certificate could not
+        certify. A query row like those is searched again with a much wider
+        candidate set, and exactly if that fails too (:meth:`query`), which costs
+        several first passes: on duplicated rows, tight clusters or one column on
+        a far larger scale than the rest, nearly every row. Nothing is resolved
+        here, so the probe costs one first pass over the index for 64 rows.
+
+        Integer data is searched on the exact integer path, which has no
+        certificate; the probe says so instead of searching.
+
+        Returns
+        -------
+        dict
+            ``{"rows": probed, "uncertified": count, "integer": bool}``.
+        """
+        import mlx.core as mx
+
+        device = _compute_device(self.backend, device)
+        state = self._ensure_device(device)
+        n_train = self.n_samples
+        if state.int_limit > 0:
+            return {"rows": 0, "uncertified": 0, "integer": True}
+        rows = np.unique(np.linspace(0, n_train - 1, min(n_train, _PROBE_ROWS)).astype(np.intp))
+        k_search = max(1, min(int(k), n_train))
+        k_carry = _first_pass_carry(k_search, self.n_features, n_train)
+        if rows.size == 0 or k_carry >= n_train:
+            # Every row is a candidate, so the first pass is the exact answer.
+            return {"rows": int(rows.size), "uncertified": 0, "integer": False}
+        probe = self.X[rows]
+        if self.X_lo is not None:
+            probe = probe.astype(np.float64) + self.X_lo[rows]
+        plan_backend = "mlx" if device == "gpu" else "cpu"
+        plan = resolve_blocks(rows.size, n_train, backend=plan_backend, k_search=k_carry)
+        search = _Search(
+            index=self,
+            state=state,
+            mx=mx,
+            k_search=k_search,
+            k_carry=k_carry,
+            segmented=device == "gpu",
+            fns=_kernels(device),
+            plan_backend=plan_backend,
+            train_block_size=None,
+            counts={"rows": int(rows.size), "widened_rows": 0, "exact_rows": 0},
+        )
+        uncertified = 0
+        with use_device(device):
+            for start in range(0, rows.size, plan.query_rows):
+                end = min(start + plan.query_rows, rows.size)
+                block = search.query_block(probe, start, end, self_query=False)
+                cand, gmax = search.candidates(block, k_carry, plan.train_cols)
+                refined = search.refine(block, cand)
+                mx.eval(cand, refined, gmax, block.sq)
+                _, sq = _sort_candidates(np.asarray(cand), np.asarray(refined))
+                ok = search.certified(block, np.asarray(gmax), sq[:, k_search - 1])
+                uncertified += int(np.count_nonzero(~ok))
+        return {"rows": int(rows.size), "uncertified": uncertified, "integer": False}
+
     # ------------------------------------------------------------------ query
 
     def query(

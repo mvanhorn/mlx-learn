@@ -142,6 +142,38 @@ def test_basis_combine_matches_sklearn(backend, kwargs, why, data):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("kwargs, why", SPECS, ids=[why for _, why in SPECS])
+def test_the_host_path_is_the_device_arithmetic(backend, kwargs, why, data):
+    """``combine(..., host=True)`` — SVC's small batches — computes each entry as the
+    device tiles do, so it matches scikit-learn to the same tolerance and the device
+    path to float32 rounding; and it reads the same operand, built once."""
+    A, B = data
+    spec = KernelSpec(**kwargs)
+    weights = np.random.default_rng(1).normal(size=(B.shape[0], 3))
+    basis = KernelBasis(spec)
+    host = basis.combine(A[:9], B, weights, backend=backend, host=True)
+    operand = basis._operand
+    device = basis.combine(A[:9], B, weights, backend=backend)
+    assert basis._operand is operand
+    expected = _reference(spec, A[:9], B) @ weights
+    scale = float(np.abs(_reference(spec, A, B)).max()) * np.abs(weights).sum(axis=0).max()
+    np.testing.assert_allclose(host, expected, rtol=0, atol=2e-5 * max(scale, 1.0))
+    np.testing.assert_allclose(host, device, rtol=0, atol=2e-5 * max(scale, 1.0))
+
+
+def test_the_host_path_refines_rbf_entries_as_the_device_does():
+    """Tight clusters far from each other: entries the Gram identity gets wrong in
+    float32 are recomputed on either path."""
+    rng = np.random.default_rng(3)
+    centers = np.array([[0.0] * 6, [40.0] * 6])
+    A = centers[rng.integers(0, 2, size=40)] + 1e-3 * rng.normal(size=(40, 6))
+    spec = KernelSpec(kernel="rbf", gamma=2e5)
+    weights = np.ones((A.shape[0], 1))
+    host = KernelBasis(spec).combine(A[:5], A, weights, backend="cpu", host=True)
+    np.testing.assert_allclose(host, _reference(spec, A[:5], A) @ weights, rtol=1e-4, atol=1e-5)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 def test_degree_zero_is_the_constant_kernel(backend, data):
     A, B = data
     spec = KernelSpec(kernel="poly", gamma=0.5, degree=0, coef0=-2.0)

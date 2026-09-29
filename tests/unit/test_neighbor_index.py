@@ -329,3 +329,49 @@ def test_segmented_selection_is_exact(width, take, rng):
     np.testing.assert_array_equal(np.take_along_axis(vals, idx, axis=1), got)
     assert np.all(idx < width)
     assert all(len(set(row)) == take for row in idx.tolist())
+
+
+# ----------------------------------------------------------------------------------
+# the fit-time probe
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", ["mlx", "cpu"] if gpu_available() else ["cpu"])
+def test_the_probe_counts_what_the_first_pass_cannot_certify(backend, rng):
+    """Gaussian rows certify on the first pass; rows repeated 20 times cannot, since
+    their k-th neighbor ties with the copies left out; integer rows take the exact
+    path and are reported as such, unsearched."""
+    X = rng.normal(size=(6000, 32))
+    found = build_index(X, backend=backend).probe(5)
+    assert found == {"rows": 64, "uncertified": 0, "integer": False}
+
+    duplicated = rng.normal(size=(300, 32))[rng.integers(0, 300, size=6000)]
+    found = build_index(duplicated, backend=backend).probe(5)
+    assert found["rows"] == 64 and found["uncertified"] > 48 and not found["integer"]
+
+    counts = rng.poisson(2.0, size=(6000, 32)).astype(np.float64)
+    assert build_index(counts, backend=backend).probe(5) == {
+        "rows": 0, "uncertified": 0, "integer": True,
+    }
+
+
+def test_the_probe_agrees_with_the_query_it_predicts(rng):
+    """The probe is the query's own first pass: the rows it counts are the rows a query
+    of the same training rows searches again."""
+    X = rng.normal(size=(5000, 24))
+    X[:, 0] = rng.uniform(0.0, 1e4, size=5000)
+    X = X.astype(np.float32)
+    index = build_index(X, backend="cpu")
+    found = index.probe(10)
+    rows = np.unique(np.linspace(0, 4999, 64).astype(np.intp))
+    stats: dict = {}
+    index.query(X[rows], 10, stats=stats)
+    assert found["uncertified"] == stats["widened_rows"] > 0
+
+
+def test_the_probe_of_a_tiny_index_is_the_exact_answer(rng):
+    """With every row a candidate there is nothing to certify."""
+    X = rng.normal(size=(12, 3))
+    assert build_index(X, backend="cpu").probe(10) == {
+        "rows": 12, "uncertified": 0, "integer": False,
+    }

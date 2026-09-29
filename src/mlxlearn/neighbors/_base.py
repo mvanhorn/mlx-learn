@@ -171,36 +171,39 @@ class MLXNeighborsMixin(BackendMixin):
         against stock scikit-learn with every MLX call made after the GPU has
         idled — as the benchmark's are, and as a call made after other work is.
 
-        **Narrow data** — fewer than ``knn_min_features`` features — goes to
-        scikit-learn at any size. Mostly that is its KD-tree: with
-        ``algorithm="auto"`` scikit-learn builds one whenever there are at most 15
-        features, ``n_neighbors < n_samples // 2`` and the metric is one the tree
-        supports, and the tree answered a single row faster than MLX at 2-8 features
-        at every size measured (0.13x-0.43x for MLX), and at 12 features up to
-        65 536 rows; at 2-5 features it won every batch. Those fits are recorded as
-        ``"tree-wins"``. The rest — ``algorithm="brute"``, a metric the tree does not
-        take, ``n_neighbors`` of half the rows or more — go to scikit-learn's brute
-        force, which at 2-8 features answered 16-query batches faster than MLX at
-        every size measured up to 524 288 rows (0.59x-0.88x on one version or both),
-        and are recorded as ``"below-crossover"``.
+        **Narrow data** — fewer than ``knn_min_features`` (64) features — goes to
+        scikit-learn at any size. Up to 15 features that is mostly its KD-tree:
+        with ``algorithm="auto"`` scikit-learn builds one whenever there are at most
+        15 features, ``n_neighbors < n_samples // 2`` and the metric is one the tree
+        supports, and the tree answered a single row faster than MLX at 2-8
+        features at every size measured (0.13x-0.43x for MLX), and at 12 features up
+        to 65 536 rows; at 2-5 features it won every batch. Those fits are recorded
+        as ``"tree-wins"``. The rest go to scikit-learn's brute force, recorded as
+        ``"below-crossover"``: at 2-8 features it answered 16-query batches faster
+        than MLX at every size measured up to 524 288 rows (0.59x-0.88x on one
+        version or both), and at 16-48 features, even at a million rows, some batch
+        lost on one version or both — 16 queries at 0.73x-0.84x, 1024 at
+        0.62x-0.79x — on Gaussian, clustered or uniform data.
 
         **Everything narrower than** ``knn_wide_features`` (256) needs at least
         ``knn_narrow_min_samples`` rows (1 000 000). An idled GPU runs a call of a
         few milliseconds' work up to two or three times slower than a busy one, so on
         a mid-size batch MLX loses to a stock search that costs about as much: at
         16-128 features a batch of 8-512 queries lost on one version or both at 42
-        of the 50 sizes measured below 1 000 000 rows (down to 0.44x), 600 000 rows
-        at 16, 24 and 48 features among them; from 1 000 000 rows every batch of
-        1-4096 queries won or tied on both (the worst batch 1.08x-1.9x). At 256
-        features the stock search costs enough that every batch won or tied from
-        12 000 rows. These fits are recorded as ``"below-crossover"``.
+        of the 50 sizes measured below 1 000 000 rows (down to 0.44x), 400 000 rows
+        at 64 and 96 features among them; from 1 000 000 rows at 64-128 features
+        every batch of 1-1024 queries won or tied on both, on all three kinds of
+        data (0.94x at worst). At 256 features the stock search costs enough that
+        every batch won or tied from 12 000 rows. These fits are recorded as
+        ``"below-crossover"``.
 
-        What the rules give up is real: below a million rows at 16-128 features,
-        batches of 1024 queries and more never lost (up to 4.3x), and on Gaussian
-        data, a KD-tree's worst case, the MLX scan answers 256 queries many times
-        faster than the tree from 8 features. Imported directly, the estimator
-        searches on MLX regardless, which is what a workload known to query in
-        large batches should do. See ``docs/benchmarks.md``.
+        What the rules give up is real: batches of 1024 queries and more rarely
+        lose below 256 features at these sizes (up to 4.3x), and on Gaussian data,
+        a KD-tree's worst case, the MLX scan answers 256 queries many times faster
+        than the tree from 8 features. Imported directly, the estimator searches on
+        MLX regardless, which is what a workload known to query in large batches
+        should do. See ``docs/benchmarks.md``, tables ``knn``, ``knn-narrow`` and
+        ``knn-tree``.
 
         Only patched mode acts on these (``_select_backend``'s ``handoff``), because
         only patched mode has scikit-learn to hand the work to: what they measure is
@@ -236,7 +239,73 @@ class MLXNeighborsMixin(BackendMixin):
         return "below-crossover", (
             f"{n_features} features is below the measured KNN crossover for patched "
             f"dispatch ({min_features} features): scikit-learn's brute force answers "
-            "small query batches on narrow data faster than an MLX call"
+            "some query batches on narrow data faster than an MLX call, at any size"
+        )
+
+    def _patched_data_handoff(self, index, device) -> tuple[str, str, dict] | None:
+        """Patched mode's handoff by the *data*: ``(reason, detail, extra)``, or ``None``.
+
+        The size rules were calibrated on Gaussian data, where the first float32
+        pass certifies every query row. Other data does not always let it: on rows
+        repeated about 20 times, 100 clusters of std 0.1, or one column in raw units
+        beside standardized ones, the certificate failed for 59-64 of 64 rows, each
+        query row is searched again — wider, then exactly — and at every shape the
+        size rules send to MLX some batch lost to stock brute force, whose float64
+        search needs no certificate, down to 0.16x (``docs/benchmarks.md``, table
+        ``knn-data``). A fit cannot see its queries, but it can see its own rows, so
+        patched mode searches 64 of them with the first pass alone
+        (:meth:`NeighborIndex.probe <mlxlearn._kernels.distance.NeighborIndex.probe>`,
+        one pass for 64 rows) and hands the fit to scikit-learn when more than
+        ``knn_probe_max_uncertified`` of them could not be certified. Gaussian,
+        uniform and looser clustered data left at most 3 of 64 uncertified, and
+        stayed on MLX.
+
+        Integer-valued data — binary, one-hot, counts — is searched on an exact
+        integer path instead, with no certificate to fail; it kept up with stock
+        brute force from ``knn_wide_features`` features, and at a million rows and
+        16 or 32 features lost at 256 and 1 024 queries (0.48x-0.88x). Narrower than
+        ``knn_wide_features`` it goes to scikit-learn too — conservatively at 64-255
+        features, where it was not measured on MLX.
+
+        Recorded as ``"data-probe"``. Only patched mode acts on this, as on the
+        width rules, and never on a backend forced by ``MLXLEARN_FORCE_BACKEND``.
+        The calibration is ``docs/benchmarks.md``'s ``knn-data`` table.
+        """
+        if not self._mlxlearn_allow_fallback or get_tuning().force_backend:
+            return None
+        found = index.probe(self.n_neighbors, device=device)
+        handed = self._probe_handoff(index.n_samples, index.n_features, found)
+        if handed is None:
+            return None
+        extra = {
+            "probe_rows": found["rows"],
+            "probe_uncertified": found["uncertified"],
+            "integer_path": found["integer"],
+        }
+        return (*handed, extra)
+
+    @staticmethod
+    def _probe_handoff(n_samples: int, n_features: int, found: dict) -> tuple[str, str] | None:
+        """The data rule on a probe's result (:meth:`_patched_data_handoff`)."""
+        tuning = get_tuning()
+        if found["integer"]:
+            if n_features >= tuning.knn_wide_features:
+                return None
+            return "data-probe", (
+                f"{n_samples} training samples x {n_features} integer-valued features: "
+                "mlxlearn searches integer data on an exact path, which keeps up with "
+                f"scikit-learn's brute force only from {tuning.knn_wide_features} "
+                "features"
+            )
+        if found["uncertified"] <= tuning.knn_probe_max_uncertified * found["rows"]:
+            return None
+        return "data-probe", (
+            f"the first float32 pass could not certify the neighbors of "
+            f"{found['uncertified']} of {found['rows']} training rows probed at fit "
+            f"(more than {tuning.knn_probe_max_uncertified:.0%}): on this data — "
+            "duplicated rows, tight clusters, or a column on a far larger scale than "
+            "the rest — most queries would be searched again, and scikit-learn's "
+            "float64 brute force answers them faster"
         )
 
     def _minkowski_p(self):
@@ -359,13 +428,12 @@ class MLXNeighborsMixin(BackendMixin):
             if backend == "sklearn":
                 return "sklearn"
 
-        if y_checked is not None:
-            self._fit_targets(y_checked)
         # Resolved here, where the configuration may be read; the index reads none.
         device = inference_device(backend)
         try:
             with mlx_guard(type(self).__name__, "fit"):
                 index = build_index(X_checked, backend=backend, device=device)
+                handed = self._patched_data_handoff(index, device)
         except CapabilityError as exc:
             # The index finds one limit itself: a span from the training mean that
             # float32 cannot subtract (past FLOAT32_MAX / 8, below FLOAT32_MAX, so
@@ -373,7 +441,18 @@ class MLXNeighborsMixin(BackendMixin):
             # it is routed through the same policy by hand, as SVC does: Layer 1
             # raises, Layer 2 falls back — or raises under fallback_policy="raise".
             return self._handle_capability_error(exc, "fit", shape=X_checked.shape)
+        if handed is not None:
+            reason, detail, extra = handed
+            self._stage_event(
+                "fit", "sklearn", reason=reason, detail=detail, shape=X_checked.shape,
+                fallback=True, **extra,
+            )
+            return "sklearn"
 
+        # After the index, so that a fit handed to scikit-learn above encodes (and
+        # warns about) its target once, in scikit-learn's own fit.
+        if y_checked is not None:
+            self._fit_targets(y_checked)
         self._index_ = index
         self.n_samples_fit_ = int(X_checked.shape[0])
         self.effective_metric_, self.effective_metric_params_ = self._effective_metric()

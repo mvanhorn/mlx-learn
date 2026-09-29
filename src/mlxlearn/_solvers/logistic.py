@@ -83,6 +83,7 @@ import numpy as np
 
 from .._common.arrays import NUMPY_FLOAT
 from .._common.device import use_device
+from .._common.host import column_mean, map_row_blocks
 from ..exceptions import InvalidInputError
 from .lbfgs import GRADIENT_RESOLUTION, LBFGSConfig, minimize
 
@@ -368,19 +369,31 @@ def _prepare_design(X, fit_intercept: bool):
 
     center = None
     if fit_intercept and n_samples > 0:
-        center = source.mean(axis=0, dtype=np.float64)
+        # Both passes over X are split by rows across threads (_common/host.py): for
+        # a fit that converges in an iteration or two they are most of its cost.
+        center = column_mean(source)
         if source.dtype == np.float32:
             center = center.astype(np.float32).astype(np.float64)
         if not np.any(center != 0.0):
             center = None
 
-    if center is None:
-        design = source.astype(NUMPY_FLOAT, copy=False)
-    elif source.dtype == np.float32:
-        design = source - center.astype(np.float32)
+    if center is None and source.dtype == NUMPY_FLOAT:
+        design = source
     else:
         design = np.empty(source.shape, dtype=NUMPY_FLOAT)
-        np.subtract(source, center, out=design, casting="same_kind")
+        shift = None
+        if center is not None:
+            shift = center.astype(np.float32) if source.dtype == np.float32 else center
+
+        def fill(start: int, stop: int) -> None:
+            if shift is None:
+                np.copyto(design[start:stop], source[start:stop], casting="same_kind")
+            else:
+                np.subtract(
+                    source[start:stop], shift, out=design[start:stop], casting="same_kind"
+                )
+
+        map_row_blocks(fill, n_samples, source.shape[1] if source.ndim == 2 else 1)
 
     sample = design[:: max(1, n_samples // _SCALE_SAMPLE_ROWS)].astype(np.float64)
     scale = np.sqrt(np.einsum("ij,ij->j", sample, sample) / max(sample.shape[0], 1))

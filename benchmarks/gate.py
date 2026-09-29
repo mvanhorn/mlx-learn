@@ -75,9 +75,11 @@ ACCEPTED_REGRESSIONS: dict[str, str] = {
         "mlxlearn's KNN fit uploads the training rows once and builds, on the device, "
         "the translated and scaled copy the search runs on, with its row norms (plus a "
         "float32 residual for float64 input); scikit-learn's brute-force fit stores a "
-        "reference and does no work. The gap is linear in the data, and where patched "
-        "dispatch uses MLX the faster queries repay it after a few hundred queries. The "
-        "measured ranges are in docs/benchmarks.md."
+        "reference and does no work. Under patch_sklearn() the fit also probes 64 of "
+        "its own rows with the first search pass, and a fit that probe hands to "
+        "scikit-learn has paid for the index and the probe first. The gap is linear in "
+        "the data, and where patched dispatch uses MLX the faster queries repay it "
+        "after a few hundred queries. The measured ranges are in docs/benchmarks.md."
     ),
 }
 

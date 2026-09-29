@@ -243,16 +243,18 @@ def finite_range(array: Any) -> ValueRange | None:
     complex). Reading such data as numbers is validation's decision, not this
     function's.
 
-    Two reductions and no temporaries in the common all-finite case. A NaN or an
-    infinity makes the maximum or minimum non-finite, and only then does a masked
-    pass run — so the cost of non-finite input is paid only by non-finite input,
-    and even then without copying the finite values out.
+    Two reductions and no temporaries in the common all-finite case, split by rows
+    across threads for a large matrix (:func:`~mlxlearn._common.host.extremes`). A
+    NaN or an infinity makes the maximum or minimum non-finite, and only then does a
+    masked pass run — so the cost of non-finite input is paid only by non-finite
+    input, and even then without copying the finite values out.
     """
+    from .host import extremes
+
     array = np.asarray(array)
     if array.size == 0 or array.dtype.kind not in "biuf":
         return None
-    high = np.max(array)
-    low = np.min(array)
+    high, low = extremes(array)
     if not (np.isfinite(high) and np.isfinite(low)):
         finite = np.isfinite(array)
         high = np.max(array, where=finite, initial=-np.inf)

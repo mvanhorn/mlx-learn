@@ -156,6 +156,14 @@ unit-scale rows does: every translated norm then carries the shift, the noise ba
 outgrows the gaps, and every query takes the exact search. When a call needed the wider
 pass or the exact search, its diagnostics event says for how many rows.
 
+Against stock scikit-learn rather than 0.1.0a2, that second pass is what decides: on such
+data MLX lost at every shape the size rules send it, down to 0.16× (grid `knn-data` in
+[`benchmarks.md`](benchmarks.md)). So under `patch_sklearn()` a fit first searches 64 of
+its own rows with the first pass alone and, if more than an eighth of them cannot be
+certified, hands the fit to scikit-learn's float64 brute force (diagnostics reason
+`"data-probe"`), whose answer is exact without a certificate. A directly imported
+estimator keeps the search, and its correctness guarantee, on MLX.
+
 What scaling cannot bring into range is refused (§1): refinement subtracts two translated
 coordinates in float32, so training data spanning more than `FLOAT32_MAX / 8` (about
 4.3e37) from its mean is a capability mismatch at `fit` — an `UnsupportedInputError`
@@ -295,6 +303,14 @@ training data is otherwise answered, as scikit-learn answers it: its rbf entries
 exactly 0 and its sigmoid entries ±1, so a CMIP `1e20` or netCDF `9.97e36` fill value in one
 query row no longer fails the batch. A non-finite decision value is an error, never a
 label.
+
+A batch of a few query rows — at most 2²⁵ rows × support vectors × features — is evaluated
+on the host in NumPy float32 rather than on the device, with the same operations in the
+same order: the inner products, the rbf squared distance from the same float32 norms, the
+clamp, poly's repeated squaring, and the same float64 recomputation of the rbf entries the
+identity may get wrong. Only the BLAS that computes the inner products differs, so a row's
+decision value moves between a small batch and a large one by float32 rounding — as it
+already could between blockings — and never outside the §3 tolerance.
 
 **Shrinking.** `shrinking=True`, scikit-learn's default, runs LIBSVM's shrinking
 heuristic: samples pinned at a bound are set aside between gradient reconstructions. The

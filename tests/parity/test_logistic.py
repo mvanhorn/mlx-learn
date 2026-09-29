@@ -717,8 +717,12 @@ def test_sample_weight_equivalence_at_float32_tolerance():
     X, y = _data(n_samples=800, n_features=10)
     weights = np.random.default_rng(0).integers(1, 4, size=len(y)).astype(float)
 
-    weighted = LogisticRegression().fit(X, y, sample_weight=weights)
-    repeated = LogisticRegression().fit(
+    # Solved to tol=1e-6: at the default 1e-4 each fit stops wherever max|g| first
+    # drops below it, and in float32 the two problems' rounding sends the solver down
+    # different paths — their intercepts stopped 2.2e-3 apart, each within 2.5e-3 of
+    # the optimum. That measures the stopping rule, not the weighting.
+    weighted = LogisticRegression(tol=1e-6).fit(X, y, sample_weight=weights)
+    repeated = LogisticRegression(tol=1e-6).fit(
         np.repeat(X, weights.astype(int), axis=0),
         np.repeat(y, weights.astype(int)),
     )
@@ -1318,6 +1322,45 @@ def test_patched_callbacks_fire_on_both_sides_of_the_crossover(tuning):
     assert recorder.hooks["setup"] == recorder.hooks["teardown"] == 1
     assert recorder.hooks["begin"] == int(model.n_iter_[0]) + 2
     assert recorder.predictions == int(model.n_iter_[0]) + 1
+
+
+@pytest.mark.parametrize(
+    "y",
+    [
+        np.array([3, 1, 3, 3, 7, 1]),
+        np.array([2.5, -1.0, 2.5, 0.0, -0.0]),
+        np.array([True, False, False, True]),
+        np.array(["b", "a", "c", "a"]),
+        np.array(["b", "a", "b"], dtype=object),
+    ],
+    ids=["int", "float", "bool", "str", "object"],
+)
+def test_labels_are_encoded_as_numpy_unique_encodes_them(y):
+    from mlxlearn.linear_model._logistic import _encode_labels
+
+    classes, codes = _encode_labels(y)
+    expected_classes, expected_codes = np.unique(y, return_inverse=True)
+    np.testing.assert_array_equal(classes, expected_classes)
+    np.testing.assert_array_equal(codes, expected_codes)
+
+
+def test_separable_classes_converge_in_scikit_learns_one_iteration():
+    """Well-separated blobs, benchmarks/run.py's multiclass data: scikit-learn's first
+    L-BFGS-B step, a unit move, already meets its tolerance. The solver's first trial
+    step is that one now; the 1/‖d‖₁ it replaced started √p times shorter and took
+    11-15 iterations to get there."""
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 5, size=6000)
+    X = rng.normal(scale=2.0, size=(5, 256))[y] + rng.normal(size=(6000, 256))
+    with tuning_context(force_backend="mlx"):
+        mlx = LogisticRegression().fit(X, y)
+    stock = SkLogisticRegression().fit(X, y)
+    assert int(mlx.n_iter_[0]) <= int(stock.n_iter_[0]) + 1 <= 3
+
+    def objective(model):
+        return reference_objective(model.coef_, model.intercept_, X, y, n_classes=5, C=1.0)
+
+    assert objective(mlx) <= objective(stock) * (1 + 1e-3)
 
 
 @pytest.mark.skipif(not _HAS_CALLBACKS, reason="scikit-learn < 1.9 has no callback API")

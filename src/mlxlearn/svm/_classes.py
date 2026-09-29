@@ -314,9 +314,11 @@ class MLXSVCMixin(BackendMixin):
 
         The linear and sigmoid kernels are excluded outright, and rbf and poly must
         clear a **width** floor as well as the sample and work floors, because
-        width is what decides. The calibration is ``docs/benchmarks.md``'s ``svc``,
-        ``svc-sigmoid``, ``svc-linear``, ``svc-narrow`` and ``svc-multi`` tables,
-        measured against scikit-learn 1.9.0 and 1.7.2.
+        width is what decides at the default kernel parameters. Patched mode also
+        reads the kernel parameters themselves (:meth:`_kernel_handoff`). The
+        calibration is ``docs/benchmarks.md``'s ``svc``, ``svc-params``,
+        ``svc-sigmoid``, ``svc-linear``, ``svc-narrow``, ``svc-multi`` and
+        ``svc-multi-overlap`` tables, measured against scikit-learn 1.9.0 and 1.7.2.
 
         Where the time goes, measured. Up to the row cache's capacity — about
         7 240 rows per one-vs-one subproblem at the default ``cache_size=200`` — a
@@ -325,35 +327,38 @@ class MLXSVCMixin(BackendMixin):
         counts match LIBSVM's, so the comparison is per iteration: at 4 000 rows
         with C=10, mlxlearn spent 27-41 µs an iteration from 16 to 256 features,
         nearly flat, and LIBSVM 11 µs at 16 features rising to 103 µs at 256,
-        because each kernel row it misses costs ``O(n·d)``. They cross near 100
-        features. C and the kernel change how many iterations there are, and how
-        often LIBSVM misses, not where the width crossover lies: at 16-64 features
-        rbf and poly lost at C = 10 and 100, while from 128 features they won at
-        every C tried, 0.1 to 100 — once the fit is large enough. At 128 features a
-        fit of 1 000-2 000 rows still lost at C = 10 and above on one version or
-        both (0.61x-0.95x), and from 3 000 rows won or tied on both. The work floor,
-        3 000 x 128, keeps that corner on LIBSVM and lets 1 500 x 256 (1.36x-2.4x at
-        C of 1 to 100) and 1 024 x 512 through. Narrow data past the cache, where
-        rows are fetched on demand, loses at C = 1 too. A work floor alone cannot
-        see any of that: the first release's ``n·d >= 10⁶`` could not tell
-        16 000 x 64 from 4 000 x 256.
+        because each kernel row it misses costs ``O(n·d)``, and a few µs once its
+        cache holds the rows. At the default ``gamma`` and ``degree`` they cross
+        near 100 features: at 16-64 features rbf and poly lost at C = 10 and 100,
+        while from 128 features they won at every C tried, 0.1 to 100 — once the
+        fit is large enough. At 128 features a fit of 1 000-2 000 rows still lost at
+        C = 10 and above on one version or both (0.61x-0.95x), and from 3 000 rows
+        won or tied on both. The work floor, 3 000 x 128, keeps that corner on
+        LIBSVM and lets 1 500 x 256 and 1 024 x 512 through. Narrow data past the
+        cache, where rows are fetched on demand, loses at C = 1 too. A work floor
+        alone cannot see any of that: the first release's ``n·d >= 10⁶`` could not
+        tell 16 000 x 64 from 4 000 x 256.
 
-        The rule cannot see C, which is why two kernels are excluded at every size.
-        The linear kernel's many cheap iterations are exactly the case where
-        per-iteration overhead is the whole cost. The sigmoid kernel won at
-        C = 0.1 and lost at C = 10 and 100 at nearly every width, down to 0.06x.
+        The kernel parameters move that crossing, not only the iteration count: a
+        kernel close to the linear one takes many iterations per row over rows
+        LIBSVM has cached, and loses at any width (:meth:`_kernel_handoff`). The
+        linear kernel's many cheap iterations are exactly the case where
+        per-iteration overhead is the whole cost, and it is excluded at every size;
+        so is the sigmoid kernel, which won at C = 0.1 and lost at C = 10 and 100 at
+        nearly every width, down to 0.06x.
 
         **Many classes.** One-vs-one solves ``K(K−1)/2`` subproblems of ``2n/K``
         rows on average, each paying its own Gram and its own loop, so a problem
         whose total clears every floor can still be a pile of tiny losses. When
         ``n_classes`` is given, the *mean* pair's work ``(2n/K)·d`` must also
-        clear ``svc_min_pair_work``: at 2 048 x 512, pairs of 512 rows (K=8) ran
-        1.28x-1.39x and pairs of 256 (K=16) 0.73x-0.81x; at 8 000 x 256, pairs of
-        1 000 rows (K=16) 1.17x-1.21x and of 500 (K=32) 0.70x-0.77x (the
-        ``svc-multi`` table). The mean, not the largest pair: with
-        imbalanced classes one big pair can hide thousands of tiny ones, and it
-        is their count that costs. For two classes the mean pair is the whole
-        problem.
+        clear ``svc_min_pair_work``, the binary work floor: on overlapping classes
+        pairs of 2 000 x 128 lost at C = 10 and 100 on 1.7.2 (0.91x-0.92x), and
+        every pair from 3 000 x 128 up won or tied (the ``svc-multi-overlap``
+        table); on separated blobs pairs of 256 x 512 (K=16) ran 0.73x-0.81x and of
+        500 x 256 (K=32) 0.70x-0.77x (``svc-multi``). The mean, not the largest
+        pair: with imbalanced classes one big pair can hide thousands of tiny ones,
+        and it is their count that costs. For two classes the mean pair is the
+        whole problem.
 
         None of this is a property of the objective, which is solved correctly:
         the primal agrees with LIBSVM to 5.2e-07 relative and the KKT conditions
@@ -390,6 +395,69 @@ class MLXSVCMixin(BackendMixin):
                     f"({tuning.svc_min_pair_work} element-ops)"
                 )
         return False, ""
+
+    def _kernel_handoff(self, gamma_ratio: float | None) -> tuple[str, str] | None:
+        """Patched mode's handoff by kernel parameters: ``(reason, detail)``, or ``None``.
+
+        The closer a kernel is to the linear one, the more SMO iterations a fit
+        takes per row and the cheaper LIBSVM's become once its cache holds the rows
+        they revisit — which is why the linear kernel is excluded outright. An rbf
+        kernel much wider than the data's own spread (``gamma`` below
+        ``svc_min_gamma_ratio`` times ``"scale"``) and a polynomial kernel of low
+        degree, or with a ``coef0`` that mixes in the lower-degree terms, behave
+        like it: at C = 10 and 100 they lost at every shape measured. rbf with a
+        small ``gamma`` still won at ``C <= svc_low_gamma_max_c``, where there are
+        few iterations to lose on. ``gamma_ratio`` is ``None`` before the data are
+        validated (:meth:`_gamma_ratio`), and the rbf half waits for it.
+
+        Patched mode only (``_select_backend``'s ``handoff``), as the neighbor
+        estimators' width rules are: what it measures is LIBSVM winning, and a
+        directly imported class, which has no LIBSVM to hand the fit to, runs the
+        same SMO loop on either MLX device, where the GPU builds the Gram faster.
+        Recorded as ``"below-crossover"``.
+        """
+        tuning = get_tuning()
+        if self.kernel == "rbf":
+            if (
+                gamma_ratio is not None
+                and gamma_ratio < tuning.svc_min_gamma_ratio
+                and float(self.C) > tuning.svc_low_gamma_max_c
+            ):
+                return "below-crossover", (
+                    f"gamma is {gamma_ratio:.3g} times scikit-learn's 'scale' value, and "
+                    f"C={float(self.C):g}: an rbf kernel this wide takes the linear "
+                    "kernel's many cheap iterations, outside the measured SVC crossover "
+                    f"for its kernel parameters (gamma at least "
+                    f"{tuning.svc_min_gamma_ratio:g} times 'scale', or C at most "
+                    f"{tuning.svc_low_gamma_max_c:g})"
+                )
+        elif self.kernel == "poly":
+            if int(self.degree) < tuning.svc_poly_min_degree or float(self.coef0) != 0.0:
+                return "below-crossover", (
+                    f"the poly kernel of degree {self.degree} with coef0={self.coef0!r} "
+                    "is outside the measured SVC crossover for its kernel parameters "
+                    f"(degree at least {tuning.svc_poly_min_degree}, coef0=0)"
+                )
+        return None
+
+    def _gamma_ratio(self, X: np.ndarray) -> float | None:
+        """rbf's ``gamma`` as a multiple of scikit-learn's ``"scale"``: ``γ·d·Var(X)``.
+
+        1 for ``gamma="scale"`` (0 for data of zero variance, which ``"scale"``
+        resolves to ``gamma=1``), ``Var(X)`` for ``"auto"``. A kernel width relative to
+        the data's own distances, which is what the rule reads: ``γ‖x − x′‖²`` is
+        about twice this ratio for two typical rows. ``None`` for the other kernels
+        and for a ``gamma`` the capability check refuses. One pass over ``X``.
+        """
+        if self.kernel != "rbf" or callable(self.kernel):
+            return None
+        variance = float(X.var())
+        if isinstance(self.gamma, str):
+            if self.gamma == "scale":
+                return 1.0 if variance != 0.0 else 0.0
+            return variance if self.gamma == "auto" else None
+        gamma = float(self.gamma)
+        return gamma * X.shape[1] * variance if gamma > 0.0 else None
 
     def _crossover_from_raw(self, shape: tuple[int, int], y) -> tuple[bool, str]:
         """:meth:`_below_crossover` from the raw input, before any validation.
@@ -819,14 +887,27 @@ class MLXSVCMixin(BackendMixin):
         # "gpu-unavailable"), unless device="gpu" names the GPU explicitly. That is
         # inference_device()'s rule, applied here and handed to the kernels, which
         # read no configuration.
-        backend = self._note_inference(operation, shape=_safe_shape(Xv))
+        # A small batch is computed on the host, from the same float32 operand
+        # (KernelBasis.combine's host path): what the device charges for it is not
+        # arithmetic but the call, 0.64-0.98 ms once the GPU has idled, against a
+        # stock single-row predict of 0.22-0.82 ms.
+        work = Xv.shape[0] * self.support_vectors_.shape[0] * Xv.shape[1]
+        host = work <= get_tuning().svc_host_inference_work
+        backend = self._note_inference(
+            operation,
+            shape=_safe_shape(Xv),
+            **({"host": True, "compute": "numpy-float32"} if host else {}),
+        )
         n_pairs = self._pair_weights_.shape[1]
         if Xv.shape[0] == 0:
             return np.empty((0, n_pairs), dtype=np.float64)
-        device = inference_device(backend)
+        # The host path still builds the device operand once, the first time, and
+        # reads it through zero-copy views; built on MLX's CPU, it needs no GPU.
+        device = "cpu" if host else inference_device(backend)
         with mlx_guard(type(self).__name__, operation):
             decision = self._kernel_basis().combine(
-                Xv, self.support_vectors_, self._pair_weights_, backend=backend, device=device
+                Xv, self.support_vectors_, self._pair_weights_, backend=backend,
+                device=device, host=host,
             )
         decision -= self._pair_rho_
         if not np.isfinite(decision).all():
@@ -965,6 +1046,17 @@ class SVC(MLXSVCMixin, _SkSVC):
     float32 — a large offset with a small spread, for ``linear`` and ``poly`` —
     is refused. See ``docs/fp32_policy.md`` §2.4.
 
+    **Where inference runs.** A ``predict`` or ``decision_function`` batch of at most
+    2²⁵ query rows × support vectors × features is evaluated on the host, in NumPy
+    float32, with the device tiles' own arithmetic; larger batches on the fitted
+    device. What a device call costs a batch of a few rows is the call itself —
+    0.64-0.98 ms after the GPU has idled, against 0.22-0.82 ms for LIBSVM's
+    single-row predict — while the host answers one row in 0.19-0.35 ms. The two paths
+    differ only in how the BLAS rounds the inner products, as a different
+    ``block_rows`` would. The event records ``compute="numpy-float32"`` for a batch
+    answered on the host, which needs no GPU, so an explicit ``device="gpu"`` has
+    nothing to refuse there.
+
     What float32 cannot represent — a value past ``3.4e38``, a linear-kernel
     inner product that large, a ``gamma`` that cannot be folded into range —
     raises :class:`~mlxlearn.exceptions.UnsupportedInputError` or
@@ -1035,6 +1127,8 @@ class SVC(MLXSVCMixin, _SkSVC):
             "fit",
             shape=_safe_shape(X),
             crossover=lambda n, d: self._crossover_from_raw((n, d), y),
+            # The poly half of the kernel rule needs no data; rbf's waits for gamma.
+            handoff=lambda n, d: self._kernel_handoff(None),
             capability_check=lambda: self._check_svc_capability(X),
         )
         if backend == "sklearn":
@@ -1064,6 +1158,9 @@ class SVC(MLXSVCMixin, _SkSVC):
             "fit",
             shape=X64.shape,
             crossover=lambda n, d: self._below_crossover(n, d, n_classes=n_classes),
+            # Patched mode only, and only once the size rules have passed the fit:
+            # the ratio costs a pass over X.
+            handoff=lambda n, d: self._kernel_handoff(self._gamma_ratio(X64)),
         )
         if backend == "sklearn":
             return self._fit_with_sklearn(X, y, sample_weight)

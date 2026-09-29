@@ -113,19 +113,26 @@ PROFILES: dict[str, list[Case]] = {
     # each estimator has cases patched dispatch hands to scikit-learn and cases it
     # sends to MLX, so the MLX fit and query paths are gated, not only the handoffs.
     "smoke": [
-        # Neighbors: below the row floor; wide and above both floors (MLX); below
-        # 256 features, short (scikit-learn) and tall (MLX); narrow data the KD-tree
-        # takes whatever its size ("tree-wins"), and below the work floor.
+        # Neighbors: below the row floor; wide and above both floors (MLX); 64-255
+        # features, short (scikit-learn) and tall (MLX); fewer than 64 features,
+        # tall, to scikit-learn's brute force; narrow data the KD-tree takes whatever
+        # its size ("tree-wins"), and below the work floor.
         *_knn_grid([1_000], [32], [256]),
         *_knn_grid([65_536], [256], [256]),
-        *_knn_grid([262_144], [32], [256], operations=("kneighbors",)),
+        *_knn_grid([262_144], [64], [256], operations=("kneighbors",)),
+        *_knn_grid([1_048_576], [64], [256], operations=("kneighbors",)),
         *_knn_grid([1_048_576], [16], [256], operations=("kneighbors",)),
         *_knn_grid([1_048_576], [8], [256], operations=("kneighbors",)),
         *_knn_grid([50_000], [3], [256], operations=("kneighbors",)),
-        # Logistic regression: below the sample floor; binary but too wide; binary,
-        # tall and narrow (MLX); multinomial (MLX).
+        # Data the size rules would send to MLX and the fit-time probe does not:
+        # duplicated rows at a wide shape, integer features at a tall narrow one.
+        *_knn_grid([24_000], [256], [256], operations=("kneighbors",), data="dups"),
+        *_knn_grid([1_048_576], [64], [256], operations=("kneighbors",), data="binary"),
+        # Logistic regression: below the sample floor; binary but too wide, and too
+        # short; binary, tall and narrow (MLX); multinomial (MLX).
         Case("logreg", "fit", 5_000, 32),
         Case("logreg", "fit", 200_000, 128),
+        Case("logreg", "fit", 100_000, 16),
         Case("logreg", "fit", 200_000, 16),
         Case("logreg", "fit", 60_000, 64, options={"n_classes": 5}),
         # SVC: below every floor; enough rows but too narrow; wide (MLX); and a
@@ -135,6 +142,14 @@ PROFILES: dict[str, list[Case]] = {
         Case("svc", "fit", 4_000, 256),
         *_svc_grid([(2_048, 512)], n_classes=4),
         *_svc_grid([(2_048, 512)], n_classes=16),
+        # SVC kernels too close to linear for their C (scikit-learn), whatever the size:
+        # rbf at a tenth of the "scale" gamma, C = 100; poly of degree 2, C = 10.
+        Case("svc", "fit", 4_000, 256, options={"C": 100.0, "gamma": 0.1 / 256}),
+        Case("svc", "fit", 3_000, 128, options={"C": 10.0, "kernel": "poly", "degree": 2}),
+        # SVC inference on a model fitted on MLX: one row, answered on the host, and a
+        # thousand, on the device.
+        Case("svc", "predict", 4_000, 256, 1),
+        Case("svc", "predict", 4_000, 256, 1_000),
     ],
     # The regression grid. Hours, on fixed hardware.
     "full": [
@@ -173,10 +188,11 @@ PROFILES: dict[str, list[Case]] = {
     # dispatch decision. That is a kernel comparison, not the patched claim.
     "published": [
         # Neighbors against scikit-learn's brute force, k=10: each fit, and 256-query
-        # batches, from below the row floor to past the floors, wide and tall; then
-        # the batch sizes a fit-time rule cannot see, 1, 64 and 4096 queries, on
-        # either side of them — 64 queries is where short data below 256 features
-        # loses once the GPU has idled.
+        # batches, from below the row floor to past the floors, wide and tall, and
+        # tall but narrower than the width floor; then the batch sizes a fit-time
+        # rule cannot see, 1, 64 and 4096 queries, on either side of them — 64
+        # queries is where short data below 256 features loses once the GPU has
+        # idled.
         *[
             Case("knn", op, n, d, 256, options={"sklearn_algorithm": "brute"})
             for n, d in (
@@ -188,12 +204,15 @@ PROFILES: dict[str, list[Case]] = {
                 (131_072, 128),
                 (128_000, 768),
                 (1_000_000, 16),
+                (1_000_000, 64),
             )
             for op in ("fit", "kneighbors")
         ],
         *[
             Case("knn", "kneighbors", n, d, q, options={"sklearn_algorithm": "brute"})
-            for n, d in ((1_000, 32), (8_192, 768), (131_072, 128), (1_000_000, 16))
+            for n, d in (
+                (1_000, 32), (8_192, 768), (131_072, 128), (1_000_000, 16), (1_000_000, 64)
+            )
             for q in (1, 64, 4_096)
         ],
         # SVC: width decides. Binary rbf and poly at C=1 and C=10 on either side of
@@ -242,7 +261,17 @@ PROFILE_SETTINGS: dict[str, dict] = {
 def _make_data(case: Case, rng: np.random.Generator):
     X = rng.normal(size=(case.n_samples, case.n_features))
     if case.algorithm == "knn":
-        return X, None, rng.normal(size=(case.n_queries, case.n_features))
+        Q = rng.normal(size=(case.n_queries, case.n_features))
+        data = case.option("data")
+        if data == "dups":
+            # Every training row repeated about 20 times: the first float32 pass cannot
+            # certify a neighbor set that ties with copies it left out.
+            base = max(case.n_samples // 20, 1)
+            X = X[:base][rng.integers(0, base, size=case.n_samples)]
+        elif data == "binary":
+            X = (rng.random(size=X.shape) < 0.2).astype(np.float64)
+            Q = (rng.random(size=Q.shape) < 0.2).astype(np.float64)
+        return X, None, Q
     n_classes = case.option("n_classes")
     if n_classes is None:
         y = (X[:, 0] + rng.normal(scale=0.5, size=case.n_samples) > 0).astype(int)
@@ -252,7 +281,7 @@ def _make_data(case: Case, rng: np.random.Generator):
         centers = rng.normal(scale=2.0, size=(n_classes, case.n_features))
         y = rng.integers(0, n_classes, size=case.n_samples)
         X = centers[y] + rng.normal(size=X.shape)
-    return X, y, X[: min(1_000, case.n_samples)]
+    return X, y, X[: case.n_queries or min(1_000, case.n_samples)]
 
 
 def _estimators(case: Case, layer: str):
@@ -286,6 +315,11 @@ def _estimators(case: Case, layer: str):
         )
     if case.algorithm == "svc":
         params = {"kernel": case.option("kernel"), "C": case.option("C")}
+        # The data are standard normal, so scikit-learn's "scale" is 1 / n_features
+        # and a numeric gamma is gamma * n_features times it.
+        params.update(
+            {k: case.options[k] for k in ("gamma", "degree", "coef0") if k in case.options}
+        )
         return (lambda: mlx_svm.SVC(**params), lambda: sklearn.svm.SVC(**params))
     raise ValueError(f"unknown algorithm {case.algorithm!r}")
 

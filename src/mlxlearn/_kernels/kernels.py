@@ -674,7 +674,9 @@ class KernelBasis:
     built on first use from the rows the owner passes in, and dropped on pickle, so a
     pickled model carries its support vectors exactly once and can be loaded where
     the device tensors could not have been. The build is locked, so concurrent first
-    predictions build it once.
+    predictions build it once. A small batch is evaluated on the host
+    (``combine(..., host=True)``) from zero-copy views of those same tensors — on
+    unified memory the host reads the device's buffers directly.
 
     Attributes
     ----------
@@ -694,7 +696,8 @@ class KernelBasis:
         self.center = None if center is None else np.array(center, dtype=np.float64)
         self.scale = float(scale)
         self._lock = threading.Lock()
-        # (mx.array (n, d), mx.array (n,) or None, the largest squared row norm)
+        # (mx.array (n, d), mx.array (n,) or None, the largest squared row norm,
+        #  and zero-copy host views of the two arrays)
         self._operand: tuple | None = None
 
     def __getstate__(self) -> dict:
@@ -733,9 +736,13 @@ class KernelBasis:
                     else:
                         right_sq = None
                         mx.eval(right)
+                views = (
+                    np.asarray(right),
+                    None if right_sq is None else np.asarray(right_sq),
+                )
                 # Published whole, in one assignment, so an unlocked reader sees
                 # either nothing or a complete operand.
-                self._operand = (right, right_sq, reach)
+                self._operand = (right, right_sq, reach, *views)
             return self._operand
 
     def combine(
@@ -747,6 +754,7 @@ class KernelBasis:
         backend: str,
         device: str | None = None,
         block_rows: int | None = None,
+        host: bool = False,
     ) -> np.ndarray:
         """``K(Q, rows) @ weights`` for raw queries ``Q``, float64.
 
@@ -762,6 +770,14 @@ class KernelBasis:
         device : {"gpu", "cpu"}, optional
             The MLX device to evaluate on, as the caller resolved it; by default
             the one ``backend`` names.
+        host : bool, default=False
+            Evaluate on the host instead, in NumPy float32, from zero-copy views of
+            the device operand: the same arithmetic, entry for entry, as the device
+            tiles (:func:`_host_tile`), so the result differs from theirs only in
+            the rounding of the BLAS that computes the inner products. For a batch
+            of a few rows, where the device's cost is not arithmetic but the call
+            itself — 0.6-1 ms once the GPU has idled — the caller asks
+            for this (``SVC``'s ``svc_host_inference_work``).
 
         Notes
         -----
@@ -791,12 +807,18 @@ class KernelBasis:
             return out
 
         device = _compute_device(backend, device)
-        right, right_sq, reach = self._device_operand(rows, device)
+        right, right_sq, reach, right_host, right_sq_host = self._device_operand(rows, device)
         q_sq = _query_norms(Q32)
         check_query_range(self.spec, q_sq, reach)
         refine = None
         if _RbfRefiner.needed(self.spec, Q32.shape[1], float(q_sq.max()), reach):
             refine = _RbfRefiner(self.spec.gamma, apply_frame(rows, self.center, self.scale))
+        if host:
+            tile = _host_tile(self.spec, Q32, q_sq, right_host, right_sq_host)
+            if refine is not None:
+                refine(tile, Q32)
+            _contract_tile(tile, W, out)
+            return out
         with use_device(device):
             _combine_tiles(
                 mx, self.spec, device, Q32, right, right_sq, W, out, block_rows, refine
@@ -1016,6 +1038,35 @@ def _combine_tiles(
     _combine_pipelined(
         mx, transform, n_left, rows, left, right, right_sq, weights, out, refine
     )
+
+
+def _host_tile(
+    spec: KernelSpec, left32: np.ndarray, left_sq, right32: np.ndarray, right_sq
+) -> np.ndarray:
+    """``K(left32, right32)`` in NumPy float32: :func:`_transform`'s arithmetic on the host.
+
+    Operation for operation what a device tile computes — the inner products, the
+    rbf squared distance from the same float32 norms (``left_sq`` may be float64
+    where float32 could not hold a far query's; it is rounded, overflowing to
+    ``inf`` as the device's own sum would), the clamp, and poly's repeated squaring
+    — so only the BLAS's rounding of the inner products differs. Returns a
+    writable float32 array.
+    """
+    dot = left32 @ right32.T
+    if spec.kernel == "linear":
+        return dot
+    if spec.kernel == "rbf":
+        with np.errstate(over="ignore", invalid="ignore"):
+            a_sq = np.asarray(left_sq).astype(NUMPY_FLOAT)
+            squared = a_sq[:, None] + right_sq[None, :] - NUMPY_FLOAT(2.0) * dot
+            np.maximum(squared, NUMPY_FLOAT(0.0), out=squared)
+            squared *= NUMPY_FLOAT(-spec.gamma)
+            return np.exp(squared)
+    with np.errstate(over="ignore", invalid="ignore"):
+        z = NUMPY_FLOAT(spec.gamma) * dot + NUMPY_FLOAT(spec.coef0)
+        if spec.kernel == "sigmoid":
+            return np.tanh(z)
+        return np.asarray(_host_integer_power(z, int(spec.degree)), dtype=NUMPY_FLOAT)
 
 
 def _host_float32(A) -> np.ndarray:

@@ -48,7 +48,8 @@ def mlx_sized():
     """Every neighbor gate lifted for the test, so a small problem reaches the MLX path
     by the ordinary route in both layers. For tests about that path, not dispatch."""
     with tuning_context(
-        knn_min_train_samples=0, knn_min_work=0, knn_min_features=0, knn_narrow_min_samples=0
+        knn_min_train_samples=0, knn_min_work=0, knn_min_features=0, knn_narrow_min_samples=0,
+        knn_probe_max_uncertified=1.0, knn_wide_features=0,
     ):
         yield
 
@@ -1248,12 +1249,12 @@ def test_narrow_data_goes_to_sklearn_whatever_it_would_build(kwargs, reason, rng
 
 @pytest.mark.parametrize(
     "cls, shape",
-    [(NearestNeighbors, (5000, 3)), (patched.NearestNeighbors, (5000, 16))],
+    [(NearestNeighbors, (5000, 3)), (patched.NearestNeighbors, (5000, 64))],
     ids=["layer1", "wide"],
 )
 def test_the_narrow_rule_leaves_everything_else_on_mlx(cls, shape, rng):
-    """Layer 1 has no scikit-learn to hand the work to, and from 16 features
-    scikit-learn builds no tree."""
+    """Layer 1 has no scikit-learn to hand the work to, and from 64 features patched
+    mode keeps the search once the size floors are cleared."""
     with tuning_context(**_NO_SIZE_FLOOR):
         model = cls().fit(rng.normal(size=shape))
     assert model.execution_backend_ != "sklearn"
@@ -1289,17 +1290,17 @@ def test_the_knn_size_floors_are_both_required(rng):
 def test_patched_dispatch_needs_a_million_rows_below_256_features():
     """Measured with the GPU idle before every call, as the benchmark times it: at
     16-128 features a batch of 8-512 queries lost to stock brute force, on one
-    version or both, at most sizes measured below 1 000 000 rows — at 600 000 rows
-    still, at 16, 24 and 48 features; from 1 000 000 rows every batch of 1-4096
-    queries won on both; at 256 features every batch won or tied from 12 000 rows."""
+    version or both, at most sizes measured below 1 000 000 rows — 400 000 rows at 64
+    and 96 features among them; from 1 000 000 rows at 64-128 features every batch
+    won or tied on both; at 256 features every batch won or tied from 12 000 rows."""
     model = patched.NearestNeighbors()
-    for n_samples, n_features in ((600_000, 16), (600_000, 48), (400_000, 128), (131_072, 64)):
+    for n_samples, n_features in ((600_000, 64), (400_000, 96), (400_000, 128), (131_072, 64)):
         reason, detail = model._patched_handoff(n_samples, n_features)
         assert reason == "below-crossover", (n_samples, n_features)
         assert "256 features" in detail and "1000000 samples" in detail
         # The size floors alone would have sent every one of these to MLX.
         assert not model._below_crossover(n_samples, n_features)[0]
-    for n_samples, n_features in ((1_000_000, 16), (1_000_000, 128), (32_768, 256), (8_192, 768)):
+    for n_samples, n_features in ((1_000_000, 64), (1_000_000, 128), (32_768, 256), (8_192, 768)):
         assert model._patched_handoff(n_samples, n_features) is None
         assert not model._below_crossover(n_samples, n_features)[0]
 
@@ -1308,7 +1309,7 @@ def test_patched_dispatch_needs_a_million_rows_below_256_features():
 def test_the_row_rule_below_256_features_is_patched_only(cls, rng):
     """Layer 1 has no scikit-learn to hand the work to, and its CPU path is slower
     than the GPU at every batch; patched mode records the handoff as a size decision."""
-    X = rng.normal(size=(5000, 32))
+    X = rng.normal(size=(5000, 64))
     with tuning_context(knn_min_train_samples=0, knn_min_work=0):
         model = cls().fit(X)
     if cls is NearestNeighbors:
@@ -1319,8 +1320,71 @@ def test_the_row_rule_below_256_features_is_patched_only(cls, rng):
     assert event.reason == "below-crossover" and "1000000 samples" in event.detail
     with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_narrow_min_samples=5000):
         assert cls().fit(X).execution_backend_ != "sklearn"
-    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_wide_features=32):
+    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_wide_features=64):
         assert cls().fit(X).execution_backend_ != "sklearn"
+
+
+#: The size and width floors lifted, so that the data rule is what decides.
+_ONLY_DATA = {
+    "knn_min_train_samples": 0, "knn_min_work": 0, "knn_min_features": 0,
+    "knn_narrow_min_samples": 0,
+}
+
+
+def _awkward(kind, rng, n=6000, d=32):
+    if kind == "dups":  # every row about 20 times
+        return rng.normal(size=(n // 20, d))[rng.integers(0, n // 20, size=n)]
+    if kind == "unscaled":  # one column in raw units beside standardized ones
+        X = rng.normal(size=(n, d))
+        X[:, 0] = rng.uniform(0.0, 1e4, size=n)
+        return X
+    return rng.poisson(2.0, size=(n, d)).astype(np.float64)  # counts
+
+
+@pytest.mark.parametrize("kind", ["dups", "unscaled", "counts"])
+def test_patched_dispatch_hands_data_the_fast_search_cannot_serve_to_sklearn(kind, rng):
+    """The size rules were calibrated on Gaussian data. On duplicated rows or a column
+    on a far larger scale than the rest the first float32 pass cannot certify most
+    rows, and every query is searched again; integer data narrower than 256 features
+    takes an exact path that lost to stock brute force from 64-query batches. The fit
+    probes its own rows, and patched mode hands such data to scikit-learn."""
+    X = _awkward(kind, rng)
+    y = (X[:, 1] > np.median(X[:, 1])).astype(int)
+    with tuning_context(**_ONLY_DATA):
+        model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    assert model.execution_backend_ == "sklearn"
+    [event] = _events("fit")
+    assert event.reason == "data-probe" and event.fallback
+    assert event.extra["integer_path"] == (kind == "counts")
+    if kind != "counts":
+        assert event.extra["probe_uncertified"] > 0.5 * event.extra["probe_rows"]
+    ref = sk_neighbors.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    np.testing.assert_array_equal(model.predict(X[:50]), ref.predict(X[:50]))
+    np.testing.assert_array_equal(model.classes_, ref.classes_)
+
+
+@pytest.mark.parametrize("kind", ["dups", "counts"])
+def test_the_data_rule_is_patched_only_and_a_tuning_knob(kind, rng):
+    """Layer 1 searches on MLX regardless, a forced backend is not second-guessed, and
+    the rule has its two knobs: the uncertified fraction, and the width from which
+    integer data stays on MLX."""
+    X = _awkward(kind, rng)
+    with tuning_context(**_ONLY_DATA):
+        assert NearestNeighbors().fit(X).execution_backend_ != "sklearn"
+    with tuning_context(force_backend="mlx"):
+        assert patched.NearestNeighbors().fit(X).execution_backend_ == "mlx"
+    knob = {"knn_probe_max_uncertified": 1.0} if kind == "dups" else {"knn_wide_features": 32}
+    with tuning_context(**_ONLY_DATA, **knob):
+        assert patched.NearestNeighbors().fit(X).execution_backend_ != "sklearn"
+
+
+def test_gaussian_data_passes_the_probe(rng):
+    """What the size rules were calibrated on stays on MLX; the probe's count goes on
+    the fit's own event only when it hands the fit over."""
+    with tuning_context(**_ONLY_DATA):
+        model = patched.NearestNeighbors().fit(rng.normal(size=(6000, 32)))
+    assert model.execution_backend_ != "sklearn"
+    assert model.fit_event_.reason == "selected"
 
 
 def test_capability_mismatch_outranks_the_tree_rule(rng):

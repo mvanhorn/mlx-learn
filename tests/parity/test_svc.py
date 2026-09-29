@@ -41,7 +41,7 @@ from sklearn.svm import SVC as SkSVC
 
 from mlxlearn import get_backend_diagnostics
 from mlxlearn._common import device as device_module
-from mlxlearn._common.config import config_context, tuning_context
+from mlxlearn._common.config import config_context, get_tuning, tuning_context
 from mlxlearn.exceptions import (
     CapabilityError,
     DeviceError,
@@ -1127,20 +1127,85 @@ def test_the_svc_crossover_is_above_the_measured_losses():
 def test_the_svc_crossover_accounts_for_the_number_of_classes():
     """One-vs-one pays per pair, so many small classes lose despite a large total.
 
-    Measured (rbf, balanced blobs, scikit-learn 1.9.0 / 1.7.2): at 2048 x 512, K=4
-    2.07x / 1.92x, K=8 1.39x / 1.28x, K=16 0.81x / 0.73x, K=32 0.47x / 0.40x, K=64
-    0.23x / 0.22x; at 8000 x 256, K=8 1.65x / 1.55x, K=16 1.21x / 1.17x and K=32
-    0.77x / 0.70x. The total size clears every floor in each case, so only the class
-    count separates them.
+    The mean pair must clear the binary work floor. On overlapping classes at C = 10
+    and 100 pairs of 2 000 x 128 — the binary corner — lost, and pairs of 3 000 x 128
+    won or tied; on balanced separated blobs (rbf, C = 1) 256 x 512 (2048 x 512,
+    K=16) and 500 x 256 (8000 x 256, K=32) lost. The total size clears every floor in
+    each case, so only the class count separates them.
     """
     model = SVC()
-    for n_classes in (2, 4, 8):
+    for n_classes in (2, 4):
         assert not model._below_crossover(2048, 512, n_classes=n_classes)[0]
-    for n_classes in (16, 64, 128):
+    for n_classes in (8, 16, 64, 128):
         below, detail = model._below_crossover(2048, 512, n_classes=n_classes)
         assert below and f"{n_classes} classes" in detail
-    assert not model._below_crossover(8000, 256, n_classes=16)[0]
-    assert model._below_crossover(8000, 256, n_classes=32)[0]
+    assert not model._below_crossover(8000, 256, n_classes=8)[0]
+    assert model._below_crossover(8000, 256, n_classes=16)[0]
+    # Pairs of 3 000 x 128 against 2 000 x 128.
+    assert not model._below_crossover(4500, 128, n_classes=3)[0]
+    assert model._below_crossover(3000, 128, n_classes=3)[0]
+    assert model._below_crossover(10_000, 128, n_classes=10)[0]
+
+
+@pytest.mark.gpu
+def test_patched_dispatch_hands_near_linear_kernels_to_libsvm():
+    """Kernels close to the linear one take its many cheap iterations, which LIBSVM
+    runs faster: rbf with ``gamma`` well below ``"scale"`` at C above 1, and poly of
+    degree 2 or with a ``coef0``. Patched only: Layer 1 keeps them on MLX."""
+    X, y = _data(n_samples=300, n_features=8, seed=1)
+    tuning = get_tuning()
+    small = 0.5 * tuning.svc_min_gamma_ratio / (X.shape[1] * X.var())
+    large_c = 10.0 * max(tuning.svc_low_gamma_max_c, 1.0)
+    no_floor = {
+        "svc_min_features": 0, "svc_min_samples": 0, "svc_min_work": 0,
+        "svc_min_pair_work": 0,
+    }
+    cases = [
+        ({"gamma": small, "C": large_c}, True),
+        ({"gamma": small, "C": tuning.svc_low_gamma_max_c}, False),
+        ({"C": large_c}, False),
+        ({"kernel": "poly", "degree": tuning.svc_poly_min_degree - 1}, True),
+        ({"kernel": "poly", "coef0": 1.0}, True),
+        ({"kernel": "poly", "C": large_c}, False),
+    ]
+    with tuning_context(**no_floor):
+        for params, handed in cases:
+            model = PatchedSVC(**params).fit(X, y)
+            assert (model.execution_backend_ == "sklearn") == handed, params
+            if handed:
+                assert model.fit_event_.reason == "below-crossover"
+                assert "kernel parameters" in model.fit_event_.detail
+                np.testing.assert_array_equal(
+                    model.predict(X), SkSVC(**params).fit(X, y).predict(X)
+                )
+        assert SVC(gamma=small, C=large_c).fit(X, y).execution_backend_ == "mlx"
+        assert SVC(kernel="poly", degree=2).fit(X, y).execution_backend_ == "mlx"
+
+
+def test_the_poly_rule_is_decided_before_the_data_are_read(monkeypatch):
+    """It needs only the parameters, so a handed-off fit pays for no validation."""
+    import mlxlearn.svm._classes as svc_module
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("a handed-off patched fit scanned the data")
+
+    monkeypatch.setattr(svc_module, "validate_data", forbidden)
+    monkeypatch.setattr(svc_module, "check_float32_range", forbidden)
+    X, y = _data(n_samples=300, n_features=8, seed=1)
+    with tuning_context(svc_min_features=0, svc_min_samples=0, svc_min_work=0):
+        model = PatchedSVC(kernel="poly", degree=2).fit(X, y)
+    assert model.execution_backend_ == "sklearn"
+
+
+def test_the_gamma_ratio_is_gamma_in_units_of_scikit_learns_scale():
+    """``gamma · d · Var(X)``: 1 for ``"scale"``, ``Var(X)`` for ``"auto"``."""
+    X = np.random.default_rng(0).normal(scale=3.0, size=(200, 8))
+    variance = X.var()
+    assert SVC(gamma="scale")._gamma_ratio(X) == 1.0
+    assert SVC(gamma="auto")._gamma_ratio(X) == pytest.approx(variance)
+    assert SVC(gamma=0.5)._gamma_ratio(X) == pytest.approx(0.5 * 8 * variance)
+    assert SVC(gamma="scale")._gamma_ratio(np.ones((50, 3))) == 0.0
+    assert SVC(kernel="poly")._gamma_ratio(X) is None
 
 
 @pytest.mark.gpu
@@ -1461,16 +1526,19 @@ def test_gpu_fitted_model_predicts_on_a_host_without_a_gpu(monkeypatch):
     restored = pickle.loads(pickle.dumps(model))
 
     monkeypatch.setattr(device_module, "gpu_available", lambda: False)
-    for device in ("auto", "cpu"):
-        with config_context(device=device):
-            np.testing.assert_array_equal(restored.predict(X), expected_labels)
-            np.testing.assert_allclose(restored.decision_function(X), expected, atol=1e-4)
-    assert get_backend_diagnostics()[-1].reason == "gpu-unavailable"
-    assert restored.execution_backend_ == "mlx"
+    # 600 rows are a batch above svc_host_inference_work only with it at 0: this is
+    # about the device path, which a smaller batch does not take.
+    with tuning_context(svc_host_inference_work=0):
+        for device in ("auto", "cpu"):
+            with config_context(device=device):
+                np.testing.assert_array_equal(restored.predict(X), expected_labels)
+                np.testing.assert_allclose(restored.decision_function(X), expected, atol=1e-4)
+        assert get_backend_diagnostics()[-1].reason == "gpu-unavailable"
+        assert restored.execution_backend_ == "mlx"
 
-    with config_context(device="gpu"):
-        with pytest.raises(DeviceError, match="fitted on the MLX GPU"):
-            restored.predict(X)
+        with config_context(device="gpu"):
+            with pytest.raises(DeviceError, match="fitted on the MLX GPU"):
+                restored.predict(X)
 
 
 def test_no_approximation_ships_under_the_sklearn_name():

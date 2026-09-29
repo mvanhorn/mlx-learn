@@ -9,7 +9,7 @@ import pytest
 
 import mlxlearn
 from mlxlearn._common.config import tuning_context
-from mlxlearn._common.diagnostics import diagnostics_summary, record_event
+from mlxlearn._common.diagnostics import diagnostics_summary, record_event, record_inference
 from mlxlearn.exceptions import MLXLearnFallbackWarning
 
 
@@ -38,6 +38,28 @@ def test_a_revised_decision_takes_the_earlier_ones_place():
     mlxlearn.clear_backend_diagnostics()
     again = record_event("A", "fit", "sklearn", replacing=revised)
     assert mlxlearn.get_backend_diagnostics() == [again]
+
+
+def test_an_inference_event_is_built_when_it_is_read_and_is_then_the_same_object():
+    """Inference calls record their event's fields and build the event on first read,
+    in place: a later read returns the object an earlier one did."""
+    record_inference("A", "predict", "sklearn", "sticky", "", (3, 2), {"fit_reason": "x"})
+    record_event("A", "fit", "mlx")
+    first = mlxlearn.get_backend_diagnostics()
+    assert isinstance(first[0], mlxlearn.BackendEvent)
+    assert (first[0].operation, first[0].shape, first[0].fallback) == ("predict", (3, 2), True)
+    assert first[0].extra == {"fit_reason": "x"}
+    assert mlxlearn.get_backend_diagnostics()[0] is first[0]
+    record_inference("A", "kneighbors", "mlx", "sticky", "", None, {})
+    last = mlxlearn.get_last_backend_event()
+    assert isinstance(last, mlxlearn.BackendEvent) and last.operation == "kneighbors"
+    assert last is mlxlearn.get_backend_diagnostics()[-1]
+    assert diagnostics_summary() == {
+        "A.predict -> sklearn": 1, "A.fit -> mlx": 1, "A.kneighbors -> mlx": 1,
+    }
+    with mlxlearn.config_context(diagnostics=False):
+        record_inference("A", "predict", "mlx", "sticky", "", None, {})
+    assert len(mlxlearn.get_backend_diagnostics()) == 3
 
 
 def test_clearing_resets_warning_deduplication():

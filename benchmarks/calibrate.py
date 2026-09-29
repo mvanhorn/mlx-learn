@@ -81,7 +81,8 @@ class Point:
 
     A neighbor point is a pair of fits and one timed query batch per entry of
     ``queries`` — plus the fit itself when ``fit`` is set. An ``SVC`` or
-    ``LogisticRegression`` point is one timed fit.
+    ``LogisticRegression`` point is one timed fit; an ``SVC`` point with
+    ``queries`` is instead a pair of fits and one timed ``predict`` per batch size.
     """
 
     estimator: str  # "knn" | "svc" | "logreg"
@@ -90,12 +91,19 @@ class Point:
     queries: tuple[int, ...] = ()
     fit: bool = False
     algorithm: str = "auto"  # knn: the scikit-learn algorithm, given to both sides
-    # knn: "gauss" or "lowrank"; svc and logreg: "binary" (benchmarks/run.py's binary
-    # target), "blobs" or "separated-blobs". The estimator's first, by default.
+    # knn: "gauss", "lowrank" or one of _KNN_DATA; svc and logreg: "binary"
+    # (benchmarks/run.py's binary target), "noisy", "random", "mixed", "blobs" or
+    # "separated-blobs" (see _fit_data). The estimator's first, by default.
     data: str = ""
     kernel: str = "rbf"
     C: float = 1.0
     n_classes: int = 2
+    k: int = 10  # knn: n_neighbors
+    # svc: gamma as a multiple of scikit-learn's "scale" value, 1 / (d · Var X);
+    # 0 means gamma="scale" itself.
+    gamma: float = 0.0
+    degree: int = 3
+    coef0: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.data:
@@ -105,10 +113,23 @@ class Point:
         """The keys of the measurements this point produces, one per record."""
         if self.estimator == "knn":
             base = f"knn/{self.n}x{self.d}/{self.algorithm}/{self.data}"
+            if self.k != _K:
+                base = f"{base}/k={self.k}"
             ops = (["fit"] if self.fit else []) + [f"q{q}" for q in self.queries]
             return [f"{base}/{op}" for op in ops]
         if self.estimator == "svc":
-            return [f"svc/{self.n}x{self.d}/{self.kernel}/C={self.C:g}/K={self.n_classes}"]
+            key = f"svc/{self.n}x{self.d}/{self.kernel}/C={self.C:g}/K={self.n_classes}"
+            if self.gamma:
+                key = f"{key}/gamma={self.gamma:g}xscale"
+            if self.degree != 3:
+                key = f"{key}/degree={self.degree}"
+            if self.coef0:
+                key = f"{key}/coef0={self.coef0:g}"
+            if self.data not in ("binary", "separated-blobs"):
+                key = f"{key}/{self.data}"
+            if self.queries:
+                return [f"{key}/predict/q{q}" for q in self.queries]
+            return [key]
         return [f"logreg/{self.n}x{self.d}/K={self.n_classes}/{self.data}"]
 
     @property
@@ -314,17 +335,170 @@ GRIDS: dict[str, Grid] = {
         ),
         layout="logreg",
     ),
+    "logreg-separable": Grid(
+        "Multinomial `LogisticRegression` fits (max_iter=200) on well-separated blobs, "
+        "benchmarks/run.py's multiclass data, whose separation grows with the width: "
+        "from 256 features scikit-learn converges in one iteration.",
+        tuple(
+            Point("logreg", n, d, n_classes=K, data="separated-blobs")
+            for n in (60_000, 200_000)
+            for K, d in ((3, 16), (3, 64), (3, 128), (3, 256), (3, 512), (5, 64), (5, 256),
+                         (10, 128), (10, 512))
+        ),
+        layout="logreg",
+    ),
+    "logreg-labels": Grid(
+        "`LogisticRegression` fits (max_iter=200) whose labels carry little or no signal "
+        "— pure noise, binary and multinomial, and x0 + N(0, 3²) > 0 — so both solvers "
+        "stop within a few iterations and the fixed cost of the MLX path is most of the "
+        "fit: the binary row floor and width limit.",
+        tuple(
+            Point("logreg", n, d, data=data)
+            for data in ("random", "noisy")
+            for n in (100_000, 200_000, 500_000, 1_000_000)
+            for d in (1, 4, 16, 32, 64, 256)
+        )
+        + tuple(
+            Point("logreg", n, d, n_classes=K, data="random")
+            for n in (60_000, 200_000)
+            for K, d in ((3, 16), (3, 64), (3, 256), (10, 64))
+        ),
+        layout="logreg-data",
+    ),
+    "svc-params": Grid(
+        "Binary `SVC` fits on MLX against LIBSVM away from the default kernel parameters, "
+        "at shapes the size floors send to MLX: rbf at gamma from 0.03 to 10 times "
+        "scikit-learn's 'scale' value, poly at degree 2 to 4 and coef0 of 0 and 1, "
+        "C = 1-100 — the `svc_min_gamma_ratio` and poly rules.",
+        tuple(
+            Point("svc", n, d, kernel=kernel, C=C, gamma=gamma, degree=degree, coef0=coef0)
+            for n, d in ((3_000, 128), (8_000, 128), (1_500, 256), (4_000, 256), (1_100, 512),
+                         (4_000, 512))
+            for kernel, gamma, degree, coef0 in (
+                *(("rbf", g, 3, 0.0) for g in (0.03, 0.1, 0.3, 0.5, 0.8, 3.0, 10.0)),
+                ("poly", 0.0, 2, 0.0),
+                ("poly", 0.0, 2, 1.0),
+                ("poly", 0.0, 3, 1.0),
+                ("poly", 0.0, 4, 0.0),
+            )
+            for C in (1.0, 10.0, 100.0)
+        ),
+        layout="svc-params",
+        iterations=5,
+    ),
+    "svc-multi-overlap": Grid(
+        "One-vs-one `SVC` fits, rbf, on overlapping classes (the binary target cut into K "
+        "quantile bands) at C = 1-100: one-vs-one pairs either side of the "
+        "`svc_min_pair_work` floor.",
+        tuple(
+            Point("svc", n, d, C=C, n_classes=K, data="mixed")
+            for n, d, K in ((3_000, 128, 3), (4_500, 128, 3), (4_000, 128, 4), (6_000, 128, 4),
+                            (7_500, 128, 5), (15_000, 128, 10), (2_000, 256, 4), (3_000, 256, 4),
+                            (1_536, 512, 3), (2_048, 512, 4))
+            for C in (1.0, 10.0, 100.0)
+        ),
+        layout="svc-multi-c",
+        iterations=5,
+    ),
+    "svc-predict": Grid(
+        "`predict` on an rbf `SVC` fitted on MLX (C = 1) against one fitted by LIBSVM, "
+        "every batch size from 1 to 4096 rows: the `svc_host_inference_work` threshold "
+        "below which the batch is computed on the host.",
+        tuple(
+            Point("svc", n, d, (1, 2, 4, 8, 16, 32, 64, 128, 256, 1_024, 4_096), n_classes=K,
+                  data="binary" if K == 2 else "mixed")
+            for n, d, K in ((3_000, 128, 2), (1_500, 256, 2), (4_000, 256, 2), (1_100, 512, 2),
+                            (6_000, 512, 2), (8_000, 256, 4))
+        ),
+        layout="svc-predict",
+        iterations=15,
+    ),
+    "knn-data": Grid(
+        "Neighbor queries on MLX against stock brute force on data other than Gaussian, "
+        "at wide shapes the size rules send to MLX and at a million rows and 16 or 32 "
+        "features: one column on a scale 10⁴ times the rest, "
+        "rows duplicated about 20 times, 100 tight clusters, binary and count features, "
+        "and three controls (Gaussian, looser clusters, uniform). `probe` is what the "
+        "fit-time probe found: the `knn_probe_max_uncertified` and integer-data rules.",
+        tuple(
+            Point("knn", n, d, (1, 16, 64, 256, 1_024), data=data)
+            for n, d in ((24_000, 256), (65_536, 256), (8_192, 1_024), (1_000_000, 16),
+                         (1_000_000, 32))
+            for data in ("gauss", "unscaled", "dups", "tight-blobs", "binary", "counts",
+                         "blobs", "uniform")
+        ),
+        layout="knn-data",
+    ),
+    "knn-narrow": Grid(
+        "Neighbor queries on MLX against stock brute force at a million rows and more "
+        "below 256 features, on Gaussian data and two other laws the fit-time probe "
+        "passes (100 clusters of std 1, uniform): the `knn_min_features` rule.",
+        tuple(
+            point
+            for data in ("gauss", "blobs", "uniform")
+            for point in _knn_points(
+                [(1_000_000, 16), (1_000_000, 32), (1_000_000, 48), (1_000_000, 64),
+                 (1_000_000, 96), (1_000_000, 128), (1_600_000, 32), (1_600_000, 64)],
+                (1, 4, 16, 64, 256, 1_024),
+                max_work=1.2e11,
+                data=data,
+            )
+        ),
+        layout="knn-data",
+    ),
+    "knn-k": Grid(
+        "Neighbor queries on MLX against stock brute force at the narrow corner of the "
+        "size rules, k = 1 and 50 (the other grids use k = 10).",
+        tuple(
+            point
+            for k in (1, 50)
+            for point in _knn_points(
+                [(1_000_000, 64), (1_000_000, 96), (1_000_000, 128), (1_600_000, 64)],
+                (1, 16, 64, 256, 1_024, 4_096),
+                max_work=1.2e11,
+                k=k,
+            )
+        ),
+        layout="knn-k",
+    ),
 }
 
 
 # ----------------------------------------------------------------------------- data
 
 
-def _knn_data(point: Point, q: int, rng: np.random.Generator) -> np.ndarray:
+def _knn_data(
+    point: Point, q: int, rng: np.random.Generator, *, train: bool = False
+) -> np.ndarray:
+    """``q`` rows of ``point.data``; training rows and queries come from the same law.
+
+    Except ``"dups"``, whose training rows repeat and whose queries are fresh rows.
+    """
+    d = point.d
+    fixed = np.random.default_rng(point.seed + 1)  # what training and queries share
     if point.data == "lowrank":
-        basis = np.random.default_rng(point.seed + 1).normal(size=(3, point.d))
-        return rng.normal(size=(q, 3)) @ basis + 0.05 * rng.normal(size=(q, point.d))
-    return rng.normal(size=(q, point.d))
+        basis = fixed.normal(size=(3, d))
+        return rng.normal(size=(q, 3)) @ basis + 0.05 * rng.normal(size=(q, d))
+    if point.data == "unscaled":  # one column in raw units, 0-10 000, among N(0, 1)
+        X = rng.normal(size=(q, d))
+        X[:, 0] = rng.uniform(0.0, 1e4, size=q)
+        return X
+    if point.data == "dups" and train:  # every row repeated about 20 times
+        base = rng.normal(size=(max(q // 20, 1), d))
+        return base[rng.integers(0, base.shape[0], size=q)]
+    if point.data in ("tight-blobs", "blobs"):  # 100 clusters, std 0.1 or 1
+        centers = fixed.normal(scale=3.0, size=(100, d))
+        std = 0.1 if point.data == "tight-blobs" else 1.0
+        return centers[rng.integers(0, 100, size=q)] + std * rng.normal(size=(q, d))
+    if point.data == "binary":
+        return (rng.random(size=(q, d)) < 0.2).astype(np.float64)
+    if point.data == "counts":
+        return rng.poisson(2.0, size=(q, d)).astype(np.float64)
+    if point.data == "uniform":
+        return rng.random(size=(q, d))
+    if point.data not in ("gauss", "dups"):
+        raise ValueError(f"unknown data {point.data!r}")
+    return rng.normal(size=(q, d))
 
 
 def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
@@ -333,6 +507,15 @@ def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
     if point.data == "binary":  # benchmarks/run.py's binary target
         X = rng.normal(size=(n, d))
         return X, (X[:, 0] + rng.normal(scale=0.5, size=n) > 0).astype(int)
+    if point.data == "noisy":  # the same rule, with six times the noise
+        X = rng.normal(size=(n, d))
+        return X, (X[:, 0] + rng.normal(scale=3.0, size=n) > 0).astype(int)
+    if point.data == "random":  # labels independent of X
+        return rng.normal(size=(n, d)), rng.integers(0, K, size=n)
+    if point.data == "mixed":  # the binary target's score cut into K quantile bands
+        X = rng.normal(size=(n, d))
+        score = X[:, 0] + rng.normal(scale=0.5, size=n)
+        return X, np.digitize(score, np.quantile(score, np.linspace(0, 1, K + 1)[1:-1]))
     y = rng.integers(0, K, size=n)
     if point.data == "separated-blobs":  # benchmarks/run.py's n_classes target
         centers = rng.normal(scale=2.0, size=(K, d))
@@ -388,13 +571,13 @@ def _measure_knn(point: Point, iterations: int, todo: set[str]):
     from mlxlearn.patching import _estimators as patched
 
     rng = np.random.default_rng(point.seed)
-    X = _knn_data(point, point.n, rng)
+    X = _knn_data(point, point.n, rng, train=True)
 
     def make_mlx():
-        return patched.NearestNeighbors(n_neighbors=_K, algorithm=point.algorithm)
+        return patched.NearestNeighbors(n_neighbors=point.k, algorithm=point.algorithm)
 
     def make_sk():
-        return sklearn.neighbors.NearestNeighbors(n_neighbors=_K, algorithm=point.algorithm)
+        return sklearn.neighbors.NearestNeighbors(n_neighbors=point.k, algorithm=point.algorithm)
 
     def mlx_fit():
         with _forced():
@@ -402,7 +585,15 @@ def _measure_knn(point: Point, iterations: int, todo: set[str]):
 
     model, stock = mlx_fit(), make_sk().fit(X)
     assert model.execution_backend_ == "mlx", model.fit_event_
-    extra = {"stock_method": stock._fit_method}
+    # What patched dispatch's fit-time probe finds on this data: forcing the backend
+    # skips the probe, so it is taken here, and dispatch() applies the thresholds.
+    found = model._index_.probe(point.k)
+    extra = {
+        "stock_method": stock._fit_method,
+        "probe_rows": found["rows"],
+        "probe_uncertified": found["uncertified"],
+        "integer_path": found["integer"],
+    }
     keys = point.keys()
     if point.fit:
         key = keys.pop(0)
@@ -441,13 +632,20 @@ def _measure_fit(point: Point, iterations: int, todo: set[str]):
 
     from mlxlearn.patching import _estimators as patched
 
-    (key,) = point.keys()
-    if key not in todo:
+    keys = point.keys()
+    if not set(keys) & todo:
         return
     X, y = _fit_data(point)
     if point.estimator == "svc":
-        params = {"kernel": point.kernel, "C": point.C}
+        params = {"kernel": point.kernel, "C": point.C, "degree": point.degree,
+                  "coef0": point.coef0}
+        if point.gamma:
+            # A multiple of the "scale" value: the ratio the dispatch rule reads.
+            params["gamma"] = point.gamma / (point.d * float(X.var()))
         make_mlx, make_sk = (lambda: patched.SVC(**params)), (lambda: sklearn.svm.SVC(**params))
+        if point.queries:
+            yield from _measure_predict(point, X, y, make_mlx, make_sk, iterations, todo)
+            return
     else:
         make_mlx = lambda: patched.LogisticRegression(max_iter=200)  # noqa: E731
         make_sk = lambda: sklearn.linear_model.LogisticRegression(max_iter=200)  # noqa: E731
@@ -465,6 +663,7 @@ def _measure_fit(point: Point, iterations: int, todo: set[str]):
         seen["sklearn_n_iter"] = int(np.max(model.n_iter_))
         return model
 
+    (key,) = keys
     start = time.perf_counter()
     mlx_fit()
     sk_fit()
@@ -476,6 +675,40 @@ def _measure_fit(point: Point, iterations: int, todo: set[str]):
                      warmup=1)
     assert seen["backend"] == "mlx", seen
     yield key, {"operation": "fit", **seen, **_summary(result)}
+
+
+def _measure_predict(point: Point, X, y, make_mlx, make_sk, iterations: int, todo: set[str]):
+    """``predict`` on a model fitted on MLX against one fitted by scikit-learn.
+
+    The fit is forced onto MLX; ``predict`` then runs as dispatch configures it,
+    on the host up to ``svc_host_inference_work`` and on the device above.
+    """
+    with _forced():
+        model = make_mlx().fit(X, y)
+    stock = make_sk().fit(X, y)
+    assert model.execution_backend_ == "mlx", model.fit_event_
+    rng = np.random.default_rng(point.seed + 2)
+    n_sv = int(model.support_vectors_.shape[0])
+    for q, key in zip(point.queries, point.keys(), strict=True):
+        if key not in todo:
+            continue
+        count = _WARMUP + iterations if q <= 64 else 1
+        picks = [rng.integers(0, point.n, size=q) for _ in range(count)]
+        batches = np.stack([X[p] + 0.01 * rng.normal(size=(q, point.d)) for p in picks])
+        result = compare(_calls(model, "predict", batches), _calls(stock, "predict", batches),
+                         label=key, shape=(point.n, point.d), iterations=iterations,
+                         warmup=_WARMUP)
+        yield key, {"operation": "predict", "q": q, "n_sv": n_sv, **_summary(result)}
+
+
+def _calls(model, method: str, batches: np.ndarray) -> Callable[[], object]:
+    """``model.<method>`` on the next of ``batches`` at each call, cycling."""
+    position = iter(range(1 << 62))
+
+    def call():
+        return getattr(model, method)(batches[next(position) % len(batches)])
+
+    return call
 
 
 def _done(path: Path, sklearn_version: str) -> set[str]:
@@ -510,6 +743,8 @@ def run(name: str, output: Path, *, iterations: int | None = None, limit: int | 
                 "grid": name, "key": key, "estimator": point.estimator, "n": point.n,
                 "d": point.d, "algorithm": point.algorithm, "data": point.data,
                 "kernel": point.kernel, "C": point.C, "n_classes": point.n_classes,
+                "k": point.k, "gamma": point.gamma, "degree": point.degree,
+                "coef0": point.coef0,
                 **versions, "time": time.time(), **record,
             }
             with output.open("a", encoding="utf-8") as fh:
@@ -558,11 +793,27 @@ def dispatch(record: dict) -> str:
 
     n, d = record["n"], record["d"]
     if record["estimator"] == "knn":
-        model = patched.NearestNeighbors(n_neighbors=_K, algorithm=record["algorithm"])
+        model = patched.NearestNeighbors(
+            n_neighbors=record.get("k", _K), algorithm=record["algorithm"]
+        )
         below = model._below_crossover(n, d)[0] or model._patched_handoff(n, d) is not None
+        if not below and "probe_rows" in record:
+            # The data rule, on what the fit-time probe found when this was measured.
+            found = {"rows": record["probe_rows"], "uncertified": record["probe_uncertified"],
+                     "integer": record["integer_path"]}
+            below = model._probe_handoff(n, d, found) is not None
     elif record["estimator"] == "svc":
-        model = patched.SVC(kernel=record["kernel"], C=record["C"])
-        below = model._below_crossover(n, d, n_classes=record["n_classes"])[0]
+        model = patched.SVC(kernel=record["kernel"], C=record["C"],
+                            degree=record.get("degree", 3), coef0=record.get("coef0", 0.0))
+        below = (
+            model._below_crossover(n, d, n_classes=record["n_classes"])[0]
+            or model._kernel_handoff(record.get("gamma") or 1.0) is not None
+        )
+        if not below and record["operation"] == "predict":
+            work = record["q"] * record["n_sv"] * d
+            from mlxlearn._common.config import get_tuning
+
+            return "host" if work <= get_tuning().svc_host_inference_work else "MLX"
     else:
         K = record["n_classes"]
         below = patched.LogisticRegression()._below_crossover(n, d, 1 if K == 2 else K)[0]
@@ -610,11 +861,69 @@ def _logreg_column(r):
     return (r["n_classes"], r["d"]), f"{r['n_classes']} classes × {r['d']}"
 
 
+_KNN_DATA_ORDER = {"gauss": 0, "blobs": 1, "uniform": 2, "unscaled": 3, "dups": 4,
+                   "tight-blobs": 5, "binary": 6, "counts": 7}
+
+
+def _knn_data_row(r):
+    order = _KNN_DATA_ORDER.get(r["data"], len(_KNN_DATA_ORDER))
+    return (r["d"], r["n"], order), f"{_shape(r['n'], r['d'])}, {r['data']}"
+
+
+def _knn_k_row(r):
+    return (r["d"], r["n"], r.get("k", _K)), f"{_shape(r['n'], r['d'])}, k = {r.get('k', _K)}"
+
+
+def _svc_variant(r) -> tuple[tuple, str]:
+    if r["kernel"] == "rbf":
+        factor = r.get("gamma") or 1.0
+        return (0, factor, 0, 0.0), f"rbf, gamma = {factor:g} × scale"
+    degree, coef0 = r.get("degree", 3), r.get("coef0", 0.0)
+    return (1, 1.0, degree, coef0), f"{r['kernel']}, degree {degree}, coef0 = {coef0:g}"
+
+
+def _svc_params_row(r):
+    variant_key, variant = _svc_variant(r)
+    return (r["d"], r["n"], variant_key), f"{_shape(r['n'], r['d'])}, {variant}"
+
+
+def _svc_c_column(r):
+    return (r["C"],), f"C = {r['C']:g}"
+
+
+def _svc_multi_row(r):
+    pair = _shape(2 * r["n"] // r["n_classes"])
+    return (r["d"], r["n"], r["n_classes"]), (
+        f"{_shape(r['n'], r['d'])}, K = {r['n_classes']} (pairs of {pair})"
+    )
+
+
+def _svc_predict_row(r):
+    label = _shape(r["n"], r["d"])
+    if r["n_classes"] != 2:
+        label = f"{label}, K = {r['n_classes']}"
+    return (r["d"], r["n"], r["n_classes"]), f"{label} ({_shape(r['n_sv'])} SVs)"
+
+
+def _q_column(r):
+    return (r["q"],), f"{r['q']} {'row' if r['q'] == 1 else 'rows'}"
+
+
+def _logreg_data_row(r):
+    return (r["data"], r["n"]), f"{r['data']}, {_shape(r['n'])}"
+
+
 _LAYOUTS = {
     "knn-q": (_knn_row, _knn_column, "rows × features"),
     "knn-worst": (_knn_row, _knn_column, "rows × features"),
+    "knn-data": (_knn_data_row, _knn_column, "rows × features, data"),
+    "knn-k": (_knn_k_row, _knn_column, "rows × features, k"),
     "svc": (_svc_row, _svc_column, "rows × features"),
+    "svc-params": (_svc_params_row, _svc_c_column, "rows × features, kernel"),
+    "svc-multi-c": (_svc_multi_row, _svc_c_column, "rows × features, classes"),
+    "svc-predict": (_svc_predict_row, _q_column, "fit (support vectors)"),
     "logreg": (_logreg_row, _logreg_column, "rows"),
+    "logreg-data": (_logreg_data_row, _logreg_column, "labels, rows"),
 }
 
 
@@ -651,12 +960,15 @@ def render(name: str, records: list[dict]) -> str:
         table.setdefault(row_key, {}).setdefault(column_key, {})[record["sklearn"]] = record
     order = sorted(columns)
     worst = grid.layout == "knn-worst"
+    # The data grid also shows what the fit-time probe found, which dispatch reads.
+    probe = grid.layout == "knn-data"
     lines = [
         f"<!-- python -m benchmarks.calibrate table {name}: scikit-learn "
         f"{' / '.join(versions)}{', the worse of them' if worst and len(versions) > 1 else ''}"
         " -->",
-        f"| {first} | " + " | ".join(columns[c] for c in order) + " | dispatch |",
-        "|---" * (len(order) + 2) + "|",
+        f"| {first} | " + " | ".join(columns[c] for c in order)
+        + (" | probe" if probe else "") + " | dispatch |",
+        "|---" * (len(order) + 2 + int(probe)) + "|",
     ]
     for row_key in sorted(rows):
         row = table[row_key]
@@ -674,12 +986,25 @@ def render(name: str, records: list[dict]) -> str:
                 cells.append(_cell(shown))
             else:
                 cells.append(" / ".join(_cell(by_version.get(v)) for v in versions))
+        if probe:
+            cells.append(_probe_cell([r for c in row.values() for r in c.values()]))
         if len(set(routes.values())) == 1:
             route = next(iter(routes.values()))
+        elif set(routes.values()) == {"host", "MLX"}:
+            last = max(c for c in order if routes.get(c) == "host")
+            route = f"host to {columns[last]}, MLX above"
         else:
             route = "MLX at " + ", ".join(columns[c] for c in order if routes.get(c) == "MLX")
         lines.append(f"| {rows[row_key]} | " + " | ".join(cells) + f" | {route} |")
     return "\n".join(lines) + "\n"
+
+
+def _probe_cell(records: list[dict]) -> str:
+    """What the fit-time probe found, across versions: ``integer``, or uncertified rows."""
+    if any(r.get("integer_path") for r in records):
+        return "integer"
+    found = sorted({(r["probe_uncertified"], r["probe_rows"]) for r in records})
+    return " / ".join(f"{u}/{n}" for u, n in found)
 
 
 # ----------------------------------------------------------------------------- main

@@ -295,14 +295,27 @@ def _patched_route(case: run.Case) -> str:
         if model._below_crossover(n, d)[0]:
             return "below-crossover"
         handed = model._patched_handoff(n, d)
+        if handed is None and case.option("data"):
+            # The data rule reads the data: fit on what the case would generate.
+            X, _, _ = run._make_data(case, np.random.default_rng(0))
+            event = model.fit(X).fit_event_
+            return "mlx" if event.reason == "selected" else "handoff:" + event.reason
         return "handoff:" + handed[0] if handed else "mlx"
     if case.algorithm == "logreg":
         model = patched.LogisticRegression()
         below, detail = model._below_crossover(n, d, 1 if n_classes == 2 else n_classes)
         return ("binary:" if "binary" in detail else "below-crossover") if below else "mlx"
-    model = patched.SVC(kernel=case.option("kernel"))
+    kernel = case.option("kernel")
+    params = {k: case.options[k] for k in ("degree", "coef0") if k in case.options}
+    model = patched.SVC(kernel=kernel, C=case.option("C"), **params)
+    # The smoke data are standard normal, so a numeric gamma times d is its ratio to
+    # the "scale" value.
+    gamma = case.options.get("gamma")
+    ratio = None if kernel != "rbf" else 1.0 if gamma is None else gamma * d
     below, detail = model._below_crossover(n, d, n_classes=n_classes)
-    return ("pair:" if "one-vs-one" in detail else "below-crossover") if below else "mlx"
+    if below:
+        return "pair:" if "one-vs-one" in detail else "below-crossover"
+    return "kernel:" if model._kernel_handoff(ratio) is not None else "mlx"
 
 
 def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
@@ -339,6 +352,26 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         for c, r in knn
     )
     assert any(r == "handoff:tree-wins" for _, r in knn)
+    # Too narrow for MLX whatever the rows, past the widths a KD-tree takes.
+    assert any(
+        r == "handoff:below-crossover"
+        and 16 <= c.n_features < tuning.knn_min_features
+        and c.n_samples >= tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
+    # The data rule, both halves: rows the probe cannot certify at a wide shape, and
+    # integer data at a tall narrow one; the same shapes on Gaussian data go to MLX.
+    assert any(
+        r == "handoff:data-probe" and c.option("data") == "dups"
+        and c.n_features >= tuning.knn_wide_features
+        for c, r in knn
+    )
+    assert any(
+        r == "handoff:data-probe" and c.option("data") == "binary"
+        and c.n_features < tuning.knn_wide_features
+        and c.n_samples >= tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
 
     logreg = cases("logreg")
     assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in logreg)
@@ -346,6 +379,12 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
     assert any(c.n_samples < tuning.logreg_min_samples for c, _ in logreg)
     assert any(
         r == "binary:" and c.n_features > tuning.logreg_binary_max_features for c, r in logreg
+    )
+    assert any(
+        r == "binary:"
+        and c.n_features <= tuning.logreg_binary_max_features
+        and tuning.logreg_min_samples <= c.n_samples < tuning.logreg_binary_min_samples
+        for c, r in logreg
     )
 
     svc = cases("svc")
@@ -358,6 +397,24 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         for c, r in svc
     )
     assert any(r == "pair:" for _, r in svc)
+    # The kernel-parameter rule, at a shape the size floors send to MLX: rbf with a
+    # small gamma, and a low-degree poly kernel.
+    kernel_handoffs = [c for c, r in svc if r == "kernel:"]
+    assert any(c.option("kernel") == "rbf" for c in kernel_handoffs)
+    assert any(c.option("kernel") == "poly" for c in kernel_handoffs)
+    assert all(
+        c.n_features >= tuning.svc_min_features and c.n_samples * c.n_features >= tuning.svc_min_work
+        for c in kernel_handoffs
+    )
+    # Inference on an MLX fit on both sides of the host threshold: one row is below it
+    # whatever the support-vector count (at most the training rows), and a thousand
+    # rows above it once a thousand of them are support vectors — about 3 100 of the
+    # 4 000 are, on this data (table `svc-predict`).
+    predicts = [c for c, r in svc if c.operation == "predict" and r == "mlx"]
+    assert any(c.n_queries * c.n_samples * c.n_features <= tuning.svc_host_inference_work
+               for c in predicts)
+    assert any(c.n_queries * c.n_features * 1_000 > tuning.svc_host_inference_work
+               for c in predicts)
 
 
 def test_the_published_profile_brackets_every_estimators_crossover():
