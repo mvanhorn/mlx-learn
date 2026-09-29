@@ -49,7 +49,8 @@ def mlx_sized():
     by the ordinary route in both layers. For tests about that path, not dispatch."""
     with tuning_context(
         knn_min_train_samples=0, knn_min_work=0, knn_min_features=0, knn_narrow_min_samples=0,
-        knn_probe_max_uncertified=1.0, knn_wide_features=0,
+        knn_probe_max_uncertified=1.0, knn_wide_features=0, knn_max_neighbors=2**31,
+        knn_min_samples_per_neighbor=0,
     ):
         yield
 
@@ -1303,6 +1304,55 @@ def test_patched_dispatch_needs_a_million_rows_below_256_features():
     for n_samples, n_features in ((1_000_000, 64), (1_000_000, 128), (32_768, 256), (8_192, 768)):
         assert model._patched_handoff(n_samples, n_features) is None
         assert not model._below_crossover(n_samples, n_features)[0]
+
+
+def test_patched_dispatch_reads_the_fitted_n_neighbors():
+    """The size rules were measured at k = 10. At k = 100 a 1 024-query batch lost at
+    1 000 000 x 64 on both versions, and at 4 096-6 000 rows and 2 048-4 096 features
+    batches of 32-4 096 queries lost; k = 40-50 only tied with 82-125 rows per
+    neighbor at 2 048-4 096 features, and won or tied from 150. So a patched fit needs
+    at most 50 neighbors and 150 rows per neighbor."""
+    for k, n_samples, n_features, handed in (
+        (10, 1_000_000, 64, False),
+        (50, 1_000_000, 64, False),
+        (51, 1_000_000, 64, True),
+        (100, 1_000_000, 128, True),
+        (50, 7_500, 4_096, False),
+        (40, 6_144, 4_096, False),
+        (50, 6_000, 2_048, True),
+        (50, 4_096, 3_072, True),
+        (40, 4_096, 4_096, True),
+    ):
+        model = patched.KNeighborsClassifier(n_neighbors=k)
+        assert not model._below_crossover(n_samples, n_features)[0]
+        handoff = model._patched_handoff(n_samples, n_features)
+        assert (handoff is not None) == handed, (k, n_samples, n_features)
+        if handed:
+            assert handoff[0] == "below-crossover" and f"n_neighbors={k}" in handoff[1]
+
+
+@pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors])
+def test_the_k_rule_is_patched_only_and_reads_the_constructor(cls, rng):
+    """Layer 1 searches on MLX whatever k is; a patched fit decides by its own
+    ``n_neighbors``, and a query asking for more neighbors is answered where the fit
+    ran, as every query is."""
+    X = rng.normal(size=(3000, 16))
+    lifted = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_min_features": 0,
+              "knn_narrow_min_samples": 0, "knn_probe_max_uncertified": 1.0}
+    with tuning_context(**lifted):
+        many = cls(n_neighbors=60).fit(X)
+        few = cls(n_neighbors=5).fit(X)
+    if cls is NearestNeighbors:
+        assert many.execution_backend_ != "sklearn"
+        return
+    assert many.execution_backend_ == "sklearn"
+    assert many.fit_event_.reason == "below-crossover"
+    assert "n_neighbors=60" in many.fit_event_.detail
+    assert few.execution_backend_ != "sklearn"
+    dist, idx = few.kneighbors(X[:3], n_neighbors=60)
+    assert idx.shape == (3, 60) and few.execution_backend_ != "sklearn"
+    ref = sk_neighbors.NearestNeighbors(n_neighbors=60).fit(X).kneighbors(X[:3])
+    np.testing.assert_array_equal(idx, ref[1])
 
 
 @pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors])

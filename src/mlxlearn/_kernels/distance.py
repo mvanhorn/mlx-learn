@@ -523,17 +523,19 @@ class NeighborIndex:
 
     # ------------------------------------------------------------------ probe
 
-    def probe(self, k: int, *, device: str | None = None) -> dict:
+    def probe(self, k: int, *, rows: int = _PROBE_ROWS, device: str | None = None) -> dict:
         """How the first pass fares on the index's own rows: what a query will cost.
 
-        Searches ``_PROBE_ROWS`` training rows, spread evenly over the index, for
-        their ``k`` nearest (each row finds itself, or a duplicate, first) with the
-        first float32 pass alone, and counts the rows its certificate could not
-        certify. A query row like those is searched again with a much wider
-        candidate set, and exactly if that fails too (:meth:`query`), which costs
-        several first passes: on duplicated rows, tight clusters or one column on
-        a far larger scale than the rest, nearly every row. Nothing is resolved
-        here, so the probe costs one first pass over the index for 64 rows.
+        Searches ``rows`` training rows (all of them, if the index has fewer),
+        spread evenly over the index, for their ``k`` nearest (each row finds
+        itself, or a duplicate, first) with the first float32 pass alone, and counts
+        the rows its certificate could not certify. A query row like those is
+        searched again with a much wider candidate set, and exactly if that fails
+        too (:meth:`query`), which costs several first passes: on duplicated rows,
+        tight clusters or one column on a far larger scale than the rest, nearly
+        every row. Nothing is resolved here, so the probe costs one first pass over
+        the index for ``rows`` queries. The caller chooses ``rows``: the estimator
+        passes ``Tuning.knn_probe_rows``, since the index reads no configuration.
 
         Integer data is searched on the exact integer path, which has no
         certificate; the probe says so instead of searching.
@@ -550,7 +552,7 @@ class NeighborIndex:
         n_train = self.n_samples
         if state.int_limit > 0:
             return {"rows": 0, "uncertified": 0, "integer": True}
-        rows = np.unique(np.linspace(0, n_train - 1, min(n_train, _PROBE_ROWS)).astype(np.intp))
+        rows = np.unique(np.linspace(0, n_train - 1, min(n_train, rows)).astype(np.intp))
         k_search = max(1, min(int(k), n_train))
         k_carry = _first_pass_carry(k_search, self.n_features, n_train)
         if rows.size == 0 or k_carry >= n_train:

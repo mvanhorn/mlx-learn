@@ -91,9 +91,9 @@ class Point:
     queries: tuple[int, ...] = ()
     fit: bool = False
     algorithm: str = "auto"  # knn: the scikit-learn algorithm, given to both sides
-    # knn: "gauss", "lowrank" or one of _KNN_DATA; svc and logreg: "binary"
-    # (benchmarks/run.py's binary target), "noisy", "random", "mixed", "blobs" or
-    # "separated-blobs" (see _fit_data). The estimator's first, by default.
+    # knn: "gauss", "lowrank" or another law of _knn_data; svc and logreg: "binary"
+    # (benchmarks/run.py's binary target), "noisy", "random", "xor", "mixed", "blobs"
+    # or "separated-blobs" (see _fit_data). The estimator's first, by default.
     data: str = ""
     kernel: str = "rbf"
     C: float = 1.0
@@ -351,7 +351,7 @@ GRIDS: dict[str, Grid] = {
         "`LogisticRegression` fits (max_iter=200) whose labels carry little or no signal "
         "— pure noise, binary and multinomial, and x0 + N(0, 3²) > 0 — so both solvers "
         "stop within a few iterations and the fixed cost of the MLX path is most of the "
-        "fit: the binary row floor and width limit.",
+        "fit: the binary row floor and width limit, and the multinomial work floor.",
         tuple(
             Point("logreg", n, d, data=data)
             for data in ("random", "noisy")
@@ -360,8 +360,9 @@ GRIDS: dict[str, Grid] = {
         )
         + tuple(
             Point("logreg", n, d, n_classes=K, data="random")
-            for n in (60_000, 200_000)
-            for K, d in ((3, 16), (3, 64), (3, 256), (10, 64))
+            for n in (60_000, 100_000, 200_000)
+            for K, d in ((3, 1), (3, 2), (5, 1), (5, 2), (10, 1), (3, 4), (3, 16), (3, 64),
+                         (3, 256), (10, 64))
         ),
         layout="logreg-data",
     ),
@@ -447,19 +448,83 @@ GRIDS: dict[str, Grid] = {
         layout="knn-data",
     ),
     "knn-k": Grid(
-        "Neighbor queries on MLX against stock brute force at the narrow corner of the "
-        "size rules, k = 1 and 50 (the other grids use k = 10).",
+        "Neighbor queries on MLX against stock brute force at k = 1-200 (the other grids "
+        "use k = 10), every batch size from 1 to 4096: at the narrow corner of the size "
+        "rules and on short, wide training sets up to 4 096 features — the "
+        "`knn_max_neighbors` and `knn_min_samples_per_neighbor` rules.",
         tuple(
             point
-            for k in (1, 50)
+            for shapes, ks in (
+                (((1_000_000, 64), (1_000_000, 96), (1_000_000, 128), (1_600_000, 64)),
+                 (1, 5, 10, 50, 100, 200)),
+                (((24_000, 256), (100_000, 256), (8_192, 1_024), (6_000, 2_048), (4_096, 2_048),
+                  (4_096, 3_072), (4_096, 4_096)),
+                 (5, 10, 50, 100, 200)),
+                # Either side of the rows-per-neighbor floor, at the widest shapes.
+                (((4_096, 3_072), (4_096, 4_096)), (40,)),
+                (((5_000, 3_072), (5_000, 4_096)), (50,)),
+                (((6_144, 4_096),), (40,)),
+                (((7_500, 4_096),), (50,)),
+            )
+            for k in ks
+            for point in _knn_points(shapes, DENSE_QUERIES, max_work=1.2e11, k=k)
+        ),
+        layout="knn-k-worst",
+    ),
+    "knn-structured": Grid(
+        "Neighbor queries on MLX against stock brute force on data with mild structure — "
+        "rows repeated about twice, one column on 100 times the scale of the rest, 100 "
+        "clusters of std 0.4 and 0.5 — beside Gaussian data, at shapes on and near the "
+        "size floors, every batch size from 1 to 4096: few enough rows go uncertified "
+        "that most of a 16-64-query batch is not, and most batches still hold one. "
+        "`probe` is what the fit-time probe found: the `knn_probe_max_uncertified` rule.",
+        tuple(
+            point
+            for data in ("gauss", "dup2", "scaled100", "blobs0.5", "blobs0.4")
             for point in _knn_points(
-                [(1_000_000, 64), (1_000_000, 96), (1_000_000, 128), (1_600_000, 64)],
-                (1, 16, 64, 256, 1_024, 4_096),
+                [(24_000, 256), (30_000, 256), (65_536, 256), (100_000, 256), (12_000, 512),
+                 (50_000, 512), (16_384, 768), (8_192, 1_024), (4_096, 2_048),
+                 (1_000_000, 64)],
+                DENSE_QUERIES,
                 max_work=1.2e11,
-                k=k,
+                data=data,
             )
         ),
-        layout="knn-k",
+        layout="knn-data-worst",
+    ),
+    "svc-hard": Grid(
+        "`SVC` fits on MLX against LIBSVM where nearly every row becomes a support vector: "
+        "labels with little or no signal (x0 + N(0, 3²) > 0, random, XOR), binary and "
+        "one-vs-one, and rbf kernels far narrower than scikit-learn's 'scale' (gamma 10 "
+        "to 1 000 times it), C = 1-100, either side of the width floor: the "
+        "`svc_min_features` and `svc_max_gamma_ratio` rules.",
+        tuple(
+            Point("svc", n, d, C=C, data=data)
+            for n, d in ((3_000, 128), (6_000, 128), (8_000, 128), (1_500, 256), (2_500, 256),
+                         (4_000, 256), (1_024, 512), (2_000, 512))
+            for data in ("noisy", "random", "xor")
+            for C in (1.0, 10.0, 100.0)
+        )
+        + tuple(
+            Point("svc", n, d, kernel="poly", C=C, data="noisy")
+            for n, d in ((3_000, 128), (1_500, 256), (4_000, 256), (1_024, 512))
+            for C in (1.0, 10.0, 100.0)
+        )
+        + tuple(
+            Point("svc", n, d, C=C, n_classes=K, data="random")
+            for n, d, K in ((4_500, 128, 3), (6_000, 128, 4), (2_250, 256, 3), (3_000, 256, 4),
+                            (7_500, 256, 10), (1_536, 512, 3), (2_048, 512, 4))
+            for C in (1.0, 10.0, 100.0)
+        )
+        + tuple(
+            Point("svc", n, d, C=C, gamma=gamma)
+            for n, d in ((3_000, 128), (1_500, 256), (4_000, 256), (1_024, 512), (1_100, 512),
+                         (2_000, 512))
+            for gamma in (10.0, 30.0, 100.0, 1_000.0)
+            for C in (1.0, 10.0)
+        ),
+        layout="svc-hard",
+        iterations=5,
     ),
 }
 
@@ -472,7 +537,8 @@ def _knn_data(
 ) -> np.ndarray:
     """``q`` rows of ``point.data``; training rows and queries come from the same law.
 
-    Except ``"dups"``, whose training rows repeat and whose queries are fresh rows.
+    Except ``"dups"`` and ``"dup2"``, whose training rows repeat and whose queries are
+    fresh rows.
     """
     d = point.d
     fixed = np.random.default_rng(point.seed + 1)  # what training and queries share
@@ -483,12 +549,16 @@ def _knn_data(
         X = rng.normal(size=(q, d))
         X[:, 0] = rng.uniform(0.0, 1e4, size=q)
         return X
-    if point.data == "dups" and train:  # every row repeated about 20 times
-        base = rng.normal(size=(max(q // 20, 1), d))
+    if point.data == "scaled100":  # one column on 100 times the scale of the rest
+        X = rng.normal(size=(q, d))
+        X[:, 0] *= 100.0
+        return X
+    if point.data in _KNN_REPEATS and train:  # every row repeated about 20 or 2 times
+        base = rng.normal(size=(max(q // _KNN_REPEATS[point.data], 1), d))
         return base[rng.integers(0, base.shape[0], size=q)]
-    if point.data in ("tight-blobs", "blobs"):  # 100 clusters, std 0.1 or 1
+    if point.data in _KNN_BLOBS:  # 100 clusters around N(0, 3²) centres
         centers = fixed.normal(scale=3.0, size=(100, d))
-        std = 0.1 if point.data == "tight-blobs" else 1.0
+        std = _KNN_BLOBS[point.data]
         return centers[rng.integers(0, 100, size=q)] + std * rng.normal(size=(q, d))
     if point.data == "binary":
         return (rng.random(size=(q, d)) < 0.2).astype(np.float64)
@@ -496,9 +566,16 @@ def _knn_data(
         return rng.poisson(2.0, size=(q, d)).astype(np.float64)
     if point.data == "uniform":
         return rng.random(size=(q, d))
-    if point.data not in ("gauss", "dups"):
+    if point.data not in ("gauss", *_KNN_REPEATS):
         raise ValueError(f"unknown data {point.data!r}")
     return rng.normal(size=(q, d))
+
+
+#: Neighbor data whose training rows repeat, and about how many times each.
+_KNN_REPEATS = {"dups": 20, "dup2": 2}
+
+#: Neighbor data drawn from 100 clusters, and the clusters' standard deviation.
+_KNN_BLOBS = {"tight-blobs": 0.1, "blobs0.4": 0.4, "blobs0.5": 0.5, "blobs": 1.0}
 
 
 def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
@@ -512,6 +589,9 @@ def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
         return X, (X[:, 0] + rng.normal(scale=3.0, size=n) > 0).astype(int)
     if point.data == "random":  # labels independent of X
         return rng.normal(size=(n, d)), rng.integers(0, K, size=n)
+    if point.data == "xor":  # the signs of two features, XORed: no linear signal
+        X = rng.normal(size=(n, d))
+        return X, ((X[:, 0] > 0) ^ (X[:, 1] > 0)).astype(int)
     if point.data == "mixed":  # the binary target's score cut into K quantile bands
         X = rng.normal(size=(n, d))
         score = X[:, 0] + rng.normal(scale=0.5, size=n)
@@ -587,7 +667,9 @@ def _measure_knn(point: Point, iterations: int, todo: set[str]):
     assert model.execution_backend_ == "mlx", model.fit_event_
     # What patched dispatch's fit-time probe finds on this data: forcing the backend
     # skips the probe, so it is taken here, and dispatch() applies the thresholds.
-    found = model._index_.probe(point.k)
+    from mlxlearn._common.config import get_tuning
+
+    found = model._index_.probe(point.k, rows=get_tuning().knn_probe_rows)
     extra = {
         "stock_method": stock._fit_method,
         "probe_rows": found["rows"],
@@ -861,8 +943,9 @@ def _logreg_column(r):
     return (r["n_classes"], r["d"]), f"{r['n_classes']} classes × {r['d']}"
 
 
-_KNN_DATA_ORDER = {"gauss": 0, "blobs": 1, "uniform": 2, "unscaled": 3, "dups": 4,
-                   "tight-blobs": 5, "binary": 6, "counts": 7}
+_KNN_DATA_ORDER = {"gauss": 0, "blobs": 1, "uniform": 2, "dup2": 3, "scaled100": 4,
+                   "blobs0.5": 5, "blobs0.4": 6, "unscaled": 7, "dups": 8, "tight-blobs": 9,
+                   "binary": 10, "counts": 11}
 
 
 def _knn_data_row(r):
@@ -909,6 +992,17 @@ def _q_column(r):
     return (r["q"],), f"{r['q']} {'row' if r['q'] == 1 else 'rows'}"
 
 
+_SVC_LABELS = {"binary": "", "noisy": "noisy", "random": "random", "xor": "XOR"}
+
+
+def _svc_hard_row(r):
+    variant_key, variant = _svc_variant(r)
+    labels = _SVC_LABELS.get(r["data"], r["data"])
+    classes = "" if r["n_classes"] == 2 else f", K = {r['n_classes']}"
+    parts = [_shape(r["n"], r["d"]) + classes, labels, variant]
+    return (r["d"], r["n"], r["n_classes"], labels, variant_key), ", ".join(p for p in parts if p)
+
+
 def _logreg_data_row(r):
     return (r["data"], r["n"]), f"{r['data']}, {_shape(r['n'])}"
 
@@ -917,9 +1011,12 @@ _LAYOUTS = {
     "knn-q": (_knn_row, _knn_column, "rows × features"),
     "knn-worst": (_knn_row, _knn_column, "rows × features"),
     "knn-data": (_knn_data_row, _knn_column, "rows × features, data"),
+    "knn-data-worst": (_knn_data_row, _knn_column, "rows × features, data"),
     "knn-k": (_knn_k_row, _knn_column, "rows × features, k"),
+    "knn-k-worst": (_knn_k_row, _knn_column, "rows × features, k"),
     "svc": (_svc_row, _svc_column, "rows × features"),
     "svc-params": (_svc_params_row, _svc_c_column, "rows × features, kernel"),
+    "svc-hard": (_svc_hard_row, _svc_c_column, "rows × features, labels, kernel"),
     "svc-multi-c": (_svc_multi_row, _svc_c_column, "rows × features, classes"),
     "svc-predict": (_svc_predict_row, _q_column, "fit (support vectors)"),
     "logreg": (_logreg_row, _logreg_column, "rows"),
@@ -933,9 +1030,9 @@ def render(name: str, records: list[dict]) -> str:
     One row per shape, one column per configuration. A cell is stock time over MLX
     time for each scikit-learn version in the records, newest first — ``1.9.0 /
     1.7.2`` — **bold** where that is a loss by the gate's test and ``~`` where it is
-    within noise. The dense neighbor grids (layout ``knn-worst``) have a dozen batch
-    sizes, so each of their cells is the worse version's ratio instead: its loss,
-    if either version lost, else the lower of the two. The
+    within noise. The dense neighbor grids (layouts ending ``-worst``) have a dozen
+    batch sizes, so each of their cells is the worse version's ratio instead: its
+    loss, if either version lost, else the lower of the two. The
     ``dispatch`` column is where patched dispatch as configured now sends the fit;
     where it differs across a row's columns it names the columns sent to MLX.
     """
@@ -959,9 +1056,9 @@ def render(name: str, records: list[dict]) -> str:
         columns[column_key] = column_label
         table.setdefault(row_key, {}).setdefault(column_key, {})[record["sklearn"]] = record
     order = sorted(columns)
-    worst = grid.layout == "knn-worst"
-    # The data grid also shows what the fit-time probe found, which dispatch reads.
-    probe = grid.layout == "knn-data"
+    worst = grid.layout.endswith("-worst")
+    # The data grids also show what the fit-time probe found, which dispatch reads.
+    probe = grid.layout.startswith("knn-data")
     lines = [
         f"<!-- python -m benchmarks.calibrate table {name}: scikit-learn "
         f"{' / '.join(versions)}{', the worse of them' if worst and len(versions) > 1 else ''}"

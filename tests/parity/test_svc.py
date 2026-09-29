@@ -1098,40 +1098,40 @@ def test_the_svc_crossover_is_above_the_measured_losses():
 
     Width decides: per SMO iteration mlxlearn's cost is nearly flat in the number
     of features and LIBSVM's grows with it. Measured on scikit-learn 1.9.0 and
-    1.7.2 (docs/benchmarks.md, the ``svc`` and ``svc-narrow`` tables), rbf and poly
-    at C = 10 lost at 4 000 x 16..64, and past the kernel cache narrow data lost
-    even at C = 1. At 128 features the fit also needs rows: 2 000 x 128 lost at
-    C = 10 and 100 on 1.7.2 (0.90x-0.95x) and 1 500 x 128 on both, while from
-    3 000 x 128 — and 1 500 x 256, and 1 000 x 512 — every kernel and C won or tied
-    on both versions (1.04x at worst, poly at C = 10 and 100 on 1.7.2). The first
-    release's work floor, ``n·d >= 10⁶``, could not tell 16 000 x 64 from
-    4 000 x 256.
+    1.7.2 (docs/benchmarks.md, the ``svc``, ``svc-hard`` and ``svc-narrow``
+    tables), rbf and poly at C = 10 lost at 4 000 x 16..64, and past the kernel
+    cache narrow data lost even at C = 1. At 128 features the benchmark's target won
+    from 3 000 rows, but labels with little or no signal — where nearly every row
+    becomes a support vector — lost at C = 10 and 100 up to 6 000 rows, and
+    one-vs-one pairs of 3 000 x 128 did too; from 256 features every one of them
+    won, from 1 500 x 256 and 1 024 x 512. The first release's work floor,
+    ``n·d >= 10⁶``, could not tell 16 000 x 64 from 4 000 x 256.
     """
     model = SVC()
-    losses = ((4_000, 16), (4_000, 64), (16_000, 8), (16_000, 64), (2_500, 20))
+    losses = (
+        (4_000, 16), (4_000, 64), (16_000, 8), (16_000, 64), (2_500, 20),
+        (3_000, 128), (6_000, 128), (2_000, 128),
+    )
     for n_samples, n_features in losses:
         below, detail = model._below_crossover(n_samples, n_features)
         assert below, f"{n_samples}x{n_features} was measured slower but is above the crossover"
-        assert "128 features" in detail
-    for n_samples, n_features in ((1_500, 128), (2_000, 128), (1_000, 128)):
-        below, detail = model._below_crossover(n_samples, n_features)
-        assert below, f"{n_samples}x{n_features} lost at C=10 but is above the crossover"
-        assert "384000 element-ops" in detail
-    # Measured wins at every kernel and C tried, and the smallest ones kept.
-    for n_samples, n_features in ((3_000, 128), (1_500, 256), (1_024, 512), (4_000, 256)):
+        assert "256 features" in detail
+    # Measured wins at every kernel, C and label law tried, and the smallest ones kept.
+    for n_samples, n_features in ((1_500, 256), (1_024, 512), (4_000, 256)):
         assert not model._below_crossover(n_samples, n_features)[0]
     # 1000 x 256 won by only 1.04x (poly, C=10, on 1.7.2); the work floor leaves it.
-    assert model._below_crossover(1_000, 256)[0]
+    below, detail = model._below_crossover(1_000, 256)
+    assert below and "384000 element-ops" in detail
 
 
 def test_the_svc_crossover_accounts_for_the_number_of_classes():
     """One-vs-one pays per pair, so many small classes lose despite a large total.
 
-    The mean pair must clear the binary work floor. On overlapping classes at C = 10
-    and 100 pairs of 2 000 x 128 — the binary corner — lost, and pairs of 3 000 x 128
-    won or tied; on balanced separated blobs (rbf, C = 1) 256 x 512 (2048 x 512,
-    K=16) and 500 x 256 (8000 x 256, K=32) lost. The total size clears every floor in
-    each case, so only the class count separates them.
+    The mean pair must clear the binary work floor. On balanced separated blobs
+    (rbf, C = 1) pairs of 256 x 512 (2048 x 512, K=16) and 500 x 256 (8000 x 256,
+    K=32) lost, and on random labels at C = 10 and 100 pairs of 1 500 x 256 and
+    1 024 x 512 won. The total size clears every floor in each case, so only the
+    class count separates them.
     """
     model = SVC()
     for n_classes in (2, 4):
@@ -1141,20 +1141,24 @@ def test_the_svc_crossover_accounts_for_the_number_of_classes():
         assert below and f"{n_classes} classes" in detail
     assert not model._below_crossover(8000, 256, n_classes=8)[0]
     assert model._below_crossover(8000, 256, n_classes=16)[0]
-    # Pairs of 3 000 x 128 against 2 000 x 128.
-    assert not model._below_crossover(4500, 128, n_classes=3)[0]
-    assert model._below_crossover(3000, 128, n_classes=3)[0]
-    assert model._below_crossover(10_000, 128, n_classes=10)[0]
+    # Pairs of 1 500 x 256 against 1 000 x 256; pairs of 3 000 x 128 are below the
+    # width floor, as the binary fits of that size are.
+    assert not model._below_crossover(2250, 256, n_classes=3)[0]
+    assert model._below_crossover(1500, 256, n_classes=3)[0]
+    assert model._below_crossover(4500, 128, n_classes=3)[0]
 
 
 @pytest.mark.gpu
 def test_patched_dispatch_hands_near_linear_kernels_to_libsvm():
     """Kernels close to the linear one take its many cheap iterations, which LIBSVM
     runs faster: rbf with ``gamma`` well below ``"scale"`` at C above 1, and poly of
-    degree 2 or with a ``coef0``. Patched only: Layer 1 keeps them on MLX."""
+    degree 2 or with a ``coef0``. So does an rbf kernel far narrower than
+    ``"scale"`` at C above 1, which makes every row a support vector. Patched only:
+    Layer 1 keeps them on MLX."""
     X, y = _data(n_samples=300, n_features=8, seed=1)
     tuning = get_tuning()
     small = 0.5 * tuning.svc_min_gamma_ratio / (X.shape[1] * X.var())
+    large = 2.0 * tuning.svc_max_gamma_ratio / (X.shape[1] * X.var())
     large_c = 10.0 * max(tuning.svc_low_gamma_max_c, 1.0)
     no_floor = {
         "svc_min_features": 0, "svc_min_samples": 0, "svc_min_work": 0,
@@ -1163,6 +1167,8 @@ def test_patched_dispatch_hands_near_linear_kernels_to_libsvm():
     cases = [
         ({"gamma": small, "C": large_c}, True),
         ({"gamma": small, "C": tuning.svc_low_gamma_max_c}, False),
+        ({"gamma": large, "C": large_c}, True),
+        ({"gamma": large, "C": tuning.svc_low_gamma_max_c}, False),
         ({"C": large_c}, False),
         ({"kernel": "poly", "degree": tuning.svc_poly_min_degree - 1}, True),
         ({"kernel": "poly", "coef0": 1.0}, True),
@@ -1179,6 +1185,7 @@ def test_patched_dispatch_hands_near_linear_kernels_to_libsvm():
                     model.predict(X), SkSVC(**params).fit(X, y).predict(X)
                 )
         assert SVC(gamma=small, C=large_c).fit(X, y).execution_backend_ == "mlx"
+        assert SVC(gamma=large, C=large_c).fit(X, y).execution_backend_ == "mlx"
         assert SVC(kernel="poly", degree=2).fit(X, y).execution_backend_ == "mlx"
 
 

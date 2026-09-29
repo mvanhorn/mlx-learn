@@ -205,6 +205,9 @@ class MLXNeighborsMixin(BackendMixin):
         should do. See ``docs/benchmarks.md``, tables ``knn``, ``knn-narrow`` and
         ``knn-tree``.
 
+        A fit wide or tall enough for MLX is then held to the measured range of
+        ``n_neighbors`` (:meth:`_neighbors_handoff`).
+
         Only patched mode acts on these (``_select_backend``'s ``handoff``), because
         only patched mode has scikit-learn to hand the work to: what they measure is
         stock scikit-learn winning, and the Layer 1 CPU path is brute force as well.
@@ -215,7 +218,7 @@ class MLXNeighborsMixin(BackendMixin):
             if n_features >= tuning.knn_wide_features or (
                 n_samples >= tuning.knn_narrow_min_samples
             ):
-                return None
+                return self._neighbors_handoff(n_samples)
             return "below-crossover", (
                 f"{n_samples} training samples x {n_features} features is below the "
                 "measured KNN crossover for patched dispatch: with fewer than "
@@ -242,23 +245,70 @@ class MLXNeighborsMixin(BackendMixin):
             "some query batches on narrow data faster than an MLX call, at any size"
         )
 
+    def _neighbors_handoff(self, n_samples: int) -> tuple[str, str] | None:
+        """Patched mode's handoff by ``n_neighbors``: ``(reason, detail)``, or ``None``.
+
+        The size rules were measured at k = 10, and what MLX pays per query grows with
+        k where a stock brute-force search pays nearly nothing more: the first pass
+        keeps ``k`` plus a margin of candidates per row through every tile's
+        selection and refines them against the full rows, a gather of ``k`` rows of
+        every feature per query. So a fit whose ``n_neighbors`` exceeds
+        ``knn_max_neighbors``, or which has fewer than
+        ``knn_min_samples_per_neighbor`` training rows per neighbor asked for, goes
+        to scikit-learn, recorded as ``"below-crossover"``
+        (``docs/benchmarks.md``, table ``knn-k``).
+
+        It reads the constructor's ``n_neighbors``, the one a fit can see. A query
+        that asks ``kneighbors(n_neighbors=...)`` for more is answered on the
+        backend the fit chose, as every query is.
+        """
+        tuning = get_tuning()
+        k = self.n_neighbors
+        if k is None:
+            return None
+        k = int(k)
+        if k > tuning.knn_max_neighbors:
+            return "below-crossover", (
+                f"n_neighbors={k} is above the measured KNN crossover for patched "
+                f"dispatch (at most {tuning.knn_max_neighbors} neighbors): MLX's "
+                "search pays per query for every neighbor it keeps, and scikit-learn's "
+                "brute force barely does"
+            )
+        if n_samples < tuning.knn_min_samples_per_neighbor * k:
+            return "below-crossover", (
+                f"{n_samples} training samples for n_neighbors={k} is below the "
+                f"measured KNN crossover for patched dispatch "
+                f"({tuning.knn_min_samples_per_neighbor} samples per neighbor): the "
+                "candidates MLX refines per query are then a large share of the index"
+            )
+        return None
+
     def _patched_data_handoff(self, index, device) -> tuple[str, str, dict] | None:
         """Patched mode's handoff by the *data*: ``(reason, detail, extra)``, or ``None``.
 
         The size rules were calibrated on Gaussian data, where the first float32
-        pass certifies every query row. Other data does not always let it: on rows
-        repeated about 20 times, 100 clusters of std 0.1, or one column in raw units
-        beside standardized ones, the certificate failed for 59-64 of 64 rows, each
-        query row is searched again — wider, then exactly — and at every shape the
-        size rules send to MLX some batch lost to stock brute force, whose float64
-        search needs no certificate, down to 0.16x (``docs/benchmarks.md``, table
-        ``knn-data``). A fit cannot see its queries, but it can see its own rows, so
-        patched mode searches 64 of them with the first pass alone
+        pass certifies every query row. Other data does not always let it, and a
+        row it cannot certify is searched again — wider, then exactly — while the
+        whole batch waits: the cost is paid per *batch*, so a few such rows in a
+        hundred, which put one in most batches of 16-64 queries, lose to stock brute
+        force, whose float64 search needs no certificate. On rows repeated about
+        twice, one column on 100 times the scale of the rest, or 100 clusters of std
+        0.4-0.5, some batch lost at 30 of 40 shapes measured on and near the size
+        floors, down to 0.36x, with as few as 2 of 256 probed rows uncertified; on
+        rows repeated about 20 times, 100 clusters of std 0.1 or one column in raw
+        units, at every shape, down to 0.03x (``docs/benchmarks.md``, tables
+        ``knn-structured`` and ``knn-data``). A fit cannot see its queries, but it
+        can see its own rows, so patched mode searches ``knn_probe_rows`` (256) of
+        them with the first pass alone
         (:meth:`NeighborIndex.probe <mlxlearn._kernels.distance.NeighborIndex.probe>`,
-        one pass for 64 rows) and hands the fit to scikit-learn when more than
-        ``knn_probe_max_uncertified`` of them could not be certified. Gaussian,
-        uniform and looser clustered data left at most 3 of 64 uncertified, and
-        stayed on MLX.
+        one pass for 256 rows) and hands the fit to scikit-learn when more than
+        ``knn_probe_max_uncertified`` of them — at 0, any of them — could not be
+        certified. Gaussian and uniform data left none uncertified at k = 10 up to
+        3 072 features, and stayed on MLX; the first pass's noise band grows with
+        the width and with k, and at 4 096 features, or 3 072 at k = 5, or 256 at
+        k = 200, even Gaussian data left a few (table ``knn-k``), and goes to
+        scikit-learn. The probe searches with the fitted ``n_neighbors`` for that
+        reason.
 
         Integer-valued data — binary, one-hot, counts — is searched on an exact
         integer path instead, with no certificate to fail; it kept up with stock
@@ -273,7 +323,7 @@ class MLXNeighborsMixin(BackendMixin):
         """
         if not self._mlxlearn_allow_fallback or get_tuning().force_backend:
             return None
-        found = index.probe(self.n_neighbors, device=device)
+        found = index.probe(self.n_neighbors, rows=get_tuning().knn_probe_rows, device=device)
         handed = self._probe_handoff(index.n_samples, index.n_features, found)
         if handed is None:
             return None
@@ -299,13 +349,15 @@ class MLXNeighborsMixin(BackendMixin):
             )
         if found["uncertified"] <= tuning.knn_probe_max_uncertified * found["rows"]:
             return None
+        limit = tuning.knn_probe_max_uncertified
+        allowed = "none allowed" if limit == 0 else f"more than {limit:.0%}"
         return "data-probe", (
             f"the first float32 pass could not certify the neighbors of "
             f"{found['uncertified']} of {found['rows']} training rows probed at fit "
-            f"(more than {tuning.knn_probe_max_uncertified:.0%}): on this data — "
-            "duplicated rows, tight clusters, or a column on a far larger scale than "
-            "the rest — most queries would be searched again, and scikit-learn's "
-            "float64 brute force answers them faster"
+            f"({allowed}): on this data — "
+            "duplicated rows, clusters, or a column on a far larger scale than the "
+            "rest — most query batches would hold a row searched again, and "
+            "scikit-learn's float64 brute force answers them faster"
         )
 
     def _minkowski_p(self):
@@ -481,7 +533,10 @@ class MLXNeighborsMixin(BackendMixin):
             Query points. ``None`` means "the training data", and each point's own
             index is excluded from its neighbors.
         n_neighbors : int, default=None
-            Defaults to the estimator's ``n_neighbors``.
+            Defaults to the estimator's ``n_neighbors``. A different value is answered
+            on the backend the fit chose: patched dispatch decides by the constructor's
+            ``n_neighbors``, the one a fit can see, so under ``patch_sklearn()`` fit
+            with the k you will ask for.
         return_distance : bool, default=True
             Whether to return distances alongside indices.
 

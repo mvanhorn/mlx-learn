@@ -27,9 +27,10 @@ import sklearn
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression as _SkLogisticRegression
 
-from .._common.base import BackendMixin, mlx_guard
+from .._common.base import _CALL_SCOPE, BackendMixin, mlx_guard
 from .._common.config import get_config, get_tuning
 from .._common.device import inference_device
+from .._common.diagnostics import record_inference
 from .._common.validation import (
     _safe_shape,
     check_classification_targets,
@@ -310,11 +311,11 @@ class MLXLogisticMixin(BackendMixin):
     ) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        Every fit needs ``logreg_min_samples`` rows and ``logreg_min_work``
-        element-ops, the work proxy being ``n_samples × n_features × n_targets`` —
-        one weight vector for a binary problem, one per class for a multinomial
-        one — because each objective evaluation is a pair of
-        ``(n, d) × (d, n_targets)`` products.
+        Every fit needs ``logreg_min_samples`` rows. A multinomial fit also needs
+        ``logreg_min_work`` element-ops, the work proxy being
+        ``n_samples × n_features × n_classes`` — one weight vector per class —
+        because each objective evaluation is a pair of ``(n, d) × (d, n_classes)``
+        products.
 
         A binary fit must also be tall, and not too wide: at least
         ``logreg_binary_min_samples`` rows and at most
@@ -329,18 +330,26 @@ class MLXLogisticMixin(BackendMixin):
         from 100 000 rows at every width up to 1 024 (1.30x-6.2x), but random and
         noisy labels lost at 100 000 rows (0.61x-0.90x, most on 1.7.2) and, at 256
         features, stood at 0.96x-1.17x from 200 000; up to 64 features from 200 000
-        rows they won or tied. A multinomial fit does ``n_targets`` times the GPU
+        rows they won or tied. A multinomial fit does ``n_classes`` times the GPU
         work for the same copy, and won from 60 000 rows at every width measured,
-        overlapping classes or well separated (1.00x-8.6x).
+        overlapping classes or well separated (1.00x-8.6x) — but on labels without
+        signal, which converge in one iteration, 60 000 x 1 with three and five
+        classes lost or tied (0.70x-0.92x), and every multinomial fit from 360 000
+        element-ops won or tied.
         """
         tuning = get_tuning()
-        work = n_samples * n_features * max(int(n_targets), 1)
-        if n_samples < tuning.logreg_min_samples or work < tuning.logreg_min_work:
+        if n_samples < tuning.logreg_min_samples:
             return True, (
-                f"{n_samples} samples x {n_features} features x {n_targets} "
-                f"target(s) is below the measured logistic-regression crossover "
-                f"({tuning.logreg_min_samples} samples and {tuning.logreg_min_work} "
-                "element-ops, both required)"
+                f"{n_samples} samples x {n_features} features is below the measured "
+                f"logistic-regression crossover ({tuning.logreg_min_samples} samples)"
+            )
+        work = n_samples * n_features * max(int(n_targets), 1)
+        if n_targets > 1 and work < tuning.logreg_min_work:
+            return True, (
+                f"a multinomial fit of {n_samples} samples x {n_features} features x "
+                f"{n_targets} classes is below the measured logistic-regression "
+                f"crossover ({tuning.logreg_min_work} element-ops, rows x features x "
+                "classes)"
             )
         if n_targets <= 1 and (
             n_samples < tuning.logreg_binary_min_samples
@@ -358,17 +367,17 @@ class MLXLogisticMixin(BackendMixin):
         """:meth:`_below_crossover` from the raw input, before any validation.
 
         The class count only changes the answer for a problem that clears the
-        sample floor and would be refused as binary — or would fall short of the
-        work floor with one weight vector — so ``y`` is only looked at then, and
-        cheaply (:func:`_count_targets`).
+        sample floor and would be refused as binary — or, as a multinomial fit of
+        three classes, would fall short of the work floor — so ``y`` is only looked
+        at then, and cheaply (:func:`_count_targets`).
         """
         n_samples, n_features = shape
         tuning = get_tuning()
         n_targets = 1
         if n_samples >= tuning.logreg_min_samples and (
-            n_samples * n_features < tuning.logreg_min_work
-            or n_samples < tuning.logreg_binary_min_samples
+            n_samples < tuning.logreg_binary_min_samples
             or n_features > tuning.logreg_binary_max_features
+            or n_samples * n_features * 3 < tuning.logreg_min_work
         ):
             n_targets = _count_targets(y)
         return self._below_crossover(n_samples, n_features, n_targets)
@@ -414,12 +423,26 @@ class MLXLogisticMixin(BackendMixin):
         A fit that started and did not complete, which can leave new ``classes_``
         next to the previous ``coef_``, is not that: ``check_is_fitted`` raises.
         """
-        if "_execution_backend_" in self.__dict__:
-            # Fitted by mlxlearn, so nothing to check. A call nested in one that
-            # has recorded its event already (scikit-learn's predict reaching
-            # decision_function) returns inside _note_inference, before any work.
-            self._note_inference(
-                operation, shape=_safe_shape(X), host=True, compute="numpy-float64"
+        state = self.__dict__
+        backend = state.get("_execution_backend_")
+        if backend is not None:
+            # Fitted by mlxlearn, so nothing to check. This is _note_inference with
+            # host=True, inlined: it runs on every predict, and a single-row predict
+            # is about 0.1 ms of scikit-learn's own work, so each call it saves is
+            # measurable. A call nested in one that has recorded its event already
+            # (scikit-learn's predict reaching decision_function) returns first.
+            scope = _CALL_SCOPE.get()
+            if scope is not None and scope.owner is self:
+                if scope.recorded:
+                    return
+                scope.recorded = True
+                operation = scope.operation
+            extra = {"compute": "numpy-float64"}
+            fit_event = state.get("_fit_event_")
+            if fit_event is not None:
+                extra["fit_reason"] = fit_event.reason
+            record_inference(
+                type(self).__name__, operation, backend, "sticky", "", _safe_shape(X), extra
             )
             return
         check_is_fitted(self)

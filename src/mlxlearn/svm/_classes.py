@@ -314,9 +314,9 @@ class MLXSVCMixin(BackendMixin):
 
         The linear and sigmoid kernels are excluded outright, and rbf and poly must
         clear a **width** floor as well as the sample and work floors, because
-        width is what decides at the default kernel parameters. Patched mode also
-        reads the kernel parameters themselves (:meth:`_kernel_handoff`). The
-        calibration is ``docs/benchmarks.md``'s ``svc``, ``svc-params``,
+        width is what decides. Patched mode also reads the kernel parameters
+        themselves (:meth:`_kernel_handoff`). The calibration is
+        ``docs/benchmarks.md``'s ``svc``, ``svc-hard``, ``svc-params``,
         ``svc-sigmoid``, ``svc-linear``, ``svc-narrow``, ``svc-multi`` and
         ``svc-multi-overlap`` tables, measured against scikit-learn 1.9.0 and 1.7.2.
 
@@ -328,16 +328,20 @@ class MLXSVCMixin(BackendMixin):
         with C=10, mlxlearn spent 27-41 µs an iteration from 16 to 256 features,
         nearly flat, and LIBSVM 11 µs at 16 features rising to 103 µs at 256,
         because each kernel row it misses costs ``O(n·d)``, and a few µs once its
-        cache holds the rows. At the default ``gamma`` and ``degree`` they cross
-        near 100 features: at 16-64 features rbf and poly lost at C = 10 and 100,
-        while from 128 features they won at every C tried, 0.1 to 100 — once the
-        fit is large enough. At 128 features a fit of 1 000-2 000 rows still lost at
-        C = 10 and above on one version or both (0.61x-0.95x), and from 3 000 rows
-        won or tied on both. The work floor, 3 000 x 128, keeps that corner on
-        LIBSVM and lets 1 500 x 256 and 1 024 x 512 through. Narrow data past the
-        cache, where rows are fetched on demand, loses at C = 1 too. A work floor
-        alone cannot see any of that: the first release's ``n·d >= 10⁶`` could not
-        tell 16 000 x 64 from 4 000 x 256.
+        cache holds the rows. On the benchmark's binary target they cross near 100
+        features: at 16-64 features rbf and poly lost at C = 10 and 100, while at
+        128 features they won at every C tried, 0.1 to 100, from 3 000 rows. But
+        the labels decide how many rows become support vectors, and a fit cannot
+        see that before it runs: on labels with little or no signal nearly every
+        row is one, and at 128 features 3 000-6 000 rows lost at C = 10 and 100
+        (0.83x-0.94x), as did one-vs-one pairs of 3 000 x 128 (0.81x-0.91x). From
+        256 features every label law measured won at every C, from 1 500 x 256 and
+        1 024 x 512 (1.21x-5.9x). So the width floor is 256 features; the work
+        floor, 1 500 x 256, keeps 1 000 x 256 on LIBSVM, and ``svc_min_samples``
+        lets 1 024 x 512 through. Narrow data past the cache, where rows are
+        fetched on demand, loses at C = 1 too. A work floor alone cannot see any of
+        that: the first release's ``n·d >= 10⁶`` could not tell 16 000 x 64 from
+        4 000 x 256.
 
         The kernel parameters move that crossing, not only the iteration count: a
         kernel close to the linear one takes many iterations per row over rows
@@ -351,11 +355,11 @@ class MLXSVCMixin(BackendMixin):
         rows on average, each paying its own Gram and its own loop, so a problem
         whose total clears every floor can still be a pile of tiny losses. When
         ``n_classes`` is given, the *mean* pair's work ``(2n/K)·d`` must also
-        clear ``svc_min_pair_work``, the binary work floor: on overlapping classes
-        pairs of 2 000 x 128 lost at C = 10 and 100 on 1.7.2 (0.91x-0.92x), and
-        every pair from 3 000 x 128 up won or tied (the ``svc-multi-overlap``
-        table); on separated blobs pairs of 256 x 512 (K=16) ran 0.73x-0.81x and of
-        500 x 256 (K=32) 0.70x-0.77x (``svc-multi``). The mean, not the largest
+        clear ``svc_min_pair_work``, the binary work floor: on separated blobs
+        pairs of 256 x 512 (K=16) ran 0.73x-0.81x and of 500 x 256 (K=32)
+        0.70x-0.77x (``svc-multi``), while pairs of 1 500 x 256 and 1 024 x 512 won
+        on overlapping classes and on random labels (``svc-multi-overlap``,
+        ``svc-hard``). The mean, not the largest
         pair: with imbalanced classes one big pair can hide thousands of tiny ones,
         and it is their count that costs. For two classes the mean pair is the
         whole problem.
@@ -405,10 +409,15 @@ class MLXSVCMixin(BackendMixin):
         kernel much wider than the data's own spread (``gamma`` below
         ``svc_min_gamma_ratio`` times ``"scale"``) and a polynomial kernel of low
         degree, or with a ``coef0`` that mixes in the lower-degree terms, behave
-        like it: at C = 10 and 100 they lost at every shape measured. rbf with a
-        small ``gamma`` still won at ``C <= svc_low_gamma_max_c``, where there are
-        few iterations to lose on. ``gamma_ratio`` is ``None`` before the data are
-        validated (:meth:`_gamma_ratio`), and the rbf half waits for it.
+        like it: at C = 10 and 100 they lost at every shape measured. So, at the
+        other end, does an rbf kernel far *narrower* than the data (``gamma`` above
+        ``svc_max_gamma_ratio`` times ``"scale"``, which ``gamma=1`` is on
+        standardized data of more than 30 features): every row becomes a support
+        vector, each visited over a row LIBSVM has cached, and at 100-1 000 times
+        ``"scale"`` it lost at C = 10 (table ``svc-hard``). rbf outside those bounds
+        still won at ``C <= svc_low_gamma_max_c``, where there are few iterations to
+        lose on. ``gamma_ratio`` is ``None`` before the data are validated
+        (:meth:`_gamma_ratio`), and the rbf half waits for it.
 
         Patched mode only (``_select_backend``'s ``handoff``), as the neighbor
         estimators' width rules are: what it measures is LIBSVM winning, and a
@@ -418,11 +427,9 @@ class MLXSVCMixin(BackendMixin):
         """
         tuning = get_tuning()
         if self.kernel == "rbf":
-            if (
-                gamma_ratio is not None
-                and gamma_ratio < tuning.svc_min_gamma_ratio
-                and float(self.C) > tuning.svc_low_gamma_max_c
-            ):
+            if gamma_ratio is None or float(self.C) <= tuning.svc_low_gamma_max_c:
+                return None
+            if gamma_ratio < tuning.svc_min_gamma_ratio:
                 return "below-crossover", (
                     f"gamma is {gamma_ratio:.3g} times scikit-learn's 'scale' value, and "
                     f"C={float(self.C):g}: an rbf kernel this wide takes the linear "
@@ -430,6 +437,15 @@ class MLXSVCMixin(BackendMixin):
                     f"for its kernel parameters (gamma at least "
                     f"{tuning.svc_min_gamma_ratio:g} times 'scale', or C at most "
                     f"{tuning.svc_low_gamma_max_c:g})"
+                )
+            if gamma_ratio > tuning.svc_max_gamma_ratio:
+                return "below-crossover", (
+                    f"gamma is {gamma_ratio:.3g} times scikit-learn's 'scale' value, and "
+                    f"C={float(self.C):g}: an rbf kernel this narrow makes nearly every "
+                    "row a support vector, each of which LIBSVM visits faster once its "
+                    "cache holds the row, outside the measured SVC crossover for its "
+                    f"kernel parameters (gamma at most {tuning.svc_max_gamma_ratio:g} "
+                    f"times 'scale', or C at most {tuning.svc_low_gamma_max_c:g})"
                 )
         elif self.kernel == "poly":
             if int(self.degree) < tuning.svc_poly_min_degree or float(self.coef0) != 0.0:

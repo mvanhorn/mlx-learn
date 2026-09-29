@@ -369,6 +369,22 @@ def test_the_probe_agrees_with_the_query_it_predicts(rng):
     assert found["uncertified"] == stats["widened_rows"] > 0
 
 
+def test_the_probe_searches_as_many_rows_as_it_is_asked_to(rng):
+    """Patched dispatch probes ``knn_probe_rows`` rows (256), enough to see a rate of
+    uncertified rows near 1%, which 64 rows miss about half the time; fewer when the
+    index has fewer rows."""
+    X = rng.normal(size=(3000, 16))
+    X[:, 0] *= 100.0
+    index = build_index(X, backend="cpu")
+    wide = index.probe(10, rows=256)
+    assert wide["rows"] == 256 and not wide["integer"]
+    rows = np.unique(np.linspace(0, 2999, 256).astype(np.intp))
+    stats: dict = {}
+    index.query(X[rows], 10, stats=stats)
+    assert wide["uncertified"] == stats["widened_rows"]
+    assert build_index(X[:100], backend="cpu").probe(10, rows=256)["rows"] == 100
+
+
 def test_the_probe_of_a_tiny_index_is_the_exact_answer(rng):
     """With every row a candidate there is nothing to certify."""
     X = rng.normal(size=(12, 3))

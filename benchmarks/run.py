@@ -38,7 +38,7 @@ __all__ = ["main", "PROFILES", "PROFILE_SETTINGS", "Case"]
 
 #: The scikit-learn estimators' own defaults, which a case only overrides — and only
 #: names in its label — when it means to.
-_DEFAULT_OPTIONS = {"sklearn_algorithm": "auto", "kernel": "rbf", "C": 1.0}
+_DEFAULT_OPTIONS = {"sklearn_algorithm": "auto", "kernel": "rbf", "C": 1.0, "n_neighbors": 10}
 
 #: A case the gate would fail is timed again over this many times its iterations,
 #: and the gate fails it only if the loss reproduces there: a false alarm near 1% per
@@ -53,7 +53,7 @@ class Case:
 
     ``options`` carries the knobs a case changes from the defaults above —
     ``sklearn_algorithm`` (the ``NearestNeighbors`` algorithm, which selects the
-    stock baseline; the mlxlearn side is given it too), ``kernel`` and
+    stock baseline; the mlxlearn side is given it too), ``n_neighbors``, ``kernel`` and
     ``C`` (SVC), ``n_classes`` (classification targets) — and each one appears in
     the label, so two differently configured cases can never share a name.
     ``iterations`` caps the run's iteration count for a case whose single call
@@ -125,9 +125,14 @@ PROFILES: dict[str, list[Case]] = {
         *_knn_grid([1_048_576], [8], [256], operations=("kneighbors",)),
         *_knn_grid([50_000], [3], [256], operations=("kneighbors",)),
         # Data the size rules would send to MLX and the fit-time probe does not:
-        # duplicated rows at a wide shape, integer features at a tall narrow one.
+        # duplicated rows at a wide shape — about 20 copies each, and about 2, which
+        # leaves only a few rows in a hundred uncertified — and integer features at a
+        # tall narrow one.
         *_knn_grid([24_000], [256], [256], operations=("kneighbors",), data="dups"),
+        *_knn_grid([30_000], [256], [64], operations=("kneighbors",), data="dup2"),
         *_knn_grid([1_048_576], [64], [256], operations=("kneighbors",), data="binary"),
+        # More neighbors than the rules keep on MLX, at a shape they otherwise do.
+        *_knn_grid([1_048_576], [64], [1_024], operations=("kneighbors",), n_neighbors=100),
         # Logistic regression: below the sample floor; binary but too wide, and too
         # short; binary, tall and narrow (MLX); multinomial (MLX).
         Case("logreg", "fit", 5_000, 32),
@@ -135,17 +140,23 @@ PROFILES: dict[str, list[Case]] = {
         Case("logreg", "fit", 100_000, 16),
         Case("logreg", "fit", 200_000, 16),
         Case("logreg", "fit", 60_000, 64, options={"n_classes": 5}),
-        # SVC: below every floor; enough rows but too narrow; wide (MLX); and a
-        # many-class problem each of whose pairs is below the pair floor.
+        # Multinomial below the work floor: one feature, three classes.
+        Case("logreg", "fit", 60_000, 1, options={"n_classes": 3}),
+        # SVC: below every floor; enough rows but too narrow, at 64 and at 128
+        # features; wide (MLX); and a many-class problem each of whose pairs is below
+        # the pair floor.
         Case("svc", "fit", 1_000, 32),
         Case("svc", "fit", 4_000, 64),
+        Case("svc", "fit", 3_000, 128),
         Case("svc", "fit", 4_000, 256),
         *_svc_grid([(2_048, 512)], n_classes=4),
         *_svc_grid([(2_048, 512)], n_classes=16),
-        # SVC kernels too close to linear for their C (scikit-learn), whatever the size:
-        # rbf at a tenth of the "scale" gamma, C = 100; poly of degree 2, C = 10.
+        # SVC kernel parameters outside the measured crossover for their C
+        # (scikit-learn), whatever the size: rbf at a tenth of the "scale" gamma,
+        # C = 100, and at 100 times it, C = 10; poly of degree 2, C = 10.
         Case("svc", "fit", 4_000, 256, options={"C": 100.0, "gamma": 0.1 / 256}),
-        Case("svc", "fit", 3_000, 128, options={"C": 10.0, "kernel": "poly", "degree": 2}),
+        Case("svc", "fit", 1_500, 256, options={"C": 10.0, "gamma": 100.0 / 256}),
+        Case("svc", "fit", 1_500, 256, options={"C": 10.0, "kernel": "poly", "degree": 2}),
         # SVC inference on a model fitted on MLX: one row, answered on the host, and a
         # thousand, on the device.
         Case("svc", "predict", 4_000, 256, 1),
@@ -263,10 +274,10 @@ def _make_data(case: Case, rng: np.random.Generator):
     if case.algorithm == "knn":
         Q = rng.normal(size=(case.n_queries, case.n_features))
         data = case.option("data")
-        if data == "dups":
-            # Every training row repeated about 20 times: the first float32 pass cannot
-            # certify a neighbor set that ties with copies it left out.
-            base = max(case.n_samples // 20, 1)
+        if data in ("dups", "dup2"):
+            # Every training row repeated about 20 (or 2) times: the first float32
+            # pass cannot certify a neighbor set that ties with copies it left out.
+            base = max(case.n_samples // (20 if data == "dups" else 2), 1)
             X = X[:base][rng.integers(0, base, size=case.n_samples)]
         elif data == "binary":
             X = (rng.random(size=X.shape) < 0.2).astype(np.float64)
@@ -304,9 +315,10 @@ def _estimators(case: Case, layer: str):
         # given algorithm="brute" is compared with stock brute force, not with the
         # KD-tree patched dispatch would otherwise hand the fit to.
         algorithm = case.option("sklearn_algorithm")
+        k = case.option("n_neighbors")
         return (
-            lambda: mlx_neighbors.NearestNeighbors(n_neighbors=10, algorithm=algorithm),
-            lambda: sklearn.neighbors.NearestNeighbors(n_neighbors=10, algorithm=algorithm),
+            lambda: mlx_neighbors.NearestNeighbors(n_neighbors=k, algorithm=algorithm),
+            lambda: sklearn.neighbors.NearestNeighbors(n_neighbors=k, algorithm=algorithm),
         )
     if case.algorithm == "logreg":
         return (

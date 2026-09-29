@@ -157,12 +157,15 @@ outgrows the gaps, and every query takes the exact search. When a call needed th
 pass or the exact search, its diagnostics event says for how many rows.
 
 Against stock scikit-learn rather than 0.1.0a2, that second pass is what decides: on such
-data MLX lost at every shape the size rules send it, down to 0.16× (grid `knn-data` in
-[`benchmarks.md`](benchmarks.md)). So under `patch_sklearn()` a fit first searches 64 of
-its own rows with the first pass alone and, if more than an eighth of them cannot be
-certified, hands the fit to scikit-learn's float64 brute force (diagnostics reason
-`"data-probe"`), whose answer is exact without a certificate. A directly imported
-estimator keeps the search, and its correctness guarantee, on MLX.
+data MLX lost at every shape the size rules send it, down to 0.17× (grid `knn-data` in
+[`benchmarks.md`](benchmarks.md)), and since a batch waits for its slowest row, a few rows
+in a hundred that need it — rows repeated twice, clusters of std 0.5, one column on 100
+times the scale of the rest — were enough to lose mid-size batches (grid
+`knn-structured`). So under `patch_sklearn()` a fit first searches 256 of its own rows
+with the first pass alone and, if it cannot certify any one of them, hands the fit to
+scikit-learn's float64 brute force (diagnostics reason `"data-probe"`), whose answer is
+exact without a certificate. A directly imported estimator keeps the search, and its
+correctness guarantee, on MLX.
 
 What scaling cannot bring into range is refused (§1): refinement subtracts two translated
 coordinates in float32, so training data spanning more than `FLOAT32_MAX / 8` (about

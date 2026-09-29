@@ -367,6 +367,19 @@ come first under **Changed**.
   on labels without signal — table `logreg-labels`). Each is corrected, the rules that
   depended on it are changed (see **Changed**), and the grids that show it are
   committed.
+- A second independent re-measurement found more: that the fit-time probe hands off the
+  data its first pass cannot certify (rows repeated about twice, clusters of std 0.4–0.5
+  and one column on 100 times the scale of the rest left a few of 64 probed rows
+  uncertified, passed the probe, and lost mid-size batches near the size floors — the
+  cost is per batch, not per row; table `knn-structured`); that k did not matter (k = 100
+  and 200 lost at a million rows and at 2 048–4 096 features, wider than any grid had
+  gone; table `knn-k`); that `SVC` wins from 128 features (not on labels with little or
+  no signal, nor with `gamma` far above `"scale"` at C above 1; table `svc-hard`); that
+  multinomial `LogisticRegression` wins from 60 000 rows at every width (not at one
+  feature on labels without signal; table `logreg-labels`); and that single-row
+  `LogisticRegression.predict` runs at 0.94×–1.02× of stock (see **Performance** for what
+  it measures). Each is corrected, with the rule, grid and table under **Changed** and
+  **Added**, and what each new rule gives up is stated beside it.
 - 0.1.0a1 listed cold-start measurements among the benchmark outputs. The harness never
   implemented them; see **Removed**.
 - The README's links were relative and 404ed on the PyPI page; they are absolute now. It
@@ -402,13 +415,16 @@ come first under **Changed**.
   `KNeighborsRegressor`: the neighbor search does not depend on `y`, and votes and averages
   are taken per output. The Layer 1 tags now advertise multi-output (and, for the
   classifier, multi-label) targets.
-- **Patched dispatch thresholds re-measured, rules reshaped, and three that read more than
+- **Patched dispatch thresholds re-measured, rules reshaped, and some that read more than
   the shape.** Measured against scikit-learn 1.9.0 and 1.7.2 on an M4 Max, on grids
   `python -m benchmarks.calibrate` regenerates ([`docs/benchmarks.md`](docs/benchmarks.md)
   has every table, named by grid), each threshold now sends a problem to MLX only where
   MLX won or tied against both, in every configuration measured at that shape — for the
-  neighbor estimators, every batch of 1 to 4 096 queries; for `SVC`, the kernel
-  parameters too; for `LogisticRegression`, labels with and without signal.
+  neighbor estimators, every batch of 1 to 4 096 queries, k from 1 to 200 and data with
+  and without structure; for `SVC`, the kernel parameters and labels with and without
+  signal too; for `LogisticRegression`, labels with and without signal. Where a fit
+  cannot see what decides — how it will be queried, how many rows become support
+  vectors — the rules take the side that does not lose, and give up wins to do it.
   - Neighbor estimators need at least 4 096 rows **and** 6 000 000 elements (was 256 rows
     **or** 2 048 elements; table `knn-rows`): below 4 096 rows a 4096-query batch ran
     0.44×–0.79× of stock at every width from 256 to 1 024, and below 6 million elements
@@ -433,35 +449,66 @@ come first under **Changed**.
     200 000 × 3 ran at 0.40× of stock (see **Performance**). At 16–48 features, even at a
     million rows, a batch of 16 queries lost on one version or both (0.73×–0.84×), and
     one of 1 024 (0.62×–0.79×), on Gaussian, clustered and uniform data alike.
+  - **Patched neighbor fits read `n_neighbors`.** The size rules were measured at k = 10,
+    and MLX pays per query for every neighbor it keeps where stock brute force barely
+    does (table `knn-k`, k = 1–200, up to 4 096 features): at k = 100 a 1 024-query
+    batch lost at 1 000 000 × 64 (0.80×) and batches of 32–4 096 queries at 4 096–6 000
+    rows and 2 048–4 096 features (0.61×–0.89×), and k = 200 lost down to 0.33×; k = 40–50
+    only tied with fewer than 150 rows per neighbor at those widths. A patched fit now
+    goes to scikit-learn above 50 neighbors or below 150 rows per neighbor
+    (`knn_max_neighbors`, `knn_min_samples_per_neighbor`; `MLXLEARN_KNN_MAX_NEIGHBORS`,
+    `MLXLEARN_KNN_MIN_SAMPLES_PER_NEIGHBOR`; reason `"below-crossover"`). It reads the
+    constructor's `n_neighbors`, the one a fit can see; `kneighbors(n_neighbors=...)`
+    asking for more at query time is answered where the fit ran. This gives up k =
+    100–200 at 96–128 features and a million rows (1.2×–3.0×) and k = 100 at 8 192 ×
+    1 024 and 100 000 × 256 (1.1×–4.3×).
   - **Patched neighbor fits probe their data.** The size rules were calibrated on
-    Gaussian data, where the first float32 search pass certifies every query row. On rows
+    Gaussian data, where the first float32 search pass certifies every query row. A row
+    it cannot certify is searched again, and its whole batch waits for it. On rows
     repeated about 20 times, tight clusters, or one column in raw units beside
-    standardized ones, it certified almost none, every query was searched again, and
-    queries at shapes the rules send to MLX ran as slow as 0.16× of stock brute force
-    (table `knn-data`). A patched fit now searches 64 of its own rows with the first pass
-    alone and hands the fit to scikit-learn when more than an eighth could not be
-    certified, or when the data are integer-valued below 256 features, whose exact path
-    lost batches of 256 and 1 024 queries at a million rows (`knn_probe_max_uncertified`,
+    standardized ones, it certified almost none, and queries at shapes the rules send to
+    MLX ran as slow as 0.17× of stock brute force (table `knn-data`); on rows repeated
+    about twice, one column on 100 times the scale of the rest or clusters of std
+    0.4–0.5, a few rows in a hundred went uncertified, enough to put one in most batches
+    of 16–64 queries, and some batch lost at 30 of the 40 shapes and laws measured on
+    and near the size floors, down to 0.36× (table `knn-structured`). A patched fit now
+    searches 256 of its own rows with the first pass alone and hands the fit to
+    scikit-learn if any of them could not be certified — as few as 2 of 256 lost — or
+    when the data are integer-valued below 256 features, whose exact path lost batches
+    of 256 and 1 024 queries at a million rows (`knn_probe_rows`,
+    `knn_probe_max_uncertified`; `MLXLEARN_KNN_PROBE_ROWS`,
     `MLXLEARN_KNN_PROBE_MAX_UNCERTIFIED`; diagnostics reason `"data-probe"`, with the
-    probe's count on the fit's event). The probe costs a patched fit one 64-query first
-    pass; a directly imported class does not probe and searches on MLX regardless.
-  - `LogisticRegression` needs at least 60 000 rows and 100 000 element-ops (was 20 000
-    rows and 2·10⁷), and a binary fit also at least 200 000 rows and at most 64 features
+    probe's count on the fit's event). Gaussian and uniform data left none uncertified at
+    every shape measured below 2 048 features. The probe costs a patched fit one
+    256-query first pass, 4.5–15 ms at 256–4 096 features and 47–63 ms at a million rows
+    and more; a directly imported class does not probe and searches on MLX regardless.
+    This gives up those laws' wins where a second search was affordable (7 of the 40
+    won or tied every batch, up to 4.9×).
+  - `LogisticRegression` needs at least 60 000 rows (was 20 000 rows and 2·10⁷
+    element-ops), a multinomial fit also at least 360 000 rows × features × classes
+    (`logreg_min_work`), and a binary fit at least 200 000 rows and at most 64 features
     (`logreg_binary_min_samples`, `logreg_binary_max_features`; tables `logreg-binary`,
     `logreg-labels`, `logreg-multi`, `logreg-separable`). A fit that converges in an
     iteration or two is mostly MLX's fixed cost, and labels that carry no signal do: at
-    100 000 rows random and noisy labels lost (0.61×–0.90×, most on scikit-learn 1.7.2),
-    and at 256 features stood at 0.96×–1.17× from 200 000 rows. The binary fits of the
-    benchmark's own target now win from 100 000 rows at every width up to 1 024
-    (1.30×–6.2×, see **Performance**), so the limits give up wins, not losses.
-  - `SVC` needs the rbf or poly kernel, at least 128 features (`svc_min_features`),
+    100 000 rows random and noisy binary labels lost (0.61×–0.90×, most on scikit-learn
+    1.7.2), and at 256 features stood at 0.96×–1.17× from 200 000 rows; at 60 000 × 1,
+    three and five random classes lost or tied (0.70×–0.92×), while from 360 000
+    element-ops every multinomial fit won or tied. The binary fits of the benchmark's own
+    target now win from 100 000 rows at every width up to 1 024 (1.30×–6.2×, see
+    **Performance**), so the limits give up wins, not losses: those, and 60 000 × 1 with
+    three overlapping classes (1.87×).
+  - `SVC` needs the rbf or poly kernel, at least 256 features (`svc_min_features`),
     1 024 rows and 384 000 elements (was any kernel but linear, 2 048 rows and 10⁶
-    elements, with no width floor; table `svc`). Below 128 features rbf and poly fits at
-    C = 10 and 100 are slower on MLX, and narrow fits past the kernel cache are at C = 1
-    too; at 128 features, fits of 1 000–2 000 rows lost at C = 10 and above
-    (0.61×–0.95×), and from 3 000 rows every kernel and C from 0.1 to 100 won or tied on
-    both versions. The sigmoid kernel now stays on LIBSVM at every size, as the linear
-    kernel does: it lost at C = 10 and 100 nearly everywhere, down to 0.06× (table
+    elements, with no width floor; tables `svc`, `svc-hard`). Below 128 features rbf and
+    poly fits at C = 10 and 100 are slower on MLX, and narrow fits past the kernel cache
+    are at C = 1 too. At 128 features the benchmark's target won from 3 000 rows, but on
+    labels with little or no signal — where nearly every row becomes a support vector,
+    which a fit cannot know before it runs — 3 000–6 000 rows lost at C = 10 and 100
+    (0.83×–0.94×) and one-vs-one pairs of 3 000 × 128 lost on both versions
+    (0.81×–0.91×); from 256 features every label law won at every C (1.21×–5.9×). This
+    gives up everything at 128–255 features that won, 1.1×–4.1× on the benchmark's
+    target. The sigmoid kernel now stays on LIBSVM at every size, as the linear kernel
+    does: it lost at C = 10 and 100 nearly everywhere, down to 0.06× (table
     `svc-sigmoid`).
   - **Patched `SVC` reads the kernel parameters.** A kernel close to the linear one
     takes many SMO iterations per row over rows LIBSVM has cached, and lost at every
@@ -469,16 +516,22 @@ come first under **Changed**.
     scikit-learn's `"scale"` value at C = 10 or 100 (down to 0.30×), poly of degree 2
     at C = 10 and 100 (0.43×–0.63×), and poly with `coef0 = 1` (down to 0.47×). An rbf
     fit now needs `gamma` of at least 0.8 × `"scale"` — `gamma · n_features · X.var()`,
-    read after validation — or C of at most 1, where every smaller `gamma` won (2.1×–11×); a
-    poly fit needs degree 3 or more and `coef0 = 0` (`svc_min_gamma_ratio`,
-    `svc_low_gamma_max_c`, `svc_poly_min_degree`; `MLXLEARN_SVC_MIN_GAMMA_RATIO`,
+    read after validation — or C of at most 1, where every smaller `gamma` won (2.1×–11×).
+    At the other end, a kernel far narrower than the data makes every row a support
+    vector: `gamma` of 100–1 000 × `"scale"` — `gamma=1` on standardized data of that
+    many features — lost at C = 10 on 1.7.2 (0.88×–0.91×, table `svc-hard`), so an rbf
+    fit also needs `gamma` of at most 30 × `"scale"`, where it won everywhere
+    (1.10×–2.3×), or C of at most 1. A poly fit needs degree 3 or more and `coef0 = 0`
+    (`svc_min_gamma_ratio`, `svc_max_gamma_ratio`, `svc_low_gamma_max_c`,
+    `svc_poly_min_degree`; `MLXLEARN_SVC_MIN_GAMMA_RATIO`, `MLXLEARN_SVC_MAX_GAMMA_RATIO`,
     `MLXLEARN_SVC_LOW_GAMMA_MAX_C`, `MLXLEARN_SVC_POLY_MIN_DEGREE`). Patched only, and
     recorded as `"below-crossover"`; a directly imported class keeps these fits on MLX.
   - Many-class `SVC`: the mean one-vs-one pair must clear the binary work floor,
     384 000 elements (`svc_min_pair_work`, was 250 000). Pairs of 2 000 × 128, which the
     old floor admitted, lost on overlapping classes at C = 10 and 100 on scikit-learn
-    1.7.2 (0.91×–0.92×, table `svc-multi-overlap`); pairs from 3 000 × 128 up won or
-    tied.
+    1.7.2 (0.91×–0.92×, table `svc-multi-overlap`), and pairs of 3 000 × 128 on random
+    labels (0.81×–0.91×, table `svc-hard`), below the width floor now; pairs of
+    1 500 × 256 and 1 024 × 512 won on both kinds of labels (1.23×–4.2×).
 - **Patched fits below the crossover are decided from `X.shape`**, before any data scan or
   copy, for all three estimator families, and record a single event. A consequence: a
   sub-crossover fit whose only mismatch is data-dependent — values past 3.4e38, or for
@@ -635,9 +688,13 @@ come first under **Changed**.
   - a neighbor query that needed the certificate's second pass or its exact search
     reports how many rows did in its event's `extra` (`search="certificate-fallback"`,
     `widened_rows`, `exact_rows`).
-- Private tuning knobs `knn_min_features`, `logreg_binary_min_samples`,
-  `logreg_binary_max_features`, `svc_min_features`, `svc_min_pair_work` and
-  `mlx_cache_release_fraction`, each with its `MLXLEARN_*` variable.
+- Private tuning knobs `knn_min_features`, `knn_wide_features`,
+  `knn_narrow_min_samples`, `knn_max_neighbors`, `knn_min_samples_per_neighbor`,
+  `knn_probe_rows`, `knn_probe_max_uncertified`, `logreg_binary_min_samples`,
+  `logreg_binary_max_features`, `svc_min_features`, `svc_min_pair_work`,
+  `svc_min_gamma_ratio`, `svc_max_gamma_ratio`, `svc_low_gamma_max_c`,
+  `svc_poly_min_degree` and `mlx_cache_release_fraction`, each with its `MLXLEARN_*`
+  variable.
 - Internal validation and array helpers: `validate_float32_input`,
   `require_nonnegative_weights`, `finite_range` and `ValueRange`, and
   `check_squared_float32_range`, a guard for data whose squares overflow or underflow
@@ -686,10 +743,11 @@ come first under **Changed**.
   `docs/benchmarks.md`. The raw results those tables come from are committed in
   `benchmarks/results/calibration/`, and every threshold, docstring and headline range
   cites its table by grid name. Grids vary more than the shape: the data (`knn-data`,
-  `knn-narrow`, with a column for what the fit-time probe found), k (`knn-k`), `gamma`,
-  `degree` and `coef0` (`svc-params`), overlapping classes (`svc-multi-overlap`),
-  inference batch sizes (`svc-predict`), and labels without signal and well-separated
-  classes (`logreg-labels`, `logreg-separable`).
+  `knn-structured`, `knn-narrow`, with a column for what the fit-time probe found), k
+  (`knn-k`, 1–200, up to 4 096 features), `gamma`, `degree` and `coef0` (`svc-params`,
+  `svc-hard`), labels without signal (`svc-hard`, `logreg-labels`), overlapping classes
+  (`svc-multi-overlap`), inference batch sizes (`svc-predict`), and well-separated
+  classes (`logreg-separable`).
 - `benchmarks/ab.py`, the release-over-release A/B behind **Performance**: two source
   trees in alternating fresh processes. Its results against 0.1.0a2 are
   `benchmarks/results/ab-0.1.0a2.jsonl`.
@@ -807,11 +865,16 @@ Where patched dispatch now sends each problem is under **Changed**.
   0.19–0.35 ms, against 0.22–0.82 ms for LIBSVM (table `svc-predict`).
 - Every public inference call costs less in the wrapper: an estimator fitted by mlxlearn
   skips scikit-learn's `check_is_fitted` (which builds the estimator's tags, twice for a
-  `predict` that reaches `decision_function`), and the call's diagnostics event is kept
-  as its fields until someone reads it. On a single-row `LogisticRegression.predict` —
-  host NumPy on every backend — the cost over stock went from about 10 µs to 3–5 µs
-  after a garbage collection, which is how the benchmark times it: 0.87×–0.93× of stock
-  became 0.94×–1.02×.
+  `predict` that reaches `decision_function`), the call's diagnostics event is kept as
+  its fields until someone reads it, and `LogisticRegression` records it inline. What
+  is left, measured on `LogisticRegression.predict` and `predict_proba` of 1 and 16 rows
+  — host NumPy on every backend, 80–135 µs of stock scikit-learn's own work — is 0.9–1.7
+  µs over stock in a tight loop, on both versions (1.4–2.7 µs before the inline record).
+  Timed as the benchmark times it, each call after a garbage collection, which leaves
+  the caches cold, it is more and noisier: 0.85×–1.04× of stock on 1.9.0 and
+  0.90×–0.98× on 1.7.2 (up to 20 µs over; 41 interleaved pairs, two runs, a
+  significant difference in 9 and 5 of the 24 cases). It is a fixed cost per call, a few
+  Python calls, so it matters only where stock's own call is this short.
 - `SVC` inference: the rbf kernel tile is one fused GPU kernel, bit-identical to the
   unfused evaluation, and `decision_function`/`predict` overlap the device with the
   float64 host contraction. On the GPU at 4 000 × 256, `predict` on 1 row went from 1.09

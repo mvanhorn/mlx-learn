@@ -894,20 +894,30 @@ def test_patched_fit_below_the_crossover_skips_the_mlx_preparation(monkeypatch):
     assert [(e.backend, e.reason) for e in fit_events] == [("sklearn", "below-crossover")]
 
 
-def test_the_crossover_counts_one_weight_vector_per_class():
-    """The work per objective evaluation is ``n × d × n_targets``.
+def test_the_multinomial_work_floor_counts_one_weight_vector_per_class():
+    """The work per objective evaluation is ``n × d × n_classes``.
 
-    With thresholds between the binary and the five-class work of the same shape,
-    the binary problem goes to scikit-learn and the five-class one to MLX.
+    With the floor between the three- and the five-class work of the same shape,
+    the three-class problem goes to scikit-learn and the five-class one to MLX. A
+    binary fit has its own rules — rows and width — and the work floor does not
+    bind it: a fit of labels without signal converges in one iteration either way,
+    and at 1 feature and 60 000 rows three classes lost (0.67x-0.71x) while binary
+    fits won from 200 000 rows at 1 feature.
     """
     n, d = 1000, 20
-    with tuning_context(logreg_min_samples=n, logreg_min_work=3 * n * d):
+    with tuning_context(
+        logreg_min_samples=n, logreg_min_work=4 * n * d, logreg_binary_min_samples=n
+    ):
         X2, y2 = _data(n_classes=2, n_samples=n, n_features=d)
+        X3, y3 = _data(n_classes=3, n_samples=n, n_features=d)
         X5, y5 = _data(n_classes=5, n_samples=n, n_features=d)
         binary = PatchedLogisticRegression().fit(X2, y2)
-        multi = PatchedLogisticRegression().fit(X5, y5)
-    assert binary.execution_backend_ == "sklearn"
-    assert multi.execution_backend_ in ("mlx", "cpu") and multi.execution_backend_ != "sklearn"
+        three = PatchedLogisticRegression().fit(X3, y3)
+        five = PatchedLogisticRegression().fit(X5, y5)
+    assert binary.execution_backend_ != "sklearn", binary.fit_event_
+    assert three.execution_backend_ == "sklearn"
+    assert "multinomial" in three.fit_event_.detail and "3 classes" in three.fit_event_.detail
+    assert five.execution_backend_ in ("mlx", "cpu") and five.execution_backend_ != "sklearn"
 
 
 @pytest.mark.parametrize("spelling", ["int", "str", "object", "series", "category"])

@@ -290,7 +290,7 @@ def _patched_route(case: run.Case) -> str:
     n_classes = case.option("n_classes") or 2
     if case.algorithm == "knn":
         model = patched.NearestNeighbors(
-            n_neighbors=10, algorithm=case.option("sklearn_algorithm")
+            n_neighbors=case.option("n_neighbors"), algorithm=case.option("sklearn_algorithm")
         )
         if model._below_crossover(n, d)[0]:
             return "below-crossover"
@@ -372,6 +372,17 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         and c.n_samples >= tuning.knn_narrow_min_samples
         for c, r in knn
     )
+    # Rows repeated about twice leave only a few probed rows uncertified, and that is
+    # enough to hand the fit over.
+    assert any(r == "handoff:data-probe" and c.option("data") == "dup2" for c, r in knn)
+    # More neighbors than the k rule keeps on MLX, at a shape the size rules send there.
+    assert any(
+        r == "handoff:below-crossover"
+        and c.option("n_neighbors") > tuning.knn_max_neighbors
+        and c.n_features >= tuning.knn_min_features
+        and c.n_samples >= tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
 
     logreg = cases("logreg")
     assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in logreg)
@@ -386,6 +397,14 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         and tuning.logreg_min_samples <= c.n_samples < tuning.logreg_binary_min_samples
         for c, r in logreg
     )
+    # Multinomial, with the rows, below the work floor.
+    assert any(
+        r == "below-crossover"
+        and (c.option("n_classes") or 2) > 2
+        and c.n_samples >= tuning.logreg_min_samples
+        and c.n_samples * c.n_features * c.option("n_classes") < tuning.logreg_min_work
+        for c, r in logreg
+    )
 
     svc = cases("svc")
     assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in svc)
@@ -396,11 +415,21 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         and c.n_features < tuning.svc_min_features
         for c, r in svc
     )
+    # Short of the width floor with enough work for the other two.
+    assert any(
+        r == "below-crossover"
+        and c.n_features < tuning.svc_min_features <= 2 * c.n_features
+        and c.n_samples * c.n_features >= tuning.svc_min_work
+        for c, r in svc
+    )
     assert any(r == "pair:" for _, r in svc)
     # The kernel-parameter rule, at a shape the size floors send to MLX: rbf with a
-    # small gamma, and a low-degree poly kernel.
+    # gamma below the lower bound and above the upper one, and a low-degree poly
+    # kernel.
     kernel_handoffs = [c for c, r in svc if r == "kernel:"]
-    assert any(c.option("kernel") == "rbf" for c in kernel_handoffs)
+    ratios = [c.options["gamma"] * c.n_features for c in kernel_handoffs if "gamma" in c.options]
+    assert any(ratio < tuning.svc_min_gamma_ratio for ratio in ratios)
+    assert any(ratio > tuning.svc_max_gamma_ratio for ratio in ratios)
     assert any(c.option("kernel") == "poly" for c in kernel_handoffs)
     assert all(
         c.n_features >= tuning.svc_min_features and c.n_samples * c.n_features >= tuning.svc_min_work

@@ -54,6 +54,8 @@ NO_CROSSOVER = {
     "knn_narrow_min_samples": 0,
     "knn_probe_max_uncertified": 1.0,
     "knn_wide_features": 0,
+    "knn_max_neighbors": 2**31,
+    "knn_min_samples_per_neighbor": 0,
     "logreg_min_samples": 0,
     "logreg_min_work": 0,
     "logreg_binary_min_samples": 0,

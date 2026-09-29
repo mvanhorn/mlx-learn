@@ -158,10 +158,11 @@ wide ones. These are decided from the input's shape before any scan or copy of `
 `SVC`'s many-class rule from the number of distinct raw labels in `y` too, and
 `LogisticRegression`'s binary rule from whether the raw labels hold two values, whatever
 their type (strings and a pandas `Series` of class names included) — recorded with reason
-`"below-crossover"` (or `"tree-wins"`), and never warned about. Two rules read more than
+`"below-crossover"` (or `"tree-wins"`), and never warned about. Some rules read more than
 the shape, once the shape rules have passed a fit to MLX: `SVC`'s kernel-parameter rule,
-after validation, reads `gamma` against the data's variance; and a neighbor fit probes
-its own rows once its index is built (reason `"data-probe"`). The thresholds are private
+after validation, reads `gamma` against the data's variance; a neighbor fit reads its
+`n_neighbors`, and probes its own rows once its index is built (reason `"data-probe"`);
+and `LogisticRegression` counts the classes. The thresholds are private
 `Tuning` values, each calibrated on a table in [`benchmarks.md`](benchmarks.md) that
 `python -m benchmarks.calibrate` regenerates, and overridable with `MLXLEARN_*`
 environment variables.
@@ -171,10 +172,11 @@ environment variables.
 | neighbor estimators | fewer than `knn_min_train_samples` rows **or** fewer than `knn_min_work` rows × features |
 | neighbor estimators | fewer than `knn_min_features` features, at any size: to scikit-learn's KD-tree where `algorithm="auto"` would build one (at most 15 features, `n_neighbors < n_samples // 2`, a KD-tree metric; reason `"tree-wins"`), to its brute force otherwise |
 | neighbor estimators | fewer than `knn_wide_features` features **and** fewer than `knn_narrow_min_samples` rows: mid-size query batches lose there once the GPU has idled |
-| neighbor estimators | data the first float32 search pass cannot certify — more than `knn_probe_max_uncertified` of 64 training rows probed at fit — or integer-valued data with fewer than `knn_wide_features` features (reason `"data-probe"`): duplicated rows, tight clusters or a column on a far larger scale than the rest send every query to a slower second search |
-| `LogisticRegression` | fewer than `logreg_min_samples` rows **or** fewer than `logreg_min_work` rows × features × weight vectors (one per class for multinomial); or a binary fit with fewer than `logreg_binary_min_samples` rows **or** more than `logreg_binary_max_features` features: a fit that converges in an iteration or two, as labels without signal do, is mostly MLX's fixed cost |
+| neighbor estimators | `n_neighbors` above `knn_max_neighbors`, or fewer than `knn_min_samples_per_neighbor` rows per neighbor: MLX pays per query for every neighbor it keeps. The constructor's `n_neighbors` decides; a `kneighbors(n_neighbors=...)` call asking for more is answered where the fit ran |
+| neighbor estimators | data the first float32 search pass cannot certify — more than `knn_probe_max_uncertified` (none, by default) of `knn_probe_rows` (256) training rows probed at fit — or integer-valued data with fewer than `knn_wide_features` features (reason `"data-probe"`): duplicated rows, clusters or a column on a far larger scale than the rest send a query row to a slower second search, and the batch waits for it, so a few such rows in a hundred are enough |
+| `LogisticRegression` | fewer than `logreg_min_samples` rows; or a multinomial fit of fewer than `logreg_min_work` rows × features × classes; or a binary fit with fewer than `logreg_binary_min_samples` rows **or** more than `logreg_binary_max_features` features: a fit that converges in an iteration or two, as labels without signal do, is mostly MLX's fixed cost |
 | `SVC` | `kernel="linear"` or `kernel="sigmoid"`, at any size; fewer than `svc_min_features` features, `svc_min_samples` rows **or** `svc_min_work` rows × features; or, with more than two classes, a mean one-vs-one pair `(2n/K)·n_features` below `svc_min_pair_work` |
-| `SVC` | kernels close to the linear one, at any size: rbf with `gamma` below `svc_min_gamma_ratio` times scikit-learn's `"scale"` value (`gamma · n_features · X.var()`, read after validation) and C above `svc_low_gamma_max_c`; poly with degree below `svc_poly_min_degree` or `coef0` other than 0 (read from the parameters, before any scan of `X`) |
+| `SVC` | kernel parameters outside the measured crossover, at any size: rbf with `gamma` below `svc_min_gamma_ratio` or above `svc_max_gamma_ratio` times scikit-learn's `"scale"` value (`gamma · n_features · X.var()`, read after validation) and C above `svc_low_gamma_max_c` — close to the linear kernel, or so narrow that every row is a support vector; poly with degree below `svc_poly_min_degree` or `coef0` other than 0 (read from the parameters, before any scan of `X`) |
 
 `device` does not change any of this: `device="cpu"` selects MLX's CPU device for work
 that is sent to MLX, not scikit-learn. A directly imported class never dispatches to

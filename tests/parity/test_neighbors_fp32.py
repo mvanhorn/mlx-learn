@@ -505,6 +505,7 @@ def test_a_patched_fit_on_fill_values_is_served_or_falls_back(rng):
         "knn_min_features": 0,
         "knn_narrow_min_samples": 0,
         "knn_probe_max_uncertified": 1.0,
+        "knn_min_samples_per_neighbor": 0,
     }
 
     with tuning_context(**no_handoff):
