@@ -50,7 +50,7 @@ def mlx_sized():
     with tuning_context(
         knn_min_train_samples=0, knn_min_work=0, knn_min_features=0, knn_narrow_min_samples=0,
         knn_probe_max_uncertified=1.0, knn_wide_features=0, knn_max_neighbors=2**31,
-        knn_min_samples_per_neighbor=0,
+        knn_wide_min_samples=0,
     ):
         yield
 
@@ -1306,22 +1306,41 @@ def test_patched_dispatch_needs_a_million_rows_below_256_features():
         assert not model._below_crossover(n_samples, n_features)[0]
 
 
+def test_patched_dispatch_needs_8192_rows_from_256_features():
+    """Right after a stock query, whose OpenMP threads are still spinning, an MLX call
+    of some mid-size batches ran up to twice as slow as its neighbours, and on 4 096-7 500
+    training rows at 2 048-4 096 features stock brute force answered those batches in
+    about as long (table ``knn-batches``). So patched mode needs 8 192 rows from 256
+    features, which the size floors alone did not ask for."""
+    model = patched.NearestNeighbors()
+    for n_samples, n_features in ((4_096, 2_048), (6_000, 4_096), (7_500, 4_096), (8_191, 1_024)):
+        assert not model._below_crossover(n_samples, n_features)[0]
+        reason, detail = model._patched_handoff(n_samples, n_features)
+        assert reason == "below-crossover" and "8192 samples" in detail, (n_samples, n_features)
+    for n_samples, n_features in ((8_192, 2_048), (8_192, 4_096), (12_000, 512), (32_768, 256)):
+        assert model._patched_handoff(n_samples, n_features) is None
+
+
+@pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors])
+def test_the_wide_row_rule_is_patched_only(cls, rng):
+    X = rng.normal(size=(6_000, 1_024))
+    model = cls().fit(X)
+    assert (model.execution_backend_ == "sklearn") == cls._mlxlearn_allow_fallback
+
+
 def test_patched_dispatch_reads_the_fitted_n_neighbors():
     """The size rules were measured at k = 10. At k = 100 a 1 024-query batch lost at
-    1 000 000 x 64 on both versions, and at 4 096-6 000 rows and 2 048-4 096 features
-    batches of 32-4 096 queries lost; k = 40-50 only tied with 82-125 rows per
-    neighbor at 2 048-4 096 features, and won or tied from 150. So a patched fit needs
-    at most 50 neighbors and 150 rows per neighbor."""
+    1 000 000 x 64 on both versions, and at 2 048-4 096 features batches of 32-4 096
+    queries; k = 50 won or tied everywhere from 150 rows per neighbor, which the row
+    floors guarantee. So a patched fit needs at most 50 neighbors."""
     for k, n_samples, n_features, handed in (
         (10, 1_000_000, 64, False),
         (50, 1_000_000, 64, False),
         (51, 1_000_000, 64, True),
         (100, 1_000_000, 128, True),
-        (50, 7_500, 4_096, False),
-        (40, 6_144, 4_096, False),
-        (50, 6_000, 2_048, True),
-        (50, 4_096, 3_072, True),
-        (40, 4_096, 4_096, True),
+        (50, 8_192, 4_096, False),
+        (51, 8_192, 2_048, True),
+        (200, 8_192, 1_024, True),
     ):
         model = patched.KNeighborsClassifier(n_neighbors=k)
         assert not model._below_crossover(n_samples, n_features)[0]
@@ -1331,28 +1350,127 @@ def test_patched_dispatch_reads_the_fitted_n_neighbors():
             assert handoff[0] == "below-crossover" and f"n_neighbors={k}" in handoff[1]
 
 
+#: Every size gate lifted, so a small index is fitted on MLX by the ordinary route.
+_LIFTED = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_min_features": 0,
+           "knn_narrow_min_samples": 0, "knn_probe_max_uncertified": 1.0}
+
+
 @pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors])
-def test_the_k_rule_is_patched_only_and_reads_the_constructor(cls, rng):
-    """Layer 1 searches on MLX whatever k is; a patched fit decides by its own
-    ``n_neighbors``, and a query asking for more neighbors is answered where the fit
-    ran, as every query is."""
+def test_the_k_rule_is_patched_only_and_reads_the_query(cls, rng):
+    """Layer 1 searches on MLX whatever k is. A patched fit decides by its own
+    ``n_neighbors``, and a query asking for more than the rules keep on MLX is answered
+    by scikit-learn's brute force, with stock scikit-learn's answer."""
     X = rng.normal(size=(3000, 16))
-    lifted = {"knn_min_train_samples": 0, "knn_min_work": 0, "knn_min_features": 0,
-              "knn_narrow_min_samples": 0, "knn_probe_max_uncertified": 1.0}
-    with tuning_context(**lifted):
+    Q = rng.normal(size=(7, 16))
+    with tuning_context(**_LIFTED):
         many = cls(n_neighbors=60).fit(X)
         few = cls(n_neighbors=5).fit(X)
+    ref = sk_neighbors.NearestNeighbors(n_neighbors=60).fit(X)
     if cls is NearestNeighbors:
         assert many.execution_backend_ != "sklearn"
+        idx = few.kneighbors(Q, n_neighbors=60)[1]
+        assert _events("kneighbors")[-1].backend == few.execution_backend_
+        np.testing.assert_array_equal(idx, ref.kneighbors(Q)[1])
         return
     assert many.execution_backend_ == "sklearn"
     assert many.fit_event_.reason == "below-crossover"
     assert "n_neighbors=60" in many.fit_event_.detail
     assert few.execution_backend_ != "sklearn"
-    dist, idx = few.kneighbors(X[:3], n_neighbors=60)
-    assert idx.shape == (3, 60) and few.execution_backend_ != "sklearn"
-    ref = sk_neighbors.NearestNeighbors(n_neighbors=60).fit(X).kneighbors(X[:3])
-    np.testing.assert_array_equal(idx, ref[1])
+
+    mlxlearn.clear_backend_diagnostics()
+    dist, idx = few.kneighbors(Q, n_neighbors=60)
+    [event] = _events()
+    assert (event.operation, event.backend, event.reason) == (
+        "kneighbors", "sklearn", "below-crossover"
+    )
+    assert "n_neighbors=60" in event.detail and event.shape == (7, 16)
+    ref_dist, ref_idx = ref.kneighbors(Q)
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-12)
+    # The training rows themselves, each excluded from its own neighbors, as stock does.
+    np.testing.assert_array_equal(few.kneighbors(n_neighbors=60)[1], ref.kneighbors()[1])
+    # Within the rules the query stays on MLX.
+    few.kneighbors(Q, n_neighbors=50)
+    assert _events("kneighbors")[-1].backend == few.execution_backend_
+    assert few.execution_backend_ != "sklearn"
+
+
+def test_a_handed_off_query_keeps_float64_precision_and_is_not_pickled(rng):
+    """The handed-off query runs on the float32 rows plus their float64 residuals,
+    translated by the index's mean, so timestamps within an hour — which float32 alone
+    rounds to 128-second steps, and which stock scikit-learn's search, expanding squared
+    distances around the origin, returns at distance 0 — keep their exact neighbors.
+    That float64 copy is derived state, and not pickled."""
+    import pickle
+
+    X = np.hstack([
+        1.7e9 + rng.uniform(0.0, 3600.0, size=(3000, 1)),
+        rng.normal(size=(3000, 15)),
+    ])
+    Q = X[:9] + rng.normal(scale=0.5, size=(9, 16))
+    with tuning_context(**_LIFTED):
+        model = patched.NearestNeighbors(n_neighbors=5).fit(X)
+    assert model.execution_backend_ != "sklearn"
+    exact = np.sqrt(((Q[:, None, :] - X[None, :, :]) ** 2).sum(axis=2))
+    order = np.argsort(exact, axis=1, kind="stable")[:, :80]
+    dist, idx = model.kneighbors(Q, n_neighbors=80)
+    np.testing.assert_array_equal(idx, order)
+    np.testing.assert_allclose(dist, np.take_along_axis(exact, order, axis=1), atol=1e-5)
+    assert model._index_._host64 is not None
+    loaded = pickle.loads(pickle.dumps(model))
+    assert loaded._index_._host64 is None and "_host_brute_" not in vars(loaded)
+    np.testing.assert_array_equal(loaded.kneighbors(Q, n_neighbors=80)[1], order)
+
+
+def test_a_handed_off_query_checks_feature_names_like_stock(rng):
+    """A frame is validated against the fitted names, and an array queried on a model
+    fitted on a frame warns, as stock scikit-learn does; a float32 array is served as
+    float64."""
+    pd = pytest.importorskip("pandas")
+    X = pd.DataFrame(rng.normal(size=(3000, 16)), columns=[f"f{i}" for i in range(16)])
+    Q = X.iloc[:5] + 0.1
+    with tuning_context(**_LIFTED):
+        model = patched.NearestNeighbors(n_neighbors=5).fit(X)
+        plain = patched.NearestNeighbors(n_neighbors=5).fit(X.to_numpy())
+    ref = sk_neighbors.NearestNeighbors(n_neighbors=60).fit(X)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        np.testing.assert_array_equal(model.kneighbors(Q, n_neighbors=60)[1], ref.kneighbors(Q)[1])
+        np.testing.assert_array_equal(
+            plain.kneighbors(Q.to_numpy(np.float32), n_neighbors=60)[1],
+            sk_neighbors.NearestNeighbors(n_neighbors=60).fit(X.to_numpy()).kneighbors(
+                Q.to_numpy(np.float32).astype(np.float64)
+            )[1],
+        )
+    with pytest.warns(UserWarning, match="feature names"):
+        model.kneighbors(Q.to_numpy(), n_neighbors=60)
+    with pytest.raises(ValueError, match="features"):
+        plain.kneighbors(Q.to_numpy()[:, :8], n_neighbors=60)
+
+
+def test_a_query_after_set_params_is_held_to_the_same_rule(rng):
+    X = rng.normal(size=(3000, 16))
+    y = (X[:, 0] > 0).astype(int)
+    Q = rng.normal(size=(11, 16))
+    with tuning_context(**_LIFTED):
+        model = patched.KNeighborsClassifier(n_neighbors=5).fit(X, y)
+    assert model.execution_backend_ != "sklearn"
+    model.set_params(n_neighbors=75)
+    mlxlearn.clear_backend_diagnostics()
+    expected = sk_neighbors.KNeighborsClassifier(n_neighbors=75).fit(X, y).predict_proba(Q)
+    np.testing.assert_allclose(model.predict_proba(Q), expected)
+    [event] = _events()
+    assert (event.operation, event.backend) == ("predict_proba", "sklearn")
+
+
+def test_a_forced_fit_keeps_its_queries_on_mlx(rng):
+    X = rng.normal(size=(3000, 16))
+    with tuning_context(force_backend="mlx"):
+        model = patched.NearestNeighbors(n_neighbors=5).fit(X)
+    mlxlearn.clear_backend_diagnostics()
+    model.kneighbors(X[:4], n_neighbors=60)
+    [event] = _events()
+    assert event.backend == "mlx" and event.reason in ("sticky", "gpu-unavailable")
 
 
 @pytest.mark.parametrize("cls", [NearestNeighbors, patched.NearestNeighbors])
@@ -1370,7 +1488,9 @@ def test_the_row_rule_below_256_features_is_patched_only(cls, rng):
     assert event.reason == "below-crossover" and "1000000 samples" in event.detail
     with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_narrow_min_samples=5000):
         assert cls().fit(X).execution_backend_ != "sklearn"
-    with tuning_context(knn_min_train_samples=0, knn_min_work=0, knn_wide_features=64):
+    with tuning_context(
+        knn_min_train_samples=0, knn_min_work=0, knn_wide_features=64, knn_wide_min_samples=0
+    ):
         assert cls().fit(X).execution_backend_ != "sklearn"
 
 
@@ -1423,7 +1543,9 @@ def test_the_data_rule_is_patched_only_and_a_tuning_knob(kind, rng):
         assert NearestNeighbors().fit(X).execution_backend_ != "sklearn"
     with tuning_context(force_backend="mlx"):
         assert patched.NearestNeighbors().fit(X).execution_backend_ == "mlx"
-    knob = {"knn_probe_max_uncertified": 1.0} if kind == "dups" else {"knn_wide_features": 32}
+    knob = {"knn_probe_max_uncertified": 1.0} if kind == "dups" else {
+        "knn_wide_features": 32, "knn_wide_min_samples": 0,
+    }
     with tuning_context(**_ONLY_DATA, **knob):
         assert patched.NearestNeighbors().fit(X).execution_backend_ != "sklearn"
 

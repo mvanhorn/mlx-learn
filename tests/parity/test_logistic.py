@@ -48,7 +48,9 @@ BACKENDS = ["cpu", "mlx"]
 #: Everything MLX-side is in play: no crossover can hand a problem to scikit-learn.
 _NO_CROSSOVER = {
     "logreg_min_samples": 0,
-    "logreg_min_work": 0,
+    "logreg_multinomial_min_features": 0,
+    "logreg_max_tol": float("inf"),
+    "logreg_min_max_iter": 0,
     "logreg_binary_min_samples": 0,
     "logreg_binary_max_features": 2**31,
 }
@@ -894,30 +896,63 @@ def test_patched_fit_below_the_crossover_skips_the_mlx_preparation(monkeypatch):
     assert [(e.backend, e.reason) for e in fit_events] == [("sklearn", "below-crossover")]
 
 
-def test_the_multinomial_work_floor_counts_one_weight_vector_per_class():
-    """The work per objective evaluation is ``n × d × n_classes``.
+def _narrow(n_classes, n_samples, n_features, seed=0):
+    """Few features — fewer than ``_data`` can make — and labels cut from the first."""
+    rng = np.random.default_rng(seed)
+    X = rng.normal(size=(n_samples, n_features))
+    score = X[:, 0] + rng.normal(scale=0.5, size=n_samples)
+    return X, np.digitize(score, np.quantile(score, np.linspace(0, 1, n_classes + 1)[1:-1]))
 
-    With the floor between the three- and the five-class work of the same shape,
-    the three-class problem goes to scikit-learn and the five-class one to MLX. A
-    binary fit has its own rules — rows and width — and the work floor does not
-    bind it: a fit of labels without signal converges in one iteration either way,
-    and at 1 feature and 60 000 rows three classes lost (0.67x-0.71x) while binary
-    fits won from 200 000 rows at 1 feature.
-    """
-    n, d = 1000, 20
-    with tuning_context(
-        logreg_min_samples=n, logreg_min_work=4 * n * d, logreg_binary_min_samples=n
-    ):
-        X2, y2 = _data(n_classes=2, n_samples=n, n_features=d)
-        X3, y3 = _data(n_classes=3, n_samples=n, n_features=d)
-        X5, y5 = _data(n_classes=5, n_samples=n, n_features=d)
-        binary = PatchedLogisticRegression().fit(X2, y2)
-        three = PatchedLogisticRegression().fit(X3, y3)
-        five = PatchedLogisticRegression().fit(X5, y5)
+
+def test_a_multinomial_fit_needs_two_features():
+    """MLX's multinomial path costs about 10 ms at 60 000 rows and one feature,
+    whatever the class count, and one-feature fits of labels without signal lost or
+    tied against stock up to nine classes. A binary fit has its own rules — rows and
+    width — and this one does not bind it: binary fits won from 200 000 rows at one
+    feature."""
+    n = 1000
+    with tuning_context(logreg_min_samples=n, logreg_binary_min_samples=n):
+        binary = PatchedLogisticRegression().fit(*_narrow(2, n, 1))
+        narrow = PatchedLogisticRegression().fit(*_narrow(3, n, 1))
+        wide = PatchedLogisticRegression().fit(*_narrow(3, n, 2))
     assert binary.execution_backend_ != "sklearn", binary.fit_event_
-    assert three.execution_backend_ == "sklearn"
-    assert "multinomial" in three.fit_event_.detail and "3 classes" in three.fit_event_.detail
-    assert five.execution_backend_ in ("mlx", "cpu") and five.execution_backend_ != "sklearn"
+    assert narrow.execution_backend_ == "sklearn"
+    assert "multinomial" in narrow.fit_event_.detail and "2 features" in narrow.fit_event_.detail
+    assert wide.execution_backend_ in ("mlx", "cpu"), wide.fit_event_
+
+
+@pytest.mark.parametrize(
+    "params, handed",
+    [
+        ({}, False),
+        ({"tol": 1e-3}, False),
+        ({"tol": 1e-2}, True),
+        ({"max_iter": 3}, False),
+        ({"max_iter": 2}, True),
+        ({"max_iter": 0}, True),
+    ],
+)
+def test_patched_dispatch_hands_short_fits_to_scikit_learn(params, handed):
+    """A looser ``tol`` or a smaller ``max_iter`` stops a fit within an iteration or
+    two, where it is mostly MLX's fixed cost: ``tol = 0.01`` and ``max_iter`` of 1-2
+    lost, ``tol = 1e-3`` and ``max_iter = 3`` won. Patched only, and decided before
+    the data are read."""
+    n = 1000
+    X, y = _narrow(2, n, 4)
+    lifted = {"logreg_min_samples": n, "logreg_binary_min_samples": n}
+    with tuning_context(**lifted), warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        model = PatchedLogisticRegression(**params).fit(X, y)
+        direct = LogisticRegression(**params).fit(X, y)
+    assert (model.execution_backend_ == "sklearn") == handed, model.fit_event_
+    assert direct.execution_backend_ != "sklearn"
+    if handed:
+        assert model.fit_event_.reason == "below-crossover"
+        assert "solver parameters" in model.fit_event_.detail
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ConvergenceWarning)
+            ref = SkLogisticRegression(**params).fit(X, y)
+        np.testing.assert_array_equal(model.coef_, ref.coef_)
 
 
 @pytest.mark.parametrize("spelling", ["int", "str", "object", "series", "category"])
@@ -946,7 +981,7 @@ def test_the_crossover_counts_classes_however_the_labels_are_spelled(spelling):
     # Thresholds that send a multinomial fit of this size to MLX and a binary one
     # to scikit-learn, as the binary row floor does at 60 000-100 000 rows.
     with tuning_context(
-        logreg_min_samples=n, logreg_min_work=0, logreg_binary_min_samples=n + 1
+        logreg_min_samples=n, logreg_binary_min_samples=n + 1
     ):
         multi = PatchedLogisticRegression().fit(X5, spell(y5))
         binary = PatchedLogisticRegression().fit(X2, spell(y2))

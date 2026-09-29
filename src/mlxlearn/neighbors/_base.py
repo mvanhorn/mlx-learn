@@ -22,13 +22,16 @@ from numbers import Integral
 from typing import ClassVar
 
 import numpy as np
+from sklearn import config_context as _sklearn_config_context
 from sklearn.base import BaseEstimator
 from sklearn.neighbors import VALID_METRICS, BallTree, KDTree
+from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
 from .._common.arrays import INDEX_DTYPE
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.device import inference_device
+from .._common.diagnostics import record_inference
 from .._common.validation import (
     SparseInputError,
     _safe_shape,
@@ -75,7 +78,7 @@ class MLXNeighborsMixin(BackendMixin):
     #: previous training set alive in memory and in pickles. ``_fit_X`` is here
     #: because on the MLX path it is a view of the index's host copy; scikit-learn's
     #: own fit sets it again.
-    _mlxlearn_mlx_attrs: ClassVar[tuple[str, ...]] = ("_index_", "_fit_X")
+    _mlxlearn_mlx_attrs: ClassVar[tuple[str, ...]] = ("_index_", "_fit_X", "_host_brute_")
 
     # --------------------------------------------------------------- capability
 
@@ -165,9 +168,9 @@ class MLXNeighborsMixin(BackendMixin):
         return False, ""
 
     def _patched_handoff(self, n_samples: int, n_features: int) -> tuple[str, str] | None:
-        """Patched mode's handoff by width: ``(reason, detail)``, or ``None``.
+        """Patched mode's handoff by width and rows: ``(reason, detail)``, or ``None``.
 
-        Two rules, each about query batches a fit cannot see, and both measured
+        Three rules, each about query batches a fit cannot see, and all measured
         against stock scikit-learn with every MLX call made after the GPU has
         idled — as the benchmark's are, and as a call made after other work is.
 
@@ -197,6 +200,17 @@ class MLXNeighborsMixin(BackendMixin):
         every batch won or tied from 12 000 rows. These fits are recorded as
         ``"below-crossover"``.
 
+        **Everything from** ``knn_wide_features`` **features** needs at least
+        ``knn_wide_min_samples`` rows (8 192). Right after a stock query, whose
+        OpenMP threads are still spinning, an MLX call of some batch sizes — about
+        256 KiB of float32 queries, 32 rows at 2 048 features and 16 at 4 096 — ran
+        up to twice as slow as its neighbours, and on a short training set a stock
+        search costs about as much: at 4 096-7 500 rows and 2 048-4 096 features
+        batches of 16-32 queries lost (0.77x-0.90x) or only tied, while from 8 192
+        rows every batch of 8-64 queries won or tied (1.20x at worst; table
+        ``knn-batches``). The size floors alone send these fits to MLX from about
+        1 500 features. Recorded as ``"below-crossover"``.
+
         What the rules give up is real: batches of 1024 queries and more rarely
         lose below 256 features at these sizes (up to 4.3x), and on Gaussian data,
         a KD-tree's worst case, the MLX scan answers 256 queries many times faster
@@ -214,10 +228,19 @@ class MLXNeighborsMixin(BackendMixin):
         """
         tuning = get_tuning()
         min_features = tuning.knn_min_features
+        if n_features >= min_features and n_features >= tuning.knn_wide_features:
+            if n_samples >= tuning.knn_wide_min_samples:
+                return self._neighbors_handoff(n_samples)
+            return "below-crossover", (
+                f"{n_samples} training samples x {n_features} features is below the "
+                "measured KNN crossover for patched dispatch: it needs "
+                f"{tuning.knn_wide_min_samples} samples, because below that an MLX call "
+                "made right after a stock scikit-learn one can run some mid-size query "
+                "batches up to twice as slow, and scikit-learn's brute force answers "
+                "them in about as long"
+            )
         if n_features >= min_features:
-            if n_features >= tuning.knn_wide_features or (
-                n_samples >= tuning.knn_narrow_min_samples
-            ):
+            if n_samples >= tuning.knn_narrow_min_samples:
                 return self._neighbors_handoff(n_samples)
             return "below-crossover", (
                 f"{n_samples} training samples x {n_features} features is below the "
@@ -253,35 +276,43 @@ class MLXNeighborsMixin(BackendMixin):
         keeps ``k`` plus a margin of candidates per row through every tile's
         selection and refines them against the full rows, a gather of ``k`` rows of
         every feature per query. So a fit whose ``n_neighbors`` exceeds
-        ``knn_max_neighbors``, or which has fewer than
-        ``knn_min_samples_per_neighbor`` training rows per neighbor asked for, goes
-        to scikit-learn, recorded as ``"below-crossover"``
-        (``docs/benchmarks.md``, table ``knn-k``).
+        ``knn_max_neighbors`` goes to scikit-learn, recorded as
+        ``"below-crossover"`` (``docs/benchmarks.md``, table ``knn-k``). At k = 40-50
+        with fewer than 150 rows per neighbor MLX only tied; the row floors leave
+        more than 160 at every k this allows.
 
         It reads the constructor's ``n_neighbors``, the one a fit can see. A query
-        that asks ``kneighbors(n_neighbors=...)`` for more is answered on the
-        backend the fit chose, as every query is.
+        that asks ``kneighbors(n_neighbors=...)`` for a k outside the same range is
+        handed to scikit-learn's brute force at query time instead
+        (:meth:`_query_neighbors_handoff`).
         """
-        tuning = get_tuning()
         k = self.n_neighbors
         if k is None:
             return None
-        k = int(k)
-        if k > tuning.knn_max_neighbors:
-            return "below-crossover", (
-                f"n_neighbors={k} is above the measured KNN crossover for patched "
-                f"dispatch (at most {tuning.knn_max_neighbors} neighbors): MLX's "
-                "search pays per query for every neighbor it keeps, and scikit-learn's "
-                "brute force barely does"
-            )
-        if n_samples < tuning.knn_min_samples_per_neighbor * k:
-            return "below-crossover", (
-                f"{n_samples} training samples for n_neighbors={k} is below the "
-                f"measured KNN crossover for patched dispatch "
-                f"({tuning.knn_min_samples_per_neighbor} samples per neighbor): the "
-                "candidates MLX refines per query are then a large share of the index"
-            )
-        return None
+        detail = _neighbors_limit(int(k))
+        return None if detail is None else ("below-crossover", detail)
+
+    def _query_neighbors_handoff(self, k: int) -> str | None:
+        """Patched mode's handoff of one *query* by its ``k``: the detail, or ``None``.
+
+        The fit decided by the constructor's ``n_neighbors``; a query may ask for a
+        different k (``kneighbors(n_neighbors=...)``, or ``set_params`` after the
+        fit), and one above ``knn_max_neighbors`` costs MLX what it would have cost a
+        fit with that k (table ``knn-k``). Such a query is answered by
+        scikit-learn's brute force over the float64 training rows instead
+        (:meth:`_kneighbors_brute`), which kept up with a stock model's at every
+        shape measured; see ``docs/benchmarks.md``.
+
+        Patched mode only, and never on a backend forced by
+        ``MLXLEARN_FORCE_BACKEND`` — at the query, or at the fit that built the
+        index. Recorded as ``"below-crossover"`` on the call's event.
+        """
+        if not self._mlxlearn_allow_fallback or get_tuning().force_backend:
+            return None
+        fit_event = self.__dict__.get("_fit_event_")
+        if fit_event is not None and fit_event.reason == "forced":
+            return None
+        return _neighbors_limit(int(k))
 
     def _patched_data_handoff(self, index, device) -> tuple[str, str, dict] | None:
         """Patched mode's handoff by the *data*: ``(reason, detail, extra)``, or ``None``.
@@ -533,10 +564,12 @@ class MLXNeighborsMixin(BackendMixin):
             Query points. ``None`` means "the training data", and each point's own
             index is excluded from its neighbors.
         n_neighbors : int, default=None
-            Defaults to the estimator's ``n_neighbors``. A different value is answered
-            on the backend the fit chose: patched dispatch decides by the constructor's
-            ``n_neighbors``, the one a fit can see, so under ``patch_sklearn()`` fit
-            with the k you will ask for.
+            Defaults to the estimator's ``n_neighbors``. Patched dispatch decides the
+            fit by the constructor's ``n_neighbors``, the one a fit can see; under
+            ``patch_sklearn()`` a query on an MLX-fitted model that asks for more
+            than 50 neighbors is answered by scikit-learn's brute force over a
+            float64 copy of the training rows, translated by their mean, built on
+            the first such query and kept with the model.
         return_distance : bool, default=True
             Whether to return distances alongside indices.
 
@@ -590,6 +623,10 @@ class MLXNeighborsMixin(BackendMixin):
                 X = _sparse_query_for_sklearn(X, self._fit_X.dtype)
                 return super().kneighbors(X, n_neighbors, return_distance)
 
+        handed = self._query_neighbors_handoff(n_neighbors)
+        if handed is not None:
+            return self._kneighbors_brute(operation, X, n_neighbors, return_distance, handed)
+
         if query_is_train:
             Q = self._index_.X
         else:
@@ -625,6 +662,78 @@ class MLXNeighborsMixin(BackendMixin):
             # costs a few float64 ulps, far inside the float32 error they carry.
             dist = np.square(dist)
         return dist, idx
+
+    def _kneighbors_brute(self, operation: str, X, n_neighbors, return_distance: bool, detail):
+        """``kneighbors`` by scikit-learn's brute force, for a query handed off by its k.
+
+        :meth:`_query_neighbors_handoff` decides; this answers, with a stock
+        ``NearestNeighbors(algorithm="brute")`` fitted on the index's float32 rows plus
+        their float64 residuals — the caller's float64 input to about 2⁻⁴⁸, float32
+        input exactly — translated by the index's mean, and queries translated by the
+        same mean. Distances do not change under a translation; what does is how much
+        of them float64 keeps, and scikit-learn's search, which expands each squared
+        distance around the origin, loses data far from the origin to cancellation
+        (Unix timestamps in float64 come back with distances of 0), where this keeps
+        the ``kneighbors`` precision of ``docs/fp32_policy.md`` §3.4. Elsewhere it is
+        stock scikit-learn's answer to rounding. The model and its rows,
+        ``8 · n_samples · n_features`` bytes, are built on the first such query and
+        kept, and neither is pickled.
+        """
+        center = self._index_.center.astype(np.float64)
+        if X is not None:
+            if (
+                isinstance(X, np.ndarray)
+                and X.ndim == 2
+                and X.dtype.kind in "fiu"
+                and X.shape[1] == center.shape[0]
+                and "feature_names_in_" not in self.__dict__
+            ):
+                # The common case, checked by scikit-learn's own validation below —
+                # finiteness included — rather than twice. The difference is float64,
+                # the rows' dtype, which keeps scikit-learn on its fast path.
+                X = X - center
+            else:
+                # Anything else is validated against this estimator first: its feature
+                # names and count, which the stock model, fitted on a bare array,
+                # cannot check.
+                X = _reject_string_data(X)
+                X = validate_data(
+                    self, X, accept_sparse=False, dtype=np.float64, order="C", reset=False
+                ) - center
+        name = self._claim_call_event(operation)
+        if name is not None:
+            fit_event = self.__dict__.get("_fit_event_")
+            record_inference(
+                type(self).__name__,
+                name,
+                "sklearn",
+                "below-crossover",
+                detail,
+                self._fit_X.shape if X is None else X.shape,
+                {} if fit_event is None else {"fit_reason": fit_event.reason},
+            )
+        return self._host_brute().kneighbors(X, n_neighbors, return_distance)
+
+    def _host_brute(self):
+        """The stock brute-force model :meth:`_kneighbors_brute` answers with, built once."""
+        brute = self.__dict__.get("_host_brute_")
+        if brute is None:
+            brute = _SkNearestNeighbors(
+                algorithm="brute", metric=self.effective_metric_, n_jobs=self.n_jobs
+            )
+            # The rows are finite by construction; checking 8 bytes per element again
+            # would cost the first query as much as the search.
+            with _sklearn_config_context(assume_finite=True):
+                brute.fit(self._index_.host_rows())
+            self.__dict__["_host_brute_"] = brute
+        return brute
+
+    def __getstate__(self):
+        # The stock model and its float64 rows are derived from the index, and rebuilt
+        # on the first query that needs them; pickling them would double the file.
+        state = dict(super().__getstate__())
+        state.pop("_host_brute_", None)
+        return state
 
     def _resolve_n_neighbors(self, n_neighbors):
         """Validate an explicit ``n_neighbors`` with scikit-learn's exact messages.
@@ -670,6 +779,23 @@ class MLXNeighborsMixin(BackendMixin):
         """
         dist, idx = self._kneighbors(operation, X, return_distance=True)
         return (dist if need_distance else None), idx
+
+
+def _neighbors_limit(k: int) -> str | None:
+    """Why ``k`` neighbors is outside what MLX answers faster, or ``None``.
+
+    At most ``knn_max_neighbors`` neighbors: the rule behind both the fit's handoff
+    and a query's (table ``knn-k``).
+    """
+    tuning = get_tuning()
+    if k > tuning.knn_max_neighbors:
+        return (
+            f"n_neighbors={k} is above the measured KNN crossover for patched "
+            f"dispatch (at most {tuning.knn_max_neighbors} neighbors): MLX's "
+            "search pays per query for every neighbor it keeps, and scikit-learn's "
+            "brute force barely does"
+        )
+    return None
 
 
 def _search_diagnostics(stats: dict) -> tuple[str, dict]:

@@ -53,8 +53,10 @@ class Case:
 
     ``options`` carries the knobs a case changes from the defaults above —
     ``sklearn_algorithm`` (the ``NearestNeighbors`` algorithm, which selects the
-    stock baseline; the mlxlearn side is given it too), ``n_neighbors``, ``kernel`` and
-    ``C`` (SVC), ``n_classes`` (classification targets) — and each one appears in
+    stock baseline; the mlxlearn side is given it too), ``n_neighbors``,
+    ``query_neighbors`` (the k a ``kneighbors`` call asks for, when not the fitted
+    one), ``kernel`` and ``C`` (SVC), ``tol`` and ``max_iter`` (LogisticRegression),
+    ``n_classes`` (classification targets) — and each one appears in
     the label, so two differently configured cases can never share a name.
     ``iterations`` caps the run's iteration count for a case whose single call
     takes minutes; it never raises it, so ``--iterations 1`` still means one.
@@ -131,8 +133,12 @@ PROFILES: dict[str, list[Case]] = {
         *_knn_grid([24_000], [256], [256], operations=("kneighbors",), data="dups"),
         *_knn_grid([30_000], [256], [64], operations=("kneighbors",), data="dup2"),
         *_knn_grid([1_048_576], [64], [256], operations=("kneighbors",), data="binary"),
-        # More neighbors than the rules keep on MLX, at a shape they otherwise do.
+        # More neighbors than the rules keep on MLX, at a shape they otherwise do: asked
+        # of the fit, and asked of a query on an index fitted with the default k.
         *_knn_grid([1_048_576], [64], [1_024], operations=("kneighbors",), n_neighbors=100),
+        *_knn_grid([65_536], [256], [256], operations=("kneighbors",), query_neighbors=100),
+        # Wide but short: the size floors pass it, the wide-data row floor does not.
+        *_knn_grid([4_096], [2_048], [32], operations=("kneighbors",)),
         # Logistic regression: below the sample floor; binary but too wide, and too
         # short; binary, tall and narrow (MLX); multinomial (MLX).
         Case("logreg", "fit", 5_000, 32),
@@ -140,8 +146,12 @@ PROFILES: dict[str, list[Case]] = {
         Case("logreg", "fit", 100_000, 16),
         Case("logreg", "fit", 200_000, 16),
         Case("logreg", "fit", 60_000, 64, options={"n_classes": 5}),
-        # Multinomial below the work floor: one feature, three classes.
+        # Multinomial on one feature, three classes.
         Case("logreg", "fit", 60_000, 1, options={"n_classes": 3}),
+        # A fit the solver parameters stop within an iteration or two, at a shape the
+        # size rules send to MLX: a loose tol, a short max_iter.
+        Case("logreg", "fit", 200_000, 16, options={"tol": 0.01}),
+        Case("logreg", "fit", 200_000, 16, options={"max_iter": 2}),
         # SVC: below every floor; enough rows but too narrow, at 64 and at 128
         # features; wide (MLX); and a many-class problem each of whose pairs is below
         # the pair floor.
@@ -151,12 +161,10 @@ PROFILES: dict[str, list[Case]] = {
         Case("svc", "fit", 4_000, 256),
         *_svc_grid([(2_048, 512)], n_classes=4),
         *_svc_grid([(2_048, 512)], n_classes=16),
-        # SVC kernel parameters outside the measured crossover for their C
-        # (scikit-learn), whatever the size: rbf at a tenth of the "scale" gamma,
-        # C = 100, and at 100 times it, C = 10; poly of degree 2, C = 10.
-        Case("svc", "fit", 4_000, 256, options={"C": 100.0, "gamma": 0.1 / 256}),
-        Case("svc", "fit", 1_500, 256, options={"C": 10.0, "gamma": 100.0 / 256}),
-        Case("svc", "fit", 1_500, 256, options={"C": 10.0, "kernel": "poly", "degree": 2}),
+        # SVC above the measured box, C = 10, and poly of degree 2 (scikit-learn),
+        # whatever the size.
+        Case("svc", "fit", 1_500, 256, options={"C": 10.0}),
+        Case("svc", "fit", 1_500, 256, options={"kernel": "poly", "degree": 2}),
         # SVC inference on a model fitted on MLX: one row, answered on the host, and a
         # thousand, on the device.
         Case("svc", "predict", 4_000, 256, 1),
@@ -321,9 +329,12 @@ def _estimators(case: Case, layer: str):
             lambda: sklearn.neighbors.NearestNeighbors(n_neighbors=k, algorithm=algorithm),
         )
     if case.algorithm == "logreg":
+        params = {"max_iter": case.options.get("max_iter", 200)}
+        if "tol" in case.options:
+            params["tol"] = case.options["tol"]
         return (
-            lambda: mlx_linear.LogisticRegression(max_iter=200),
-            lambda: sklearn.linear_model.LogisticRegression(max_iter=200),
+            lambda: mlx_linear.LogisticRegression(**params),
+            lambda: sklearn.linear_model.LogisticRegression(**params),
         )
     if case.algorithm == "svc":
         params = {"kernel": case.option("kernel"), "C": case.option("C")}
@@ -380,7 +391,18 @@ def _runner(
     sk_model = make_sk().fit(*target)
     seen["backend"] = mlx_model.execution_backend_
     if case.operation == "kneighbors":
-        return lambda: mlx_model.kneighbors(Q), lambda: sk_model.kneighbors(Q), shape, backend_of
+        k = case.option("query_neighbors")
+        handoff = getattr(mlx_model, "_query_neighbors_handoff", None)
+        if k is not None and handoff is not None and handoff(k) is not None:
+            # Patched dispatch answers this query with scikit-learn's brute force,
+            # whichever backend fitted the index.
+            seen["backend"] = "sklearn"
+        return (
+            lambda: mlx_model.kneighbors(Q, n_neighbors=k),
+            lambda: sk_model.kneighbors(Q, n_neighbors=k),
+            shape,
+            backend_of,
+        )
     if case.operation == "predict":
         return lambda: mlx_model.predict(Q), lambda: sk_model.predict(Q), shape, backend_of
     raise ValueError(f"unknown operation {case.operation!r} for {case.algorithm!r}")

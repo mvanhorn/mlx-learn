@@ -302,20 +302,20 @@ def _patched_route(case: run.Case) -> str:
             return "mlx" if event.reason == "selected" else "handoff:" + event.reason
         return "handoff:" + handed[0] if handed else "mlx"
     if case.algorithm == "logreg":
-        model = patched.LogisticRegression()
+        params = {k: case.options[k] for k in ("tol", "max_iter") if k in case.options}
+        model = patched.LogisticRegression(**params)
         below, detail = model._below_crossover(n, d, 1 if n_classes == 2 else n_classes)
-        return ("binary:" if "binary" in detail else "below-crossover") if below else "mlx"
+        if below:
+            return "binary:" if "binary" in detail else "below-crossover"
+        return "params:" if model._param_handoff() is not None else "mlx"
     kernel = case.option("kernel")
     params = {k: case.options[k] for k in ("degree", "coef0") if k in case.options}
     model = patched.SVC(kernel=kernel, C=case.option("C"), **params)
-    # The smoke data are standard normal, so a numeric gamma times d is its ratio to
-    # the "scale" value.
-    gamma = case.options.get("gamma")
-    ratio = None if kernel != "rbf" else 1.0 if gamma is None else gamma * d
     below, detail = model._below_crossover(n, d, n_classes=n_classes)
     if below:
         return "pair:" if "one-vs-one" in detail else "below-crossover"
-    return "kernel:" if model._kernel_handoff(ratio) is not None else "mlx"
+    # The smoke cases pass no weights, so the box the rule reads is C.
+    return "kernel:" if model._kernel_handoff(case.option("C")) is not None else "mlx"
 
 
 def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
@@ -375,12 +375,25 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
     # Rows repeated about twice leave only a few probed rows uncertified, and that is
     # enough to hand the fit over.
     assert any(r == "handoff:data-probe" and c.option("data") == "dup2" for c, r in knn)
-    # More neighbors than the k rule keeps on MLX, at a shape the size rules send there.
+    # More neighbors than the k rule keeps on MLX, at a shape the size rules send there:
+    # asked of the fit, and asked of a query on an index fitted on MLX.
     assert any(
         r == "handoff:below-crossover"
         and c.option("n_neighbors") > tuning.knn_max_neighbors
         and c.n_features >= tuning.knn_min_features
         and c.n_samples >= tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
+    assert any(
+        r == "mlx" and (c.option("query_neighbors") or 0) > tuning.knn_max_neighbors
+        for c, r in knn
+    )
+    # Wide, clearing both size floors, short of the wide-data row floor.
+    assert any(
+        r == "handoff:below-crossover"
+        and c.n_features >= tuning.knn_wide_features
+        and tuning.knn_min_train_samples <= c.n_samples < tuning.knn_wide_min_samples
+        and c.n_samples * c.n_features >= tuning.knn_min_work
         for c, r in knn
     )
 
@@ -397,14 +410,18 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         and tuning.logreg_min_samples <= c.n_samples < tuning.logreg_binary_min_samples
         for c, r in logreg
     )
-    # Multinomial, with the rows, below the work floor.
+    # Multinomial, with the rows, narrower than the multinomial width floor.
     assert any(
         r == "below-crossover"
         and (c.option("n_classes") or 2) > 2
         and c.n_samples >= tuning.logreg_min_samples
-        and c.n_samples * c.n_features * c.option("n_classes") < tuning.logreg_min_work
+        and c.n_features < tuning.logreg_multinomial_min_features
         for c, r in logreg
     )
+    # The solver-parameter rule, both halves, at a shape the size rules send to MLX.
+    params = [c for c, r in logreg if r == "params:"]
+    assert any(c.options.get("tol", 0.0) > tuning.logreg_max_tol for c in params)
+    assert any(c.options.get("max_iter", 200) < tuning.logreg_min_max_iter for c in params)
 
     svc = cases("svc")
     assert any(r == "mlx" and (c.option("n_classes") or 2) == 2 for c, r in svc)
@@ -423,14 +440,14 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         for c, r in svc
     )
     assert any(r == "pair:" for _, r in svc)
-    # The kernel-parameter rule, at a shape the size floors send to MLX: rbf with a
-    # gamma below the lower bound and above the upper one, and a low-degree poly
-    # kernel.
+    # The C and kernel-parameter rules, at a shape the size floors send to MLX: C above
+    # the measured box, and a low-degree poly kernel at C = 1.
     kernel_handoffs = [c for c, r in svc if r == "kernel:"]
-    ratios = [c.options["gamma"] * c.n_features for c in kernel_handoffs if "gamma" in c.options]
-    assert any(ratio < tuning.svc_min_gamma_ratio for ratio in ratios)
-    assert any(ratio > tuning.svc_max_gamma_ratio for ratio in ratios)
-    assert any(c.option("kernel") == "poly" for c in kernel_handoffs)
+    assert any(c.option("C") > tuning.svc_max_c for c in kernel_handoffs)
+    assert any(
+        c.option("kernel") == "poly" and c.option("C") <= tuning.svc_max_c
+        for c in kernel_handoffs
+    )
     assert all(
         c.n_features >= tuning.svc_min_features and c.n_samples * c.n_features >= tuning.svc_min_work
         for c in kernel_handoffs

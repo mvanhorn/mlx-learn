@@ -517,7 +517,14 @@ fitting, or use stock scikit-learn. A sparse query that scikit-learn's brute for
 on an MLX-fitted model — to the radius methods in both layers, and to `kneighbors` and the
 predictions built on it under `patch_sklearn()` — is cast to float32 and computed against
 the same copy. A float64 query float32 cannot hold is therefore an `UnsupportedInputError`,
-as it is for `kneighbors`.
+as it is for `kneighbors`. A dense query that patched mode hands to scikit-learn's brute
+force because it asks for more neighbors than the MLX search is kept for (more than 50)
+does not use that copy: it runs on the float32 rows plus their float64 residuals, the
+input to about 2⁻⁴⁸, translated by the training mean together with the query, which is
+what keeps it at `kneighbors`' precision — Unix timestamps keep their seconds there, where
+stock scikit-learn's own brute force, expanding squared distances around the origin,
+returns them at distance 0 — at the cost of a float64 copy of the training rows, built on
+the first such query.
 
 The rule this yields: mlxlearn's accuracy claims are relative to the float32 representation
 of the input after its exact float64 translation and scaling — for float32 input, the input

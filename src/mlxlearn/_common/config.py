@@ -209,7 +209,7 @@ class Tuning:
     knn_min_train_samples: int = 4_096
     knn_min_work: int = 6_000_000  # n_train * n_features
     #
-    # Patched mode only (MLXNeighborsMixin._patched_handoff), two more rules. A fit
+    # Patched mode only (MLXNeighborsMixin._patched_handoff), three more rules. A fit
     # with fewer than knn_min_features features goes to scikit-learn at any size: to
     # its KD-tree where algorithm='auto' would build one (at most 15 features; reason
     # "tree-wins"; tables `knn-tree`, `knn-tree-lowrank`), else to its brute force
@@ -234,10 +234,27 @@ class Tuning:
     knn_wide_features: int = 256
     knn_narrow_min_samples: int = 1_000_000
     #
-    # Patched mode also reads k, the constructor's n_neighbors
-    # (MLXNeighborsMixin._neighbors_handoff; table `knn-k`: k = 1-200 at the narrow
-    # corner and on short, wide training sets up to 4 096 features, every batch of
-    # 1-4096 queries). Everything above was measured at k = 10, and MLX pays per
+    # And a fit with knn_wide_features features or more needs knn_wide_min_samples
+    # rows (table `knn-batches`: 4 096-12 000 rows at 2 048-4 096 features, every
+    # batch of 8-64 queries). Right after a stock query, whose OpenMP threads are
+    # still spinning, an MLX call of some batch sizes — about 256 KiB of float32
+    # queries, 32 rows at 2 048 features and 16 at 4 096 — ran up to twice as slow as
+    # its neighbours (with the spinning stopped, KMP_BLOCKTIME=0, it did not), and on
+    # a short training set a stock search costs about as much: at 4 096-7 500 rows
+    # batches of 16-32 queries lost on one version or both (0.77x-0.90x) or tied
+    # (1.04x at 7 500 x 4 096, k = 50), while from 8 192 rows every batch won or tied
+    # (1.20x at worst). The size floors alone send such fits to MLX from about 1 500
+    # features. It gives up what won at 4 096-7 500 rows and 2 048-4 096 features —
+    # most batches there, 1.02x-3.0x (tables `knn-batches`, `knn-k`, and
+    # `knn-structured` at 4 096 x 2 048) — and every such fit at 6 000-8 191 rows and
+    # 1 000-2 047 features, which no table measured.
+    knn_wide_min_samples: int = 8_192
+    #
+    # Patched mode also reads k: a fit's, the constructor's n_neighbors
+    # (MLXNeighborsMixin._neighbors_handoff), and a query's, when it asks for another
+    # (MLXNeighborsMixin._query_neighbors_handoff; table `knn-k`: k = 1-200 at the
+    # narrow corner and on short, wide training sets up to 4 096 features, every batch
+    # of 1-4096 queries). Everything above was measured at k = 10, and MLX pays per
     # query for every candidate it keeps — through each tile's selection, and in
     # refinement, a gather of k rows of every feature — where stock brute force
     # pays almost nothing more. At k = 100 a 1 024-query batch lost at 1 000 000 x
@@ -247,15 +264,18 @@ class Tuning:
     # queries) and at 1 000 000-1 600 000 x 64 (0.67x-0.83x, 512-1 024 queries).
     # k = 50 won or tied everywhere, but with 82-125 rows per neighbor at 2 048-4 096
     # features — 4 096-5 000 rows at k = 40-50 — only tied at batches of 16-512
-    # queries (0.84x-0.99x), where from 150 rows per neighbor (6 144-7 500 x 4 096)
-    # every batch won or tied at 1.03x or better. So a fit needs n_neighbors of at
-    # most knn_max_neighbors and knn_min_samples_per_neighbor training rows per
-    # neighbor. What that gives up is k = 100-200 at 96-128 features and a million
-    # rows (1.2x-3.0x), k = 100 at 100 000 x 256 (1.1x-4.3x) and at 8 192 x 1 024
-    # (1.15x-1.9x), k = 50 at 6 000 x 2 048 (1.09x-1.8x), and the ties above, which
-    # won single rows and large batches (up to 2.3x).
+    # queries (0.84x-0.99x); from 150 rows per neighbor every batch won or tied, and
+    # the row floors above leave more than 160 at every k this allows. So a fit needs
+    # n_neighbors of at most knn_max_neighbors. A query on an MLX-fitted index that
+    # asks for more is answered by scikit-learn's brute force over the float64
+    # training rows, which kept up with a stock model's (within noise at 8 192-
+    # 1 000 000 rows, k = 60-200 and 1-1 024 queries, once re-measured); on MLX it had
+    # lost, down to 0.62x at 8 192 x 2 048 with k = 200. What the k rule gives up is
+    # k = 100-200 at 96-128 features and a million rows (1.2x-3.0x), k = 100 at
+    # 100 000 x 256 (1.1x-4.3x) and at 8 192 x 1 024 (1.15x-1.9x) — and at query time
+    # the same: k = 60-200 at 65 536 x 256 (1.13x-3.5x), 8 192 x 1 024 (1.1x-1.8x) and
+    # a million x 64 (1.07x-2.1x).
     knn_max_neighbors: int = 50
-    knn_min_samples_per_neighbor: int = 150
     #
     # All of the above is calibrated on Gaussian data. Patched mode also reads the
     # data (MLXNeighborsMixin._patched_data_handoff): the fit searches
@@ -296,16 +316,20 @@ class Tuning:
     # and at 5000 lost or tied at every width but 512 (0.37x-0.91x). But a fit whose
     # labels carry no signal converges in one iteration, and is then mostly MLX's
     # fixed cost — at one feature, more of it, since MLX's GEMM with an output of one
-    # column is slow — (table `logreg-labels`): at 60000 x 1, three and five classes
-    # lost or tied (0.70x-0.92x), while every multinomial fit of at least 360 000
-    # element-ops, rows x features x classes, won or tied: 60000 x 2 with three
-    # classes (1.11x-1.27x), 60000 x 1 with ten (1.15x-1.74x). So a multinomial fit
-    # also needs logreg_min_work of those. It gives up 60000 x 1 with three
-    # overlapping classes (`logreg-multi`, 1.87x-1.88x) and 100000 x 1 with three
-    # random ones (1.51x-1.53x, within noise). A binary fit has floors of its own
-    # (below), and this one does not bind it.
+    # column is slow: the MLX path cost about 10 ms at 60000 x 1 whatever the class
+    # count, against 7 at 60000 x 2 (table `logreg-labels`). At 60000 x 1, three to
+    # nine random classes lost or tied (0.70x-1.17x; six read 0.93x-0.94x on 1.9.0 in
+    # two runs outside the table), and 120000-200000 x 1 with three stayed within
+    # noise (1.07x-1.36x), while from two
+    # features every multinomial fit won or tied (1.06x at worst). So a multinomial fit
+    # needs logreg_multinomial_min_features features. It replaces a work floor of
+    # 360 000 rows x features x classes, which 60000 x 1 with six classes met and lost
+    # at, and it gives up the one-feature fits that won: five and ten random classes at
+    # 100000-200000 rows (1.37x-2.2x), ten at 60000 (1.15x-1.74x), and 200000 x 1 with
+    # three overlapping ones (`logreg-multi`, 2.67x). A binary fit has floors of its
+    # own (below), and this one does not bind it.
     logreg_min_samples: int = 60_000
-    logreg_min_work: int = 360_000  # multinomial: n_samples * n_features * n_classes
+    logreg_multinomial_min_features: int = 2
     #
     # A binary fit also needs logreg_binary_min_samples rows and at most
     # logreg_binary_max_features features. On the benchmark's binary target MLX won
@@ -319,6 +343,21 @@ class Tuning:
     # stood at 0.96x-1.17x, too close to call.
     logreg_binary_min_samples: int = 200_000
     logreg_binary_max_features: int = 64
+    #
+    # Patched mode also reads tol and max_iter (LogisticRegression._param_handoff). A
+    # fit that stops within an iteration or two is mostly MLX's fixed cost whatever its
+    # labels, and a looser tol or a smaller max_iter stops one with real signal there
+    # (table `logreg-params`: the benchmark's binary target and labels with moderate
+    # multinomial-logit signal, binary at 200000 x 1-64, three classes at 60000 x
+    # 2-64). tol = 0.01 stopped a binary fit of 200000 x 16 after one iteration and lost
+    # on 1.7.2 (0.82x), and max_iter = 1 lost at 4-64 features on one version or both
+    # (0.75x-0.93x); max_iter = 2 tied at worst (0.96x-0.97x), and from tol = 1e-3 down
+    # and max_iter = 3 up every fit won or tied (0.99x at worst). So a patched fit needs
+    # tol of at most logreg_max_tol and max_iter of at least logreg_min_max_iter. It
+    # gives up tol of 3e-3 (1.14x-3.1x) and 0.01 (1.04x-3.0x) where they won, and
+    # max_iter = 2 (1.01x-2.2x).
+    logreg_max_tol: float = 1e-3
+    logreg_min_max_iter: int = 3
     #
     # SVC: the axis that matters is *width* (see SVC._below_crossover). Per SMO
     # iteration mlxlearn costs about the same at any width while LIBSVM pays O(n*d)
@@ -340,10 +379,10 @@ class Tuning:
     # (1.09x-2.0x). The work floor, 1 500 x 256, keeps 1 000 x 256 on LIBSVM (a 1.04x
     # win at worst); svc_min_samples lets 1 024 x 512 through. Above all three floors
     # every binary fit measured at the default kernel parameters won on both
-    # versions, 1.36x-8.4x. The linear kernel (table `svc-linear`) and the sigmoid
-    # kernel (table `svc-sigmoid`: won at C = 0.1, lost at C = 10 and 100 nearly
-    # everywhere, down to 0.06x) are excluded at every size; for rbf and poly,
-    # patched mode also reads the kernel parameters (below).
+    # versions, 1.36x-8.4x, on this Gaussian data. The linear kernel (table
+    # `svc-linear`) and the sigmoid kernel (table `svc-sigmoid`: won at C = 0.1, lost
+    # at C = 10 and 100 nearly everywhere, down to 0.06x) are excluded at every size;
+    # for rbf and poly, patched mode also reads C and the kernel parameters (below).
     svc_min_features: int = 256
     svc_min_samples: int = 1_024
     svc_min_work: int = 384_000  # n_samples * n_features
@@ -362,29 +401,29 @@ class Tuning:
     # construction.
     svc_min_pair_work: int = 384_000
     #
-    # Patched mode also reads the kernel parameters (SVC._kernel_handoff; table
-    # `svc-params`, binary fits at shapes the floors above send to MLX, C = 1-100).
-    # A kernel close to the linear one takes many SMO iterations per row over rows
-    # LIBSVM has cached, and loses at any width. rbf needs gamma of at least
-    # svc_min_gamma_ratio times scikit-learn's "scale" value, gamma * d * Var(X):
-    # from 0.03 to 0.5 times it lost at C = 10 or 100 at five of the six shapes
-    # (down to 0.30x), at 0.8 it won or tied everywhere (1.01x at worst, 3000 x 128
-    # on 1.7.2), and from 1 — the default — up to 10 it won. At the other end, a
-    # kernel far narrower than the data makes every row a support vector (table
-    # `svc-hard`): gamma of 100 to 1 000 times "scale" — which gamma=1 is on
-    # standardized data of 100-1 000 features — lost at C = 10 on 1.7.2 at
-    # 1 500 x 256 and 1 100 x 512 (0.88x-0.91x) and 3 000 x 128 (0.90x), while at 30
-    # times it won at every shape (1.10x-2.3x). So rbf needs gamma of at most
-    # svc_max_gamma_ratio times "scale" as well. Outside those bounds it needs C at
-    # most svc_low_gamma_max_c: at C = 1 every gamma measured won at every shape
-    # (1.05x-11x). The poly kernel needs degree svc_poly_min_degree or more and
-    # coef0 = 0: degree 2 lost at C = 10 and 100 at 128 features (0.43x-0.63x), and
-    # coef0 = 1 at degree 2 or 3 lost at 128 features (down to 0.47x) and, at degree
-    # 2, at 1500 x 256 (0.74x-0.94x); degree 3 and 4 at coef0 = 0 won or tied
-    # everywhere.
-    svc_min_gamma_ratio: float = 0.8
-    svc_max_gamma_ratio: float = 30.0
-    svc_low_gamma_max_c: float = 1.0
+    # Patched mode also reads C and the kernel parameters (SVC._kernel_handoff). The
+    # floors above were set on isotropic Gaussian data, whose intrinsic dimension is
+    # its width. What decides is how many SMO iterations a fit takes per row, and on
+    # data of lower intrinsic dimension C multiplies them (table `svc-structured`:
+    # five or ten latent directions plus noise, singular values 1/i, features smoothed
+    # over 16 neighbours, Student-t(2) features and column scales 10^U(0, 2) at
+    # 1 024-4 000 x 256-512, and scikit-learn's digits upsampled to 256-784 pixels).
+    # At C = 10 they lost at 1 024-1 797 rows on both versions, down to 0.54x for rbf
+    # and 0.26x for poly, the digits at 256 and 400 pixels 0.57x-0.81x; at C <= 1 every
+    # one of them won, 1.06x-9.2x, at every gamma from 0.03 to 100 times "scale", with
+    # tol = 1e-5, with balanced class weights and at 8 000 rows. So an rbf or poly fit
+    # needs a mean box — C times the mean class and sample weight, which balanced
+    # class weights leave at C — of at most svc_max_c. That replaces the bounds on
+    # gamma, which applied only above C = 1. It gives up every rbf and poly fit above
+    # C = 1 that won: the benchmark's target at C = 10 and 100 from 256 features
+    # (table `svc`, 1.36x-3.8x), labels with little or no signal (`svc-hard`,
+    # 1.10x-2.7x), overlapping one-vs-one classes (`svc-multi-overlap`, 1.39x-2.0x),
+    # gamma of 0.8-10 times "scale" (`svc-params`, 1.20x-4.6x) and the structured data
+    # at 2 000-4 000 rows (`svc-structured`, 1.04x-2.3x). The poly kernel also needs
+    # degree svc_poly_min_degree or more and coef0 = 0: at C = 1, degree 2 with
+    # coef0 = 1 lost at 1 500 x 256 (0.85x-0.94x, `svc-params`); degree 3 and 4 at
+    # coef0 = 0 won or tied everywhere.
+    svc_max_c: float = 1.0
     svc_poly_min_degree: int = 3
     #
     # Not a dispatch rule but where a fitted SVC computes (SVC._pairwise_decision): a
@@ -463,11 +502,6 @@ class Tuning:
         for name in ("mlx_cache_release_fraction", "knn_probe_max_uncertified"):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1], got {getattr(self, name)}")
-        if not self.svc_max_gamma_ratio >= self.svc_min_gamma_ratio:
-            raise ValueError(
-                "svc_max_gamma_ratio must be at least svc_min_gamma_ratio "
-                f"({self.svc_min_gamma_ratio}), got {self.svc_max_gamma_ratio}"
-            )
         if self.force_backend not in get_args(ForceBackend):
             # Not lower-cased: "MLX" is as much a typo as "gpu", and a forced
             # backend that silently meant something else defeats the bisection

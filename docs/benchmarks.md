@@ -104,19 +104,21 @@ silicon.
 A threshold sends a problem to MLX only where MLX won, or tied within noise, against both
 scikit-learn versions, in every configuration measured at that shape: every query batch
 size from 1 to 4 096, on every law of data measured, for the neighbor estimators; every
-kernel, `gamma`, degree, `coef0` and C from 0.1 to 100 for `SVC`; binary and multinomial
-targets, with and without signal, for `LogisticRegression`. A fit cannot see how many
+kernel, `gamma`, degree, `coef0` and C from 0.1 to 100, on Gaussian data and on data of
+lower intrinsic dimension, for `SVC`; binary and multinomial targets, with and without
+signal, and `tol` and `max_iter`, for `LogisticRegression`. A fit cannot see how many
 queries will follow it or how many iterations it will take, so where the answer turns on
 those, the threshold takes the side that does not lose. Everything else goes to stock
 scikit-learn. Some rules read more than the shape: a neighbor fit reads its `n_neighbors`
-and probes its own rows once its index is built, `SVC` reads `gamma` against the data's
-variance, and `LogisticRegression` counts the classes.
+and probes its own rows once its index is built, and a query reads the `n_neighbors` it
+asks for; `SVC` reads C, scaled by the class and sample weights; and `LogisticRegression`
+counts the classes and reads `tol` and `max_iter`.
 
 | Estimator | Patched dispatch uses MLX when — all required | `Tuning` |
 |---|---|---|
-| neighbor estimators | at least 64 features, 4 096 rows and 6 000 000 elements (rows × features); with fewer than 256 features, at least 1 000 000 rows; `n_neighbors` at most 50, with at least 150 rows per neighbor; and data the first search pass can certify — none of 256 training rows probed at fit uncertified, and, below 256 features, not integer-valued | `knn_min_features = 64`, `knn_min_train_samples = 4096`, `knn_min_work = 6_000_000`, `knn_wide_features = 256`, `knn_narrow_min_samples = 1_000_000`, `knn_max_neighbors = 50`, `knn_min_samples_per_neighbor = 150`, `knn_probe_rows = 256`, `knn_probe_max_uncertified = 0.0` |
-| `LogisticRegression` | at least 60 000 rows; multinomial: also at least 360 000 element-ops (rows × features × classes); binary: also at least 200 000 rows and at most 64 features | `logreg_min_samples = 60_000`, `logreg_min_work = 360_000`, `logreg_binary_min_samples = 200_000`, `logreg_binary_max_features = 64` |
-| `SVC` | the rbf or poly kernel, at least 256 features, 1 024 rows and 384 000 elements; with more than two classes, a mean one-vs-one pair `(2n/K) · d` of at least 384 000; rbf: `gamma` from 0.8 to 30 × scikit-learn's `"scale"` value, or C at most 1; poly: degree 3 or more and `coef0 = 0` | `svc_min_features = 256`, `svc_min_samples = 1024`, `svc_min_work = 384_000`, `svc_min_pair_work = 384_000`, `svc_min_gamma_ratio = 0.8`, `svc_max_gamma_ratio = 30.0`, `svc_low_gamma_max_c = 1.0`, `svc_poly_min_degree = 3` |
+| neighbor estimators | at least 64 features, 4 096 rows and 6 000 000 elements (rows × features); with fewer than 256 features, at least 1 000 000 rows, and from 256 features at least 8 192; `n_neighbors` at most 50 — a query asking for more on an MLX-fitted model is answered by scikit-learn's brute force; and data the first search pass can certify — none of 256 training rows probed at fit uncertified, and, below 256 features, not integer-valued | `knn_min_features = 64`, `knn_min_train_samples = 4096`, `knn_min_work = 6_000_000`, `knn_wide_features = 256`, `knn_narrow_min_samples = 1_000_000`, `knn_wide_min_samples = 8192`, `knn_max_neighbors = 50`, `knn_probe_rows = 256`, `knn_probe_max_uncertified = 0.0` |
+| `LogisticRegression` | at least 60 000 rows; multinomial: also at least 2 features; binary: also at least 200 000 rows and at most 64 features; `tol` at most 1e-3 and `max_iter` at least 3 | `logreg_min_samples = 60_000`, `logreg_multinomial_min_features = 2`, `logreg_binary_min_samples = 200_000`, `logreg_binary_max_features = 64`, `logreg_max_tol = 1e-3`, `logreg_min_max_iter = 3` |
+| `SVC` | the rbf or poly kernel, at least 256 features, 1 024 rows and 384 000 elements; with more than two classes, a mean one-vs-one pair `(2n/K) · d` of at least 384 000; C at most 1 — the mean box, C times the mean class and sample weight; poly: degree 3 or more and `coef0 = 0` | `svc_min_features = 256`, `svc_min_samples = 1024`, `svc_min_work = 384_000`, `svc_min_pair_work = 384_000`, `svc_max_c = 1.0`, `svc_poly_min_degree = 3` |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
 published crossover the dispatcher ignores is a claim, not a mechanism.
@@ -129,51 +131,54 @@ performance gate on both (`~` within noise, **bold** a significant loss):
 
 | case | patched dispatch | mlxlearn / stock, ms (1.9.0) | 1.9.0 | 1.7.2 |
 |---|---|---|---|---|
-| `knn/fit/1000x32/q256` | scikit-learn | 0.23 / 0.16 | 0.70×~ | 0.74×~ |
-| `knn/kneighbors/1000x32/q256` | scikit-learn | 1.26 / 1.24 | 0.99×~ | 1.03×~ |
-| `knn/fit/65536x256/q256` | MLX | 31.91 / 1.98 | **0.06×** | **0.05×** |
-| `knn/kneighbors/65536x256/q256` | MLX | 11.44 / 23.33 | 2.04× | 2.19× |
-| `knn/kneighbors/262144x64/q256` | scikit-learn | 21.37 / 23.80 | 1.11×~ | 1.18×~ |
-| `knn/kneighbors/1048576x64/q256` | MLX | 49.86 / 76.27 | 1.53× | 1.53× |
-| `knn/kneighbors/1048576x16/q256` | scikit-learn | 47.34 / 47.56 | 1.00×~ | 0.98×~ |
-| `knn/kneighbors/1048576x8/q256` | scikit-learn | 39.90 / 39.88 | 1.00×~ | 1.00×~ |
-| `knn/kneighbors/50000x3/q256` | scikit-learn | 0.96 / 0.89 | 0.93×~ | 0.99×~ |
-| `knn/kneighbors/24000x256/q256/data=dups` | scikit-learn | 10.50 / 10.60 | 1.01×~ | 1.03×~ |
-| `knn/kneighbors/30000x256/q64/data=dup2` | scikit-learn | 3.27 / 3.35 | 1.03×~ | 0.87× → 1.00×~ re-measured |
-| `knn/kneighbors/1048576x64/q256/data=binary` | scikit-learn | 72.50 / 74.89 | 1.03×~ | 1.01×~ |
-| `knn/kneighbors/1048576x64/q1024/n_neighbors=100` | scikit-learn | 317.71 / 307.72 | 0.97×~ | 0.98×~ |
-| `logreg/fit/5000x32` | scikit-learn | 1.62 / 1.56 | 0.96×~ | 1.02×~ |
-| `logreg/fit/200000x128` | scikit-learn | 36.85 / 36.61 | 0.99× | 0.99×~ |
-| `logreg/fit/100000x16` | scikit-learn | 13.88 / 13.73 | 0.99× | 0.99× |
-| `logreg/fit/200000x16` | MLX | 11.71 / 25.42 | 2.17× | 2.09× |
-| `logreg/fit/60000x64/n_classes=5` | MLX | 19.16 / 39.80 | 2.08× | 2.10× |
-| `logreg/fit/60000x1/n_classes=3` | scikit-learn | 33.50 / 33.09 | 0.99× | 1.00×~ |
-| `svc/fit/1000x32` | scikit-learn | 10.29 / 10.23 | 0.99×~ | 0.99× |
-| `svc/fit/4000x64` | scikit-learn | 181.88 / 181.79 | 1.00×~ | 1.00×~ |
-| `svc/fit/3000x128` | scikit-learn | 181.10 / 181.29 | 1.00×~ | 1.00× |
-| `svc/fit/4000x256` | MLX | 160.97 / 599.88 | 3.73× | 3.47× |
-| `svc/fit/2048x512/n_classes=4` | MLX | 28.96 / 57.08 | 1.97× | 1.80× |
-| `svc/fit/2048x512/n_classes=16` | scikit-learn | 227.48 / 226.56 | 1.00× | 1.00×~ |
-| `svc/fit/4000x256/C=100.0/gamma=0.000390625` | scikit-learn | 748.77 / 746.66 | 1.00×~ | 1.00×~ |
-| `svc/fit/1500x256/C=10.0/gamma=0.390625` | scikit-learn | 105.61 / 105.76 | 1.00×~ | 1.00×~ |
-| `svc/fit/1500x256/C=10.0/degree=2/kernel=poly` | scikit-learn | 91.93 / 91.66 | 1.00×~ | 1.00×~ |
-| `svc/predict/4000x256/q1` | MLX (host) | 0.23 / 0.38 | 1.68× | 1.29× |
-| `svc/predict/4000x256/q1000` | MLX | 2.45 / 247.73 | 100.96× | 85.39× |
+| `knn/fit/1000x32/q256` | scikit-learn | 0.26 / 0.21 | **0.80×** | **0.77×** |
+| `knn/kneighbors/1000x32/q256` | scikit-learn | 1.37 / 1.36 | 0.99×~ | 1.02×~ |
+| `knn/fit/65536x256/q256` | MLX | 32.67 / 2.28 | **0.07×** | **0.06×** |
+| `knn/kneighbors/65536x256/q256` | MLX | 9.69 / 18.37 | 1.90× | 3.14× |
+| `knn/kneighbors/262144x64/q256` | scikit-learn | 24.22 / 25.63 | 1.06×~ | 0.97×~ |
+| `knn/kneighbors/1048576x64/q256` | MLX | 40.12 / 79.17 | 1.97× | 1.96× |
+| `knn/kneighbors/1048576x16/q256` | scikit-learn | 48.19 / 48.68 | 1.01×~ | 1.00×~ |
+| `knn/kneighbors/1048576x8/q256` | scikit-learn | 47.07 / 46.92 | 1.00×~ | 1.00×~ |
+| `knn/kneighbors/50000x3/q256` | scikit-learn | 1.03 / 0.97 | 0.94×~ | 0.96×~ |
+| `knn/kneighbors/24000x256/q256/data=dups` | scikit-learn | 11.49 / 9.78 | 0.85×~ | 1.00×~ |
+| `knn/kneighbors/30000x256/q64/data=dup2` | scikit-learn | 3.32 / 3.16 | 0.95×~ | 0.98×~ |
+| `knn/kneighbors/1048576x64/q256/data=binary` | scikit-learn | 79.12 / 81.55 | 1.03×~ | 0.96×~ |
+| `knn/kneighbors/1048576x64/q1024/n_neighbors=100` | scikit-learn | 359.58 / 352.82 | 0.98×~ | 0.97×~ |
+| `knn/kneighbors/65536x256/q256/query_neighbors=100` | scikit-learn | 22.77 / 22.10 | 0.97×~ | 0.97×~ |
+| `knn/kneighbors/4096x2048/q32` | scikit-learn | 3.46 / 3.31 | 0.96×~ | 0.96×~ |
+| `logreg/fit/5000x32` | scikit-learn | 1.51 / 1.50 | 0.99×~ | 0.97×~ |
+| `logreg/fit/200000x128` | scikit-learn | 38.69 / 38.45 | 0.99×~ | 1.00×~ |
+| `logreg/fit/100000x16` | scikit-learn | 13.12 / 12.91 | 0.98×~ | 0.99×~ |
+| `logreg/fit/200000x16` | MLX | 12.04 / 26.83 | 2.23× | 2.07× |
+| `logreg/fit/60000x64/n_classes=5` | MLX | 18.41 / 37.69 | 2.05× | 2.11× |
+| `logreg/fit/60000x1/n_classes=3` | scikit-learn | 40.77 / 40.32 | 0.99× | 0.99×~ |
+| `logreg/fit/200000x16/tol=0.01` | scikit-learn | 19.07 / 19.01 | 1.00×~ | 0.99×~ |
+| `logreg/fit/200000x16/max_iter=2` | scikit-learn | 11.01 / 10.96 | 1.00×~ | 1.00×~ |
+| `svc/fit/1000x32` | scikit-learn | 8.91 / 8.89 | 1.00×~ | 0.98×~ |
+| `svc/fit/4000x64` | scikit-learn | 186.20 / 185.72 | 1.00×~ | 1.00×~ |
+| `svc/fit/3000x128` | scikit-learn | 180.82 / 181.21 | 1.00×~ | 0.99×~ |
+| `svc/fit/4000x256` | MLX | 164.16 / 620.14 | 3.78× | 3.49× |
+| `svc/fit/2048x512/n_classes=4` | MLX | 30.91 / 63.29 | 2.05× | 1.88× |
+| `svc/fit/2048x512/n_classes=16` | scikit-learn | 231.90 / 231.79 | 1.00×~ | 1.00×~ |
+| `svc/fit/1500x256/C=10.0` | scikit-learn | 106.59 / 106.66 | 1.00×~ | 1.00×~ |
+| `svc/fit/1500x256/degree=2/kernel=poly` | scikit-learn | 92.04 / 92.40 | 1.00×~ | 1.00×~ |
+| `svc/predict/4000x256/q1` | MLX (host) | 0.30 / 0.42 | 1.41× | 1.26× |
+| `svc/predict/4000x256/q1000` | MLX | 2.54 / 255.07 | 100.58× | 87.69× |
 
-A handoff costs something of its own, about 0.05 ms for a neighbor fit: a third to a half
-of a stock brute-force fit at 1 000 × 32 (0.23 against 0.16 ms on 1.9.0), which stores a
-reference and does nothing else. So patched `knn/fit` below the floors reads 0.70×–0.74×
-(within noise at 7 pairs), one more instance of the accepted `knn/fit` regression below.
-The logistic and SVC handoffs were within noise of stock or within its 5%:
-`logreg/fit/100000x16`, a binary fit below the binary row floor, read 0.99× on both
-versions. The data handoffs — rows repeated about 20 times at 24 000 × 256 and about
-twice at 30 000 × 256, and binary features at 1 048 576 × 64, which the size rules alone
-would send to MLX — answered their queries within noise of stock; the one reading of
-0.87× on 1.7.2, on work that is scikit-learn's on both sides, read 1.00× when the runner
-re-measured it over 21 pairs. So did the handoffs of the new rules: 100 neighbors at
-1 048 576 × 64, a one-feature three-class `LogisticRegression`, `SVC` at 128 features, and
-an rbf `gamma` of 100 × `"scale"` at C = 10. `svc/predict/…/q1` is answered on the host,
-and the 1 000-row batch on the device.
+A handoff costs something of its own, about 0.05 ms for a neighbor fit: a quarter of a
+stock brute-force fit at 1 000 × 32 (0.26 against 0.21 ms on 1.9.0), which stores a
+reference and does nothing else. So patched `knn/fit` below the floors reads 0.77×–0.80×,
+one more instance of the accepted `knn/fit` regression below. The logistic and SVC
+handoffs were within noise of stock or within its 5%: `logreg/fit/100000x16`, a binary fit
+below the binary row floor, read 0.98×–0.99×. The data handoffs — rows repeated about 20
+times at 24 000 × 256 and about twice at 30 000 × 256, and binary features at
+1 048 576 × 64, which the size rules alone would send to MLX — answered their queries
+within noise of stock. So did the handoffs of the newer rules: 100 neighbors asked of the
+fit at 1 048 576 × 64 and of a query on an index fitted with k = 10 at 65 536 × 256
+(0.97×~ on both versions), 4 096 × 2 048 short of the wide-data row floor, a one-feature
+three-class `LogisticRegression`, `tol = 0.01` and `max_iter = 2` at 200 000 × 16, and
+`SVC` at 128 features, at C = 10 and with a degree-2 poly kernel. `svc/predict/…/q1` is
+answered on the host, and the 1 000-row batch on the device.
 
 ## Neighbors
 
@@ -377,18 +382,18 @@ any other grid — every batch size from 1 to 4 096; each cell is the worse vers
 | 8 192 × 1024, k = 50 | 1.15~ | 1.29 | 1.30 | 1.34 | 1.24 | 1.41 | 1.28 | 1.25~ | 1.57 | 1.53 | 2.14 | 2.56 | MLX |
 | 8 192 × 1024, k = 100 | 1.21 | 1.31 | 1.29 | 1.21 | 1.20 | 1.32 | 1.32 | 1.15 | 1.19 | 1.38 | 1.48 | 1.84 | scikit-learn |
 | 8 192 × 1024, k = 200 | 1.15 | 1.27 | 1.24 | 1.15~ | 1.05~ | 1.12 | 0.92~ | **0.74** | 0.92~ | 0.90~ | 1.00~ | 1.31 | scikit-learn |
-| 4 096 × 2048, k = 5 | 1.21 | 1.14~ | 1.10 | 1.20 | 1.26 | 1.41 | 1.30~ | 1.56 | 1.40 | 1.61 | 1.93 | 2.31 | MLX |
-| 4 096 × 2048, k = 10 | 1.13 | 1.14 | 1.09 | 1.23 | 1.20 | 1.35 | 0.96~ | 1.36 | 1.40 | 1.55 | 2.09 | 2.26 | MLX |
+| 4 096 × 2048, k = 5 | 1.21 | 1.14~ | 1.10 | 1.20 | 1.26 | 1.41 | 1.30~ | 1.56 | 1.40 | 1.61 | 1.93 | 2.31 | scikit-learn |
+| 4 096 × 2048, k = 10 | 1.13 | 1.14 | 1.09 | 1.23 | 1.20 | 1.35 | 0.96~ | 1.36 | 1.40 | 1.55 | 2.09 | 2.26 | scikit-learn |
 | 4 096 × 2048, k = 50 | 1.19 | 1.09 | 1.08~ | 1.14 | 1.05~ | 1.04~ | 0.95~ | 0.94~ | 0.85~ | 1.01~ | 1.17 | 1.38 | scikit-learn |
 | 4 096 × 2048, k = 100 | 1.09 | 1.02~ | 0.99~ | 0.97~ | 0.99~ | 0.89~ | **0.63** | **0.67** | **0.61** | **0.69** | **0.83** | 0.95~ | scikit-learn |
 | 4 096 × 2048, k = 200 | 1.17 | 1.02~ | 0.99~ | **0.92** | **0.74** | **0.55** | **0.39** | **0.40** | **0.38** | **0.46** | **0.52** | **0.53** | scikit-learn |
-| 6 000 × 2048, k = 5 | 1.38 | 1.23 | 1.22 | 1.26 | 1.20~ | 1.43 | 1.36 | 1.98 | 1.69 | 1.80 | 2.19 | 2.74 | MLX |
-| 6 000 × 2048, k = 10 | 1.36 | 1.22 | 1.27~ | 1.17 | 1.20~ | 1.60 | 1.29 | 1.71 | 1.61 | 1.64 | 2.14 | 2.72 | MLX |
+| 6 000 × 2048, k = 5 | 1.38 | 1.23 | 1.22 | 1.26 | 1.20~ | 1.43 | 1.36 | 1.98 | 1.69 | 1.80 | 2.19 | 2.74 | scikit-learn |
+| 6 000 × 2048, k = 10 | 1.36 | 1.22 | 1.27~ | 1.17 | 1.20~ | 1.60 | 1.29 | 1.71 | 1.61 | 1.64 | 2.14 | 2.72 | scikit-learn |
 | 6 000 × 2048, k = 50 | 1.34 | 1.26 | 1.21 | 1.09~ | 1.17~ | 1.19~ | 1.17 | 1.09~ | 1.14~ | 1.19~ | 1.39 | 1.69 | scikit-learn |
 | 6 000 × 2048, k = 100 | 1.32 | 1.17 | 1.14 | 1.02~ | 0.92~ | 0.99~ | **0.77** | **0.68** | 0.77~ | 0.86~ | 1.01~ | 1.17 | scikit-learn |
 | 6 000 × 2048, k = 200 | 1.29 | 1.20~ | 1.06~ | 0.93~ | **0.77** | **0.77** | **0.53** | **0.64** | **0.51** | **0.61** | **0.69** | **0.67** | scikit-learn |
 | 4 096 × 3072, k = 5 | 1.41 | 1.11 | 1.26 | 1.25 | 1.30 | 1.28 | 1.66 | 1.50 | 1.25~ | 1.46 | 2.03 | 2.31 | scikit-learn |
-| 4 096 × 3072, k = 10 | 1.36 | 1.13 | 1.29 | 1.27 | 1.31 | 1.40 | 1.17~ | 1.40 | 1.48 | 1.57 | 2.06 | 2.38 | MLX |
+| 4 096 × 3072, k = 10 | 1.36 | 1.13 | 1.29 | 1.27 | 1.31 | 1.40 | 1.17~ | 1.40 | 1.48 | 1.57 | 2.06 | 2.38 | scikit-learn |
 | 4 096 × 3072, k = 40 | 1.29 | 1.04~ | 1.25 | 1.17~ | 1.18~ | 1.07~ | 1.12~ | 0.90~ | 1.09~ | 0.99~ | 1.30 | 1.49 | scikit-learn |
 | 4 096 × 3072, k = 50 | 1.39 | 1.10~ | 1.24 | 1.15~ | 1.08 | 1.09~ | 1.08~ | 0.95~ | 0.88~ | 0.90~ | 1.25 | 1.41 | scikit-learn |
 | 4 096 × 3072, k = 100 | 1.36 | 1.08~ | 1.24 | 1.13~ | 0.92~ | **0.75** | **0.67** | **0.64** | **0.69** | **0.79** | 0.84~ | 0.89~ | scikit-learn |
@@ -401,8 +406,8 @@ any other grid — every batch size from 1 to 4 096; each cell is the worse vers
 | 4 096 × 4096, k = 100 | 1.45 | 1.80 | 1.89 | 1.51 | 1.01~ | **0.84** | **0.65** | **0.69** | **0.65** | **0.75** | **0.80** | **0.85** | scikit-learn |
 | 4 096 × 4096, k = 200 | 1.47 | 1.84 | 1.61 | 1.10~ | **0.72** | **0.50** | **0.48** | **0.50** | **0.43** | **0.51** | **0.50** | **0.50** | scikit-learn |
 | 5 000 × 4096, k = 50 | 1.59 | 1.30 | 1.18 | 1.18~ | 0.89~ | 0.94~ | 0.97~ | 0.99~ | 0.96~ | 1.15~ | 1.34~ | 1.56 | scikit-learn |
-| 6 144 × 4096, k = 40 | 1.85 | 1.55 | 1.55 | 1.39~ | 1.41 | 1.34 | 1.17~ | 1.16~ | 1.03~ | 1.64 | 1.67 | 1.91 | MLX |
-| 7 500 × 4096, k = 50 | 1.84 | 1.70 | 1.82 | 1.36 | 1.24~ | 1.21 | 1.18~ | 1.35 | 1.23~ | 1.43 | 1.65 | — | MLX |
+| 6 144 × 4096, k = 40 | 1.85 | 1.55 | 1.55 | 1.39~ | 1.41 | 1.34 | 1.17~ | 1.16~ | 1.03~ | 1.64 | 1.67 | 1.91 | scikit-learn |
+| 7 500 × 4096, k = 50 | 1.84 | 1.70 | 1.82 | 1.36 | 1.24~ | 1.21 | 1.18~ | 1.35 | 1.23~ | 1.43 | 1.65 | — | scikit-learn |
 
 MLX pays per query for every candidate it keeps — through each tile's selection, and in
 refinement, a gather of k rows of every feature — where stock brute force pays almost
@@ -415,17 +420,30 @@ training rows per neighbor at 2 048–4 096 features — 4 096–5 000 rows at k
 tied at batches of 16–512 queries (0.84×–0.99×; an independent run at 4 096 × 3 072, k = 50,
 lost 0.80×–0.84× at 128–256 queries), while from 150 rows per neighbor (6 144 and 7 500 ×
 4 096) every batch won or tied at 1.03× or better. So patched dispatch hands a fit to
-scikit-learn when its `n_neighbors` is above 50 (`knn_max_neighbors`) or it has fewer than
-150 training rows per neighbor (`knn_min_samples_per_neighbor`), recorded as
-`"below-crossover"`. It reads the constructor's `n_neighbors`, the one a fit can see; a
-`kneighbors(X, n_neighbors=...)` call that asks for more is answered on the backend the fit
-chose, as every query is — import `mlxlearn.neighbors` directly, or fit with the k you will
-ask for, to have the rule see it.
+scikit-learn when its `n_neighbors` is above 50 (`knn_max_neighbors`), recorded as
+`"below-crossover"`; the row floors — 8 192 rows from 256 features, below — leave more than
+160 rows per neighbor at every k it allows, so the 150 needs no rule of its own.
+
+The fit reads the constructor's `n_neighbors`, the one it can see. A query on an
+MLX-fitted model that asks for more — `kneighbors(X, n_neighbors=...)`, or `n_neighbors`
+raised with `set_params` — would cost MLX what a fit with that k does (at 8 192 × 2 048,
+fitted with k = 5, 200 neighbors per query ran 0.62×–0.81× of stock at 256–1 024 queries),
+so patched mode answers it with scikit-learn's brute force instead, over a float64 copy of
+the training rows — the float32 rows plus their residuals, the caller's input to about
+2⁻⁴⁸, translated by their mean as the MLX search is, with the queries — built on the first
+such query and kept with the model, not pickled. The translation keeps data far from the
+origin, such as Unix timestamps, at the MLX search's precision, where stock scikit-learn's
+expanded distances lose it. Recorded as `"below-crossover"` on the call's event. Against a stock model fitted on the same rows it
+kept up: at 8 192 × 1 024 and 2 048, 65 536 × 256 and 1 000 000 × 64, with k = 60, 100 and
+200 and batches of 1 to 1 024 queries (21 interleaved pairs up to 32 queries, 9 above),
+every ratio read 0.89×–1.10× and all but one were within noise; that one, 0.90× on 1.7.2
+at 8 192 × 2 048 with k = 200 and 256 queries, read 1.00×~–1.05×~ over 31 pairs, beside
+stock-against-stock controls of the same work at 0.96×~–1.03×~.
 
 What the rule gives up is k = 100–200 at 96–128 features and a million rows (1.2×–3.0×),
-k = 100 at 100 000 × 256 (1.1×–4.3×) and at 8 192 × 1 024 (1.15×–1.9×), k = 50 at
-6 000 × 2 048 (1.09×–1.8×), and the ties above, which won single rows and large batches
-(up to 2.3×). The data rule (below) probes with the fitted k too, and the first pass's
+k = 100 at 100 000 × 256 (1.1×–4.3×) and at 8 192 × 1 024 (1.15×–1.9×), and at query time
+the same: MLX answered 60–200 neighbors faster at 65 536 × 256 (1.13×–3.5×), 8 192 × 1 024
+(1.1×–1.8×) and a million × 64 (1.07×–2.1×) wherever it won. The data rule (below) probes with the fitted k too, and the first pass's
 noise band grows with the width and with k: on this Gaussian data it left 1 and 6 of 256
 rows uncertified at 4 096 × 4 096 (k = 10 and 5), 1 at 4 096 × 3 072 (k = 5), and 3 and
 7 at 24 000 and 100 000 × 256 (k = 200), so those fits go to scikit-learn by that rule.
@@ -479,13 +497,61 @@ lost — 1 to 32 queries, 0.70×–0.95× at 4 096 and 8 192 rows — and at 4 1
 where the previous work floor sat, single rows only tied (0.90×–0.99×). From 6 million
 elements every batch won or tied on both versions.
 
-Where patched dispatch uses MLX, then — tall data from 64 features, wide data from 256,
-at most 50 neighbors with 150 rows each, on data the fit-time probe passes — the Gaussian
-grids `knn`, `knn-rows` and `knn-narrow` answered single rows 1.0×–5.7× faster than stock,
-16 queries 0.98×–3.2× (a tie at worst), 256 queries 1.3×–7.7× and 4 096 queries
-2.6×–6.2×, on both versions, and every batch size between those won or tied too. With the
-other laws and k of the grids below (`knn-data`, `knn-structured`, `knn-k`), every routed
-batch still won or tied, 0.86×~ at worst (32 queries at 4 096 × 2 048).
+**Short, wide training sets need more rows than the floors ask.** The grids above time
+batch sizes that are powers of two. Between those, and right after a stock query — whose
+OpenMP threads keep spinning for a while after it returns, as they do between the
+harness's pairs — some MLX calls ran up to twice as slow as their neighbours: batches of about
+256 KiB of float32 queries, 32 rows at 2 048 features and 16 at 4 096, and not every time
+(with the spinning stopped, `KMP_BLOCKTIME=0`, they did not; nor did a sleep, busy host
+code or a NumPy product in its place). Where the training set is short, a stock search
+costs about as much as the slow call. Grid `knn-batches`: every few batch sizes from 8
+to 64 queries, at 4 096–12 000 rows and 2 048–4 096 features, k = 10 and at the most
+neighbors the rules allow, one process per shape; each cell is the worse version's ratio:
+
+<!-- python -m benchmarks.calibrate table knn-batches: scikit-learn 1.9.0 / 1.7.2, the worse of them -->
+| rows × features, k | 8 queries | 12 queries | 14 queries | 16 queries | 18 queries | 20 queries | 22 queries | 24 queries | 26 queries | 28 queries | 30 queries | 32 queries | 34 queries | 36 queries | 40 queries | 48 queries | 64 queries | dispatch |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4 096 × 2048, k = 10 | 1.26 | 1.38 | 1.29 | 1.23 | 1.31 | 1.26 | 1.26 | 1.29 | 1.31~ | 1.31 | 1.44 | 1.07~ | 1.25~ | 1.53 | 1.44 | 1.37 | 1.32 | scikit-learn |
+| 5 000 × 2048, k = 10 | 1.23 | 1.23 | 1.26 | 1.07~ | 1.33 | 1.47 | 1.17~ | 1.06~ | 1.31 | 1.41 | 1.40 | 1.07~ | 1.36~ | 1.45 | 1.37 | 1.24 | 1.26~ | scikit-learn |
+| 6 000 × 2048, k = 10 | 1.13~ | 1.28 | 1.24~ | 1.27 | 1.40~ | 1.31 | 1.44 | 1.41 | 1.51 | 1.43 | 1.72 | 1.19~ | 1.38 | 1.53 | 1.73 | 1.35 | 1.46 | scikit-learn |
+| 8 192 × 2048, k = 10 | 1.56 | 1.64 | 1.83 | 1.58 | 1.85 | 1.79 | 1.76 | 1.89 | 1.93 | 2.11 | 1.62 | 1.70 | 1.96 | 2.13 | 2.04 | 1.49 | 1.53 | MLX |
+| 8 192 × 2048, k = 50 | 1.38 | 1.62 | 1.55 | 1.47 | 1.66 | 1.73 | 1.70 | 1.59 | 1.84 | 1.83 | 1.76 | 1.28 | 1.61 | 1.87 | 1.76 | 1.34 | 1.33 | MLX |
+| 12 000 × 2048, k = 10 | 1.81 | 2.08 | 2.20 | 1.94 | 2.29 | 2.10 | 2.19 | 1.99 | 2.13 | 2.32 | 2.44 | 1.76 | 2.27 | 2.66 | 2.44 | 1.83 | 2.14 | MLX |
+| 4 500 × 2304, k = 10 | 1.03~ | 1.11~ | 1.09~ | 1.11~ | 1.25 | 1.26~ | 1.23 | 1.02~ | 1.32 | 1.10~ | **0.87** | 0.87~ | 1.51 | 1.43 | 1.33 | 1.10~ | 1.31 | scikit-learn |
+| 4 096 × 2560, k = 10 | 1.25 | 1.33 | 1.31 | 1.26 | 1.53 | 1.42 | 1.41 | 1.33~ | **0.77** | 1.01~ | **0.87** | 1.43 | 1.57 | 1.60 | 1.13 | 1.18~ | 1.21~ | scikit-learn |
+| 4 096 × 3072, k = 10 | 1.25 | 1.37 | 1.33 | 1.24 | 1.44 | 1.46 | **0.79** | 0.90~ | 0.88~ | 1.56 | 1.50 | 1.33~ | 1.42 | 1.37 | 1.23 | 1.35 | 1.19~ | scikit-learn |
+| 6 000 × 3072, k = 10 | 1.43 | 1.43 | 1.47 | 1.34 | 1.68 | 1.54 | 1.21 | 1.52 | 1.58 | 1.87 | 1.75 | 1.31 | 1.28 | 1.38 | 1.36 | 1.37 | 1.50 | scikit-learn |
+| 6 000 × 3072, k = 40 | 1.23~ | 1.33 | 1.47 | 1.39 | 1.47 | 1.58 | 1.02~ | 1.22~ | 1.44 | 1.55 | 1.54 | 1.13~ | 1.12~ | 1.15~ | 1.12~ | 1.26 | 1.29 | scikit-learn |
+| 8 192 × 3072, k = 10 | 1.71 | 1.96 | 2.04 | 1.84 | 2.11 | 1.94 | 1.59 | 1.85 | 2.10 | 2.05 | 2.07 | 1.60 | 1.64 | 1.69 | 1.59 | 1.95 | 1.74 | scikit-learn |
+| 5 000 × 4096, k = 10 | 1.29 | 1.45 | 1.40 | **0.80** | 1.40 | 1.64 | 1.27 | 1.28 | 1.25 | 1.29 | 1.24 | 1.12~ | 1.19 | 1.51 | 1.40 | 1.36 | 1.35 | scikit-learn |
+| 6 000 × 4096, k = 10 | 1.43 | 1.68 | 1.93 | 1.22 | 2.01 | 1.76 | 1.66 | 1.40 | 1.44 | 1.38 | 1.32~ | 1.23 | 1.45 | 1.57 | 1.39 | 1.14~ | 1.47 | scikit-learn |
+| 6 000 × 4096, k = 40 | 1.35 | 1.54 | 1.70 | **0.90** | 1.42 | 1.68 | 1.59 | 1.01~ | 1.26 | 1.18 | 1.18 | 1.07~ | 1.27 | 1.26 | 1.34 | 1.17 | 1.35 | scikit-learn |
+| 7 500 × 4096, k = 10 | 1.88 | 2.08 | 1.90 | 1.18~ | 1.89 | 2.00 | 1.83 | 1.47 | 1.52 | 1.36 | 1.39 | 1.21 | 1.66 | 1.28 | 1.46 | 1.48 | 1.76 | scikit-learn |
+| 7 500 × 4096, k = 50 | 1.61 | 1.72 | 1.74 | 1.13~ | 1.68 | 1.74 | 1.56 | 1.16~ | 1.17~ | 1.19 | 1.09~ | 1.04~ | 1.40 | 1.38 | 1.46 | 1.13~ | 1.31 | scikit-learn |
+| 8 192 × 4096, k = 10 | 1.71 | 2.15 | 2.00 | 1.39~ | 1.96 | 2.11 | 2.33 | 1.65 | 1.75 | 1.57 | 1.54 | 1.74 | 2.09 | 1.92 | 1.63 | 1.90 | 1.89 | MLX |
+| 8 192 × 4096, k = 50 | 1.74 | 1.97 | 1.99 | 1.25 | 1.91 | 1.90 | 1.75 | 1.36 | 1.32 | 1.53 | 1.24 | 1.20~ | 1.53 | 1.51 | 1.24 | 1.32 | 1.36 | MLX |
+
+At 4 096–7 500 rows batches of 16–32 queries lost on one version or both (0.77×–0.90×,
+at 4 096 × 2 560 and × 3 072, 4 500 × 2 304, 5 000 × 4 096, and 6 000 × 4 096 with
+k = 40) or only
+tied (1.04×~ at 7 500 × 4 096, k = 50); the `knn-k` cell at 4 096 × 2 048, 32 queries,
+measured 1.35× in one long run and 0.83×–0.86× in fresh processes. From 8 192 rows every
+batch won or tied, 1.20×~ at worst. So from 256 features patched dispatch also needs
+8 192 rows (`knn_wide_min_samples`), recorded as `"below-crossover"`; the size floors alone
+send such fits to MLX from about 1 500 features. It gives up what won at 4 096–7 500 rows
+and 2 048–4 096 features, most batches there, 1.02×–3.0× (this table, `knn-k` and
+`knn-structured`), and every fit of 6 000–8 191 rows at 1 000–2 047 features, which no
+grid measured. A directly imported class, which has no scikit-learn to hand the fit to,
+searches on the GPU from 4 096 rows as before.
+
+Where patched dispatch uses MLX, then — tall data from 64 features, wide data from 256
+features and 8 192 rows, at most 50 neighbors, on data the fit-time probe passes — the
+Gaussian grids `knn`, `knn-rows` and `knn-narrow` answered single rows 1.0×–5.7× faster
+than stock, 16 queries 0.98×–3.2× (a tie at worst), 256 queries 1.3×–7.7× and 4 096
+queries 2.6×–6.2×, on both versions, and every batch size between those won or tied too.
+With the other laws and k of the grids below (`knn-data`, `knn-structured`, `knn-k`,
+`knn-batches`), every routed batch still won or tied, 0.87×~ at worst (16 queries at
+1 000 000 × 64).
 
 Queries win; the index build does not. Stock brute force stores a reference, while
 mlxlearn uploads the training rows and builds the translated, scaled copy the search runs
@@ -493,8 +559,10 @@ on, with its row norms and, for float64 input, a float32 residual: 0.05×–0.09
 stock fit where patched dispatch uses MLX (11–256 ms against 1–16 ms, the fit columns
 above, which force the MLX path and so leave out the fit-time probe below). With the
 probe, a patched fit measured 0.04×–0.08× of stock (17–264 ms against 0.9–16 ms, at
-24 000 × 256 to 1 600 000 × 64 on both versions), the probe itself 4.5–15 ms at 256–4 096
-features and 47–63 ms at a million rows and more. It is repaid after about 330–1 700
+24 000 × 256 to 1 600 000 × 64 on both versions), the probe itself — one first pass for 256 queries at k = 5, timed alone — 2.1–6.8 ms
+back to back and 3.8–9.7 ms right after the GPU has idled (a collection and a 10 ms sleep
+before each call; medians of 9, both versions) at 8 192–65 536 rows and 256–4 096
+features, and 43–62 ms at a million rows and more. It is repaid after about 330–1 700
 queries in batches of 256 to 4 096 — the fit's extra time over what each query of the
 batch saves, at the `knn` and `knn-rows` shapes patched dispatch sends to MLX — and with
 the probe after at most about 470–4 200, which is why
@@ -636,8 +704,8 @@ each cell is the worse version's ratio:
 | 8 192 × 1024, scaled100 | 1.18~ | 1.36 | **0.76** | **0.78** | **0.84** | **0.74** | 0.96~ | **0.81** | 0.96~ | 1.00~ | 1.22~ | 1.49 | 72/256 | scikit-learn |
 | 8 192 × 1024, blobs0.5 | 1.24~ | 1.42 | **0.75** | **0.70** | **0.68** | **0.70** | **0.75** | **0.59** | **0.61** | **0.63** | **0.73** | 0.92~ | 170/256 | scikit-learn |
 | 8 192 × 1024, blobs0.4 | **0.70** | **0.77** | **0.70** | **0.68** | **0.61** | **0.61** | **0.64** | **0.56** | **0.51** | **0.56** | **0.61** | **0.71** | 235/256 | scikit-learn |
-| 4 096 × 2048, gauss | 1.14 | 1.10~ | 1.14 | 1.23 | 1.20 | 0.86~ | 1.29 | 1.27~ | 1.33 | 1.43 | 1.63 | 2.23 | 0/256 | MLX |
-| 4 096 × 2048, dup2 | 1.18 | 1.18 | 1.16 | 1.22 | 1.13~ | 0.91~ | 1.06~ | 1.69 | 1.34 | 1.32 | 1.69 | 2.21 | 0/256 | MLX |
+| 4 096 × 2048, gauss | 1.14 | 1.10~ | 1.14 | 1.23 | 1.20 | 0.86~ | 1.29 | 1.27~ | 1.33 | 1.43 | 1.63 | 2.23 | 0/256 | scikit-learn |
+| 4 096 × 2048, dup2 | 1.18 | 1.18 | 1.16 | 1.22 | 1.13~ | 0.91~ | 1.06~ | 1.69 | 1.34 | 1.32 | 1.69 | 2.21 | 0/256 | scikit-learn |
 | 4 096 × 2048, scaled100 | 1.17 | 1.12~ | 1.16 | 1.31 | **0.69** | **0.57** | **0.74** | 1.03~ | **0.89** | 1.14~ | 1.40 | 1.71 | 13/256 | scikit-learn |
 | 4 096 × 2048, blobs0.5 | 0.72~ | **0.80** | **0.76** | **0.65** | **0.65** | **0.50** | **0.60** | **0.45** | **0.51** | **0.58** | **0.75** | **0.83** | 143/256 | scikit-learn |
 | 4 096 × 2048, blobs0.4 | **0.67** | **0.70** | **0.64** | **0.58** | **0.51** | **0.41** | **0.40** | **0.36** | **0.50** | **0.47** | **0.51** | **0.55** | 247/256 | scikit-learn |
@@ -662,8 +730,8 @@ which won or tied every batch — rows repeated twice at 100 000 × 256, 50 000 
 clusters of std 0.5 at 65 536 and 100 000 × 256 — up to 4.9× at 4 096 queries; and the
 wins of the other 30 at large batches (up to 4.8×).
 
-The probe costs the fit one first pass for 256 queries — 4.5–15 ms at 256–4 096 features
-and 47–63 ms at a million rows and more (above) — on top of the index build (the
+The probe costs the fit one first pass for 256 queries — 2.1–9.7 ms at 256–4 096
+features and 43–62 ms at a million rows and more (above) — on top of the index build (the
 `knn/fit` accepted regression), and a fit it hands over has paid for both before
 scikit-learn's own. A directly imported estimator does not probe: it searches on MLX,
 certified, whatever the data.
@@ -816,12 +884,12 @@ everywhere, 0.1 and 100 around the floors:
 | 4 000 × 128 | 4.06 / 3.66 | 2.27 / 2.09 | 1.36 / 1.26 | 1.38 / 1.26 | 3.98 / 3.59 | 1.69 / 1.55 | 1.28 / 1.19 | 1.26 / 1.19 | scikit-learn |
 | 8 000 × 128 | — | 2.55 / 2.42 | 1.54 / 1.43 | — | — | 1.83 / 1.70 | 1.54 / 1.46 | — | scikit-learn |
 | 1 000 × 256 | 3.64 / 3.24 | 1.88 / 1.74 | 1.20 / 1.09 | 1.20 / 1.08 | 2.44 / 2.18 | 1.58 / 1.40 | 1.15 / 1.04 | 1.16 / 1.04 | scikit-learn |
-| 1 500 × 256 | 4.98 / 4.55 | 2.41 / 2.21 | 1.50 / 1.41 | 1.53 / 1.42 | 3.78 / 3.42 | 1.85 / 1.67 | 1.53 / 1.36 | 1.53 / 1.37 | MLX |
-| 2 000 × 256 | 5.38 / 4.88 | 2.73 / 2.52 | 1.77 / 1.63 | 1.77 / 1.59 | 3.99 / 3.56 | 2.25 / 2.01 | 1.73 / 1.57 | 1.73 / 1.56 | MLX |
-| 4 000 × 256 | 7.09 / 6.48 | 3.68 / 3.43 | 2.44 / 2.23 | 2.43 / 2.27 | 6.32 / 5.80 | 2.82 / 2.58 | 2.42 / 2.24 | 2.42 / 2.21 | MLX |
-| 8 000 × 256 | — | 4.38 / 4.05 | 3.16 / 2.83 | — | — | 3.28 / 3.00 | 3.83 / 3.52 | — | MLX |
+| 1 500 × 256 | 4.98 / 4.55 | 2.41 / 2.21 | 1.50 / 1.41 | 1.53 / 1.42 | 3.78 / 3.42 | 1.85 / 1.67 | 1.53 / 1.36 | 1.53 / 1.37 | MLX at rbf, C = 0.1, rbf, C = 1, poly, C = 0.1, poly, C = 1 |
+| 2 000 × 256 | 5.38 / 4.88 | 2.73 / 2.52 | 1.77 / 1.63 | 1.77 / 1.59 | 3.99 / 3.56 | 2.25 / 2.01 | 1.73 / 1.57 | 1.73 / 1.56 | MLX at rbf, C = 0.1, rbf, C = 1, poly, C = 0.1, poly, C = 1 |
+| 4 000 × 256 | 7.09 / 6.48 | 3.68 / 3.43 | 2.44 / 2.23 | 2.43 / 2.27 | 6.32 / 5.80 | 2.82 / 2.58 | 2.42 / 2.24 | 2.42 / 2.21 | MLX at rbf, C = 0.1, rbf, C = 1, poly, C = 0.1, poly, C = 1 |
+| 8 000 × 256 | — | 4.38 / 4.05 | 3.16 / 2.83 | — | — | 3.28 / 3.00 | 3.83 / 3.52 | — | MLX at rbf, C = 1, poly, C = 1 |
 | 1 000 × 512 | 5.42 / 4.98 | 3.08 / 2.79 | 1.91 / 1.74 | 1.91 / 1.74 | 4.39 / 3.91 | 2.66 / 2.38 | 2.12 / 1.91 | 2.13 / 1.91 | scikit-learn |
-| 2 000 × 512 | 8.38 / 7.49 | 4.22 / 3.84 | 2.73 / 2.49 | 2.70 / 2.50 | 7.02 / 6.15 | 3.75 / 3.40 | 3.00 / 2.68 | 3.00 / 2.65 | MLX |
+| 2 000 × 512 | 8.38 / 7.49 | 4.22 / 3.84 | 2.73 / 2.49 | 2.70 / 2.50 | 7.02 / 6.15 | 3.75 / 3.40 | 3.00 / 2.68 | 3.00 / 2.65 | MLX at rbf, C = 0.1, rbf, C = 1, poly, C = 0.1, poly, C = 1 |
 
 SMO is sequential, and its iteration counts match LIBSVM's to within a few percent, so the
 comparison is per iteration. At 4 000 rows and C = 10, mlxlearn spent 27–41 µs an
@@ -862,49 +930,49 @@ either side of the width floor, C = 1 to 100:
 | 8 000 × 128, XOR, rbf, gamma = 1 × scale | 3.08 / 2.89 | 1.76 / 1.65 | 1.76 / 1.65 | scikit-learn |
 | 8 000 × 128, noisy, rbf, gamma = 1 × scale | 2.94 / 2.72 | 1.72 / 1.61 | 1.72 / 1.61 | scikit-learn |
 | 8 000 × 128, random, rbf, gamma = 1 × scale | 3.16 / 2.95 | 1.83 / 1.72 | 1.83 / 1.71 | scikit-learn |
-| 1 500 × 256, rbf, gamma = 10 × scale | 1.56 / 1.44 | 1.40 / 1.27 | — | MLX |
-| 1 500 × 256, rbf, gamma = 30 × scale | 1.56 / 1.44 | 1.30 / 1.17 | — | MLX |
+| 1 500 × 256, rbf, gamma = 10 × scale | 1.56 / 1.44 | 1.40 / 1.27 | — | MLX at C = 1 |
+| 1 500 × 256, rbf, gamma = 30 × scale | 1.56 / 1.44 | 1.30 / 1.17 | — | MLX at C = 1 |
 | 1 500 × 256, rbf, gamma = 100 × scale | 1.16 / 1.07 | 1.00~ / **0.91** | — | MLX at C = 1 |
 | 1 500 × 256, rbf, gamma = 1000 × scale | 1.13 / 1.05 | 0.97 / **0.89** | — | MLX at C = 1 |
-| 1 500 × 256, XOR, rbf, gamma = 1 × scale | 3.14 / 2.87 | 1.34 / 1.23 | 1.34 / 1.22 | MLX |
-| 1 500 × 256, noisy, rbf, gamma = 1 × scale | 3.04 / 2.76 | 1.34 / 1.22 | 1.33 / 1.21 | MLX |
-| 1 500 × 256, noisy, poly, degree 3, coef0 = 0 | 1.94 / 1.76 | 1.54 / 1.40 | 1.54 / 1.40 | MLX |
-| 1 500 × 256, random, rbf, gamma = 1 × scale | 3.18 / 2.89 | 1.35 / 1.25 | 1.35 / 1.23 | MLX |
-| 2 250 × 256, K = 3, random, rbf, gamma = 1 × scale | 3.25 / 2.94 | 1.39 / 1.25 | 1.39 / 1.25 | MLX |
-| 2 500 × 256, XOR, rbf, gamma = 1 × scale | 3.84 / 3.55 | 1.68 / 1.54 | 1.67 / 1.53 | MLX |
-| 2 500 × 256, noisy, rbf, gamma = 1 × scale | 3.62 / 3.32 | 1.66 / 1.52 | 1.67 / 1.52 | MLX |
-| 2 500 × 256, random, rbf, gamma = 1 × scale | 3.76 / 3.44 | 1.74 / 1.58 | 1.75 / 1.56 | MLX |
-| 3 000 × 256, K = 4, random, rbf, gamma = 1 × scale | 3.29 / 2.94 | 1.37 / 1.23 | 1.37 / 1.23 | MLX |
-| 4 000 × 256, rbf, gamma = 10 × scale | 2.78 / 2.60 | 2.32 / 2.15 | — | MLX |
-| 4 000 × 256, rbf, gamma = 30 × scale | 3.16 / 2.90 | 2.25 / 2.07 | — | MLX |
+| 1 500 × 256, XOR, rbf, gamma = 1 × scale | 3.14 / 2.87 | 1.34 / 1.23 | 1.34 / 1.22 | MLX at C = 1 |
+| 1 500 × 256, noisy, rbf, gamma = 1 × scale | 3.04 / 2.76 | 1.34 / 1.22 | 1.33 / 1.21 | MLX at C = 1 |
+| 1 500 × 256, noisy, poly, degree 3, coef0 = 0 | 1.94 / 1.76 | 1.54 / 1.40 | 1.54 / 1.40 | MLX at C = 1 |
+| 1 500 × 256, random, rbf, gamma = 1 × scale | 3.18 / 2.89 | 1.35 / 1.25 | 1.35 / 1.23 | MLX at C = 1 |
+| 2 250 × 256, K = 3, random, rbf, gamma = 1 × scale | 3.25 / 2.94 | 1.39 / 1.25 | 1.39 / 1.25 | MLX at C = 1 |
+| 2 500 × 256, XOR, rbf, gamma = 1 × scale | 3.84 / 3.55 | 1.68 / 1.54 | 1.67 / 1.53 | MLX at C = 1 |
+| 2 500 × 256, noisy, rbf, gamma = 1 × scale | 3.62 / 3.32 | 1.66 / 1.52 | 1.67 / 1.52 | MLX at C = 1 |
+| 2 500 × 256, random, rbf, gamma = 1 × scale | 3.76 / 3.44 | 1.74 / 1.58 | 1.75 / 1.56 | MLX at C = 1 |
+| 3 000 × 256, K = 4, random, rbf, gamma = 1 × scale | 3.29 / 2.94 | 1.37 / 1.23 | 1.37 / 1.23 | MLX at C = 1 |
+| 4 000 × 256, rbf, gamma = 10 × scale | 2.78 / 2.60 | 2.32 / 2.15 | — | MLX at C = 1 |
+| 4 000 × 256, rbf, gamma = 30 × scale | 3.16 / 2.90 | 2.25 / 2.07 | — | MLX at C = 1 |
 | 4 000 × 256, rbf, gamma = 100 × scale | 1.98 / 1.83 | 1.51 / 1.41 | — | MLX at C = 1 |
 | 4 000 × 256, rbf, gamma = 1000 × scale | 1.95 / 1.83 | 1.48 / 1.39 | — | MLX at C = 1 |
-| 4 000 × 256, XOR, rbf, gamma = 1 × scale | 5.38 / 4.91 | 1.95 / 1.79 | 1.95 / 1.79 | MLX |
-| 4 000 × 256, noisy, rbf, gamma = 1 × scale | 5.22 / 4.75 | 1.92 / 1.76 | 1.92 / 1.76 | MLX |
-| 4 000 × 256, noisy, poly, degree 3, coef0 = 0 | 3.15 / 2.89 | 2.43 / 2.20 | 2.42 / 2.20 | MLX |
-| 4 000 × 256, random, rbf, gamma = 1 × scale | 5.33 / 4.86 | 2.01 / 1.86 | 1.99 / 1.86 | MLX |
-| 7 500 × 256, K = 10, random, rbf, gamma = 1 × scale | 3.27 / 2.97 | 1.36 / 1.25 | 1.36 / 1.24 | MLX |
-| 1 024 × 512, rbf, gamma = 10 × scale | 2.18 / 1.99 | 1.74 / 1.58 | — | MLX |
-| 1 024 × 512, rbf, gamma = 30 × scale | 2.18 / 1.96 | 1.56 / 1.42 | — | MLX |
+| 4 000 × 256, XOR, rbf, gamma = 1 × scale | 5.38 / 4.91 | 1.95 / 1.79 | 1.95 / 1.79 | MLX at C = 1 |
+| 4 000 × 256, noisy, rbf, gamma = 1 × scale | 5.22 / 4.75 | 1.92 / 1.76 | 1.92 / 1.76 | MLX at C = 1 |
+| 4 000 × 256, noisy, poly, degree 3, coef0 = 0 | 3.15 / 2.89 | 2.43 / 2.20 | 2.42 / 2.20 | MLX at C = 1 |
+| 4 000 × 256, random, rbf, gamma = 1 × scale | 5.33 / 4.86 | 2.01 / 1.86 | 1.99 / 1.86 | MLX at C = 1 |
+| 7 500 × 256, K = 10, random, rbf, gamma = 1 × scale | 3.27 / 2.97 | 1.36 / 1.25 | 1.36 / 1.24 | MLX at C = 1 |
+| 1 024 × 512, rbf, gamma = 10 × scale | 2.18 / 1.99 | 1.74 / 1.58 | — | MLX at C = 1 |
+| 1 024 × 512, rbf, gamma = 30 × scale | 2.18 / 1.96 | 1.56 / 1.42 | — | MLX at C = 1 |
 | 1 024 × 512, rbf, gamma = 100 × scale | 1.53 / 1.40 | 1.21 / 1.09 | — | MLX at C = 1 |
 | 1 024 × 512, rbf, gamma = 1000 × scale | 1.50 / 1.37 | 1.18 / 1.07 | — | MLX at C = 1 |
-| 1 024 × 512, XOR, rbf, gamma = 1 × scale | 3.92 / 3.54 | 1.82 / 1.65 | 1.82 / 1.67 | MLX |
-| 1 024 × 512, noisy, rbf, gamma = 1 × scale | 3.79 / 3.42 | 1.87 / 1.68 | 1.86 / 1.68 | MLX |
-| 1 024 × 512, noisy, poly, degree 3, coef0 = 0 | 2.60 / 2.36 | 2.11 / 1.87 | 2.11 / 1.90 | MLX |
-| 1 024 × 512, random, rbf, gamma = 1 × scale | 4.06 / 3.69 | 1.90 / 1.72 | 1.91 / 1.70 | MLX |
-| 1 100 × 512, rbf, gamma = 10 × scale | 1.88 / 1.72 | 1.34 / 1.21 | — | MLX |
-| 1 100 × 512, rbf, gamma = 30 × scale | 1.75 / 1.59 | 1.22 / 1.10 | — | MLX |
+| 1 024 × 512, XOR, rbf, gamma = 1 × scale | 3.92 / 3.54 | 1.82 / 1.65 | 1.82 / 1.67 | MLX at C = 1 |
+| 1 024 × 512, noisy, rbf, gamma = 1 × scale | 3.79 / 3.42 | 1.87 / 1.68 | 1.86 / 1.68 | MLX at C = 1 |
+| 1 024 × 512, noisy, poly, degree 3, coef0 = 0 | 2.60 / 2.36 | 2.11 / 1.87 | 2.11 / 1.90 | MLX at C = 1 |
+| 1 024 × 512, random, rbf, gamma = 1 × scale | 4.06 / 3.69 | 1.90 / 1.72 | 1.91 / 1.70 | MLX at C = 1 |
+| 1 100 × 512, rbf, gamma = 10 × scale | 1.88 / 1.72 | 1.34 / 1.21 | — | MLX at C = 1 |
+| 1 100 × 512, rbf, gamma = 30 × scale | 1.75 / 1.59 | 1.22 / 1.10 | — | MLX at C = 1 |
 | 1 100 × 512, rbf, gamma = 100 × scale | 1.33 / 1.22 | 1.00~ / **0.91** | — | MLX at C = 1 |
 | 1 100 × 512, rbf, gamma = 1000 × scale | 1.31 / 1.19 | 0.98 / **0.88** | — | MLX at C = 1 |
-| 1 536 × 512, K = 3, random, rbf, gamma = 1 × scale | 4.20 / 3.81 | 1.94 / 1.77 | 1.93 / 1.76 | MLX |
-| 2 000 × 512, rbf, gamma = 10 × scale | 3.08 / 2.79 | 2.51 / 2.27 | — | MLX |
-| 2 000 × 512, rbf, gamma = 30 × scale | 3.15 / 2.86 | 2.27 / 2.05 | — | MLX |
+| 1 536 × 512, K = 3, random, rbf, gamma = 1 × scale | 4.20 / 3.81 | 1.94 / 1.77 | 1.93 / 1.76 | MLX at C = 1 |
+| 2 000 × 512, rbf, gamma = 10 × scale | 3.08 / 2.79 | 2.51 / 2.27 | — | MLX at C = 1 |
+| 2 000 × 512, rbf, gamma = 30 × scale | 3.15 / 2.86 | 2.27 / 2.05 | — | MLX at C = 1 |
 | 2 000 × 512, rbf, gamma = 100 × scale | 2.07 / 1.92 | 1.61 / 1.49 | — | MLX at C = 1 |
 | 2 000 × 512, rbf, gamma = 1000 × scale | 2.04 / 1.89 | 1.58 / 1.46 | — | MLX at C = 1 |
-| 2 000 × 512, XOR, rbf, gamma = 1 × scale | 5.90 / 5.36 | 2.58 / 2.33 | 2.58 / 2.34 | MLX |
-| 2 000 × 512, noisy, rbf, gamma = 1 × scale | 5.50 / 4.99 | 2.57 / 2.34 | 2.57 / 2.33 | MLX |
-| 2 000 × 512, random, rbf, gamma = 1 × scale | 5.88 / 5.34 | 2.67 / 2.40 | 2.65 / 2.40 | MLX |
-| 2 048 × 512, K = 4, random, rbf, gamma = 1 × scale | 4.16 / 3.78 | 1.97 / 1.79 | 1.97 / 1.78 | MLX |
+| 2 000 × 512, XOR, rbf, gamma = 1 × scale | 5.90 / 5.36 | 2.58 / 2.33 | 2.58 / 2.34 | MLX at C = 1 |
+| 2 000 × 512, noisy, rbf, gamma = 1 × scale | 5.50 / 4.99 | 2.57 / 2.34 | 2.57 / 2.33 | MLX at C = 1 |
+| 2 000 × 512, random, rbf, gamma = 1 × scale | 5.88 / 5.34 | 2.67 / 2.40 | 2.65 / 2.40 | MLX at C = 1 |
+| 2 048 × 512, K = 4, random, rbf, gamma = 1 × scale | 4.16 / 3.78 | 1.97 / 1.79 | 1.97 / 1.78 | MLX at C = 1 |
 
 - **At 128 features the benchmark's target was the easy case.** On labels without
   signal 3 000–6 000 rows lost at C = 10 and 100 on 1.7.2 (0.83×–0.94×) and 3 000 on
@@ -923,7 +991,9 @@ every label law measured: 256 features, 1 024 rows and 384 000 elements — 1 50
 which keeps 1 000 × 256 on LIBSVM (a 1.04× win at worst on the benchmark's target) — and
 `svc_min_samples` lets 1 024 × 512 through. Above all three floors every fit measured at
 the default kernel parameters won on both versions: 1.36×–8.4× on the benchmark's target
-(1.36×–4.4× at C of 1 and 10, up to 8 000 rows) and 1.21×–5.9× on the labels above. What
+(1.36×–4.4× at C of 1 and 10, up to 8 000 rows) and 1.21×–5.9× on the labels above — on
+this Gaussian data. Above C = 1, data of lower intrinsic dimension loses at these widths,
+and patched dispatch no longer takes those wins (`svc-structured`, below). What
 the 256-feature floor gives up is everything at 128–255 features that won: the
 benchmark's target from 3 000 × 128 (1.11×–4.1×), labels without signal at 8 000 × 128
 (1.61×–3.2×) and at C = 1, one-vs-one pairs of 3 000 × 128 on overlapping classes
@@ -965,46 +1035,46 @@ binary fits at shapes the floors send to MLX, rbf from 0.03 to 10 times scikit-l
 | 1 500 × 256, rbf, gamma = 0.1 × scale | 4.26 / 3.85 | **0.95** / **0.84** | **0.42** / **0.38** | MLX at C = 1 |
 | 1 500 × 256, rbf, gamma = 0.3 × scale | 2.97 / 2.70 | **0.88** / **0.81** | **0.81** / **0.74** | MLX at C = 1 |
 | 1 500 × 256, rbf, gamma = 0.5 × scale | 2.65 / 2.40 | 1.12 / 0.99~ | 1.11 / 1.00~ | MLX at C = 1 |
-| 1 500 × 256, rbf, gamma = 0.8 × scale | 2.45 / 2.21 | 1.43 / 1.27 | 1.42 / 1.28 | MLX |
-| 1 500 × 256, rbf, gamma = 3 × scale | 2.14 / 1.92 | 1.95 / 1.75 | 1.94 / 1.73 | MLX |
-| 1 500 × 256, rbf, gamma = 10 × scale | 1.55 / 1.40 | 1.41 / 1.24 | 1.38 / 1.24 | MLX |
+| 1 500 × 256, rbf, gamma = 0.8 × scale | 2.45 / 2.21 | 1.43 / 1.27 | 1.42 / 1.28 | MLX at C = 1 |
+| 1 500 × 256, rbf, gamma = 3 × scale | 2.14 / 1.92 | 1.95 / 1.75 | 1.94 / 1.73 | MLX at C = 1 |
+| 1 500 × 256, rbf, gamma = 10 × scale | 1.55 / 1.40 | 1.41 / 1.24 | 1.38 / 1.24 | MLX at C = 1 |
 | 1 500 × 256, poly, degree 2, coef0 = 0 | 2.18 / 1.95 | 1.49 / 1.32 | 1.50 / 1.33 | scikit-learn |
 | 1 500 × 256, poly, degree 2, coef0 = 1 | **0.94** / **0.85** | **0.83** / **0.74** | **0.83** / **0.74** | scikit-learn |
 | 1 500 × 256, poly, degree 3, coef0 = 1 | 1.18 / 1.06 | 1.18 / 1.06 | 1.18 / 1.06 | scikit-learn |
-| 1 500 × 256, poly, degree 4, coef0 = 0 | 2.00 / 1.77 | 1.45 / 1.28 | 1.44 / 1.29 | MLX |
+| 1 500 × 256, poly, degree 4, coef0 = 0 | 2.00 / 1.77 | 1.45 / 1.28 | 1.44 / 1.29 | MLX at C = 1 |
 | 4 000 × 256, rbf, gamma = 0.03 × scale | 7.26 / 6.54 | 3.79 / 3.44 | 1.07 / 0.97 | MLX at C = 1 |
 | 4 000 × 256, rbf, gamma = 0.1 × scale | 5.92 / 5.37 | 2.06 / 1.88 | **0.68** / **0.62** | MLX at C = 1 |
 | 4 000 × 256, rbf, gamma = 0.3 × scale | 4.83 / 4.39 | 1.25 / 1.15 | 1.23 / 1.13 | MLX at C = 1 |
 | 4 000 × 256, rbf, gamma = 0.5 × scale | 4.25 / 3.90 | 1.70 / 1.57 | 1.70 / 1.57 | MLX at C = 1 |
-| 4 000 × 256, rbf, gamma = 0.8 × scale | 3.89 / 3.57 | 2.24 / 2.06 | 2.23 / 2.05 | MLX |
-| 4 000 × 256, rbf, gamma = 3 × scale | 3.30 / 3.02 | 3.00 / 2.75 | 3.01 / 2.76 | MLX |
-| 4 000 × 256, rbf, gamma = 10 × scale | 2.81 / 2.58 | 2.34 / 2.13 | 2.33 / 2.13 | MLX |
+| 4 000 × 256, rbf, gamma = 0.8 × scale | 3.89 / 3.57 | 2.24 / 2.06 | 2.23 / 2.05 | MLX at C = 1 |
+| 4 000 × 256, rbf, gamma = 3 × scale | 3.30 / 3.02 | 3.00 / 2.75 | 3.01 / 2.76 | MLX at C = 1 |
+| 4 000 × 256, rbf, gamma = 10 × scale | 2.81 / 2.58 | 2.34 / 2.13 | 2.33 / 2.13 | MLX at C = 1 |
 | 4 000 × 256, poly, degree 2, coef0 = 0 | 3.73 / 3.39 | 1.77 / 1.62 | 1.77 / 1.62 | scikit-learn |
 | 4 000 × 256, poly, degree 2, coef0 = 1 | 1.42 / 1.30 | 1.24 / 1.14 | 1.24 / 1.14 | scikit-learn |
 | 4 000 × 256, poly, degree 3, coef0 = 1 | 1.82 / 1.67 | 1.82 / 1.67 | 1.82 / 1.66 | scikit-learn |
-| 4 000 × 256, poly, degree 4, coef0 = 0 | 3.26 / 2.98 | 2.34 / 2.13 | 2.34 / 2.11 | MLX |
+| 4 000 × 256, poly, degree 4, coef0 = 0 | 3.26 / 2.98 | 2.34 / 2.13 | 2.34 / 2.11 | MLX at C = 1 |
 | 1 100 × 512, rbf, gamma = 0.03 × scale | 5.58 / 5.04 | 2.91 / 2.70 | **0.45** / **0.41** | MLX at C = 1 |
 | 1 100 × 512, rbf, gamma = 0.1 × scale | 5.39 / 5.00 | 1.08 / 1.00~ | **0.58** / **0.52** | MLX at C = 1 |
 | 1 100 × 512, rbf, gamma = 0.3 × scale | 4.51 / 4.11 | 1.08 / 0.98 | 1.07 / 0.97 | MLX at C = 1 |
 | 1 100 × 512, rbf, gamma = 0.5 × scale | 3.75 / 3.40 | 1.41 / 1.27 | 1.40 / 1.26 | MLX at C = 1 |
-| 1 100 × 512, rbf, gamma = 0.8 × scale | 3.29 / 3.02 | 1.81 / 1.63 | 1.79 / 1.64 | MLX |
-| 1 100 × 512, rbf, gamma = 3 × scale | 1.98 / 1.83 | 1.58 / 1.44 | 1.59 / 1.44 | MLX |
-| 1 100 × 512, rbf, gamma = 10 × scale | 1.85 / 1.72 | 1.31 / 1.20 | 1.31 / 1.21 | MLX |
+| 1 100 × 512, rbf, gamma = 0.8 × scale | 3.29 / 3.02 | 1.81 / 1.63 | 1.79 / 1.64 | MLX at C = 1 |
+| 1 100 × 512, rbf, gamma = 3 × scale | 1.98 / 1.83 | 1.58 / 1.44 | 1.59 / 1.44 | MLX at C = 1 |
+| 1 100 × 512, rbf, gamma = 10 × scale | 1.85 / 1.72 | 1.31 / 1.20 | 1.31 / 1.21 | MLX at C = 1 |
 | 1 100 × 512, poly, degree 2, coef0 = 0 | 2.28 / 2.07 | 1.94 / 1.74 | 1.93 / 1.74 | scikit-learn |
 | 1 100 × 512, poly, degree 2, coef0 = 1 | 1.23 / 1.12 | 1.17 / 1.07 | 1.16 / 1.07 | scikit-learn |
 | 1 100 × 512, poly, degree 3, coef0 = 1 | 1.62 / 1.47 | 1.61 / 1.47 | 1.62 / 1.47 | scikit-learn |
-| 1 100 × 512, poly, degree 4, coef0 = 0 | 2.40 / 2.17 | 1.98 / 1.78 | 1.98 / 1.78 | MLX |
+| 1 100 × 512, poly, degree 4, coef0 = 0 | 2.40 / 2.17 | 1.98 / 1.78 | 1.98 / 1.78 | MLX at C = 1 |
 | 4 000 × 512, rbf, gamma = 0.03 × scale | 11.15 / 10.36 | 5.90 / 5.43 | 1.32 / 1.22 | MLX at C = 1 |
 | 4 000 × 512, rbf, gamma = 0.1 × scale | 9.75 / 9.10 | 2.85 / 2.64 | 1.25 / 1.15 | MLX at C = 1 |
 | 4 000 × 512, rbf, gamma = 0.3 × scale | 7.28 / 6.85 | 2.28 / 2.11 | 2.04 / 1.90 | MLX at C = 1 |
 | 4 000 × 512, rbf, gamma = 0.5 × scale | 6.57 / 6.19 | 2.74 / 2.56 | 2.78 / 2.58 | MLX at C = 1 |
-| 4 000 × 512, rbf, gamma = 0.8 × scale | 6.12 / 5.72 | 3.55 / 3.31 | 3.57 / 3.31 | MLX |
-| 4 000 × 512, rbf, gamma = 3 × scale | 4.45 / 4.17 | 4.61 / 4.27 | 4.57 / 4.27 | MLX |
-| 4 000 × 512, rbf, gamma = 10 × scale | 4.19 / 3.90 | 3.16 / 2.92 | 3.14 / 2.93 | MLX |
+| 4 000 × 512, rbf, gamma = 0.8 × scale | 6.12 / 5.72 | 3.55 / 3.31 | 3.57 / 3.31 | MLX at C = 1 |
+| 4 000 × 512, rbf, gamma = 3 × scale | 4.45 / 4.17 | 4.61 / 4.27 | 4.57 / 4.27 | MLX at C = 1 |
+| 4 000 × 512, rbf, gamma = 10 × scale | 4.19 / 3.90 | 3.16 / 2.92 | 3.14 / 2.93 | MLX at C = 1 |
 | 4 000 × 512, poly, degree 2, coef0 = 0 | 6.04 / 5.62 | 4.21 / 3.90 | 4.24 / 3.88 | scikit-learn |
 | 4 000 × 512, poly, degree 2, coef0 = 1 | 2.62 / 2.44 | 2.20 / 2.07 | 2.21 / 2.06 | scikit-learn |
 | 4 000 × 512, poly, degree 3, coef0 = 1 | 3.17 / 2.96 | 3.17 / 2.94 | 3.18 / 2.95 | scikit-learn |
-| 4 000 × 512, poly, degree 4, coef0 = 0 | 5.35 / 4.97 | 4.44 / 4.08 | 4.42 / 4.09 | MLX |
+| 4 000 × 512, poly, degree 4, coef0 = 0 | 5.35 / 4.97 | 4.44 / 4.08 | 4.42 / 4.09 | MLX at C = 1 |
 
 - **rbf, `gamma` below the default: loses at large C.** From 0.03 to 0.5 times `"scale"`
   it lost at C = 10 or 100 at five of the six shapes, down to 0.30× (0.1 × scale,
@@ -1017,15 +1087,105 @@ binary fits at shapes the floors send to MLX, rbf from 0.03 to 10 times scikit-l
   `coef0 = 0` won or tied everywhere; for that kernel `gamma` is the same problem as the
   default with C scaled by `(gamma / scale)^degree`, so the C column covers it.
 
-So patched dispatch also hands an rbf fit to LIBSVM when `gamma` is below 0.8 × `"scale"`
-or, the `svc-hard` table above shows, above 30 × `"scale"`, and C is above 1
-(`svc_min_gamma_ratio`, `svc_max_gamma_ratio`, `svc_low_gamma_max_c`), and a poly fit
-whose degree is below 3 or whose `coef0` is not 0 (`svc_poly_min_degree`), whatever the
-size — a grid search over C and `gamma` has its near-linear corner, and its every-row-a-
-support-vector corner, answered by LIBSVM and the rest by MLX. The rule gives up the wins
-these kernels took at wide shapes (at 4 000 × 512 every configuration here won, and
-`gamma` of 100–1 000 × `"scale"` at C = 10 won 1.07×–1.61× at 4 000 × 256, 1 024 × 512 and
-2 000 × 512). A directly imported class keeps them on MLX.
+So these kernels lose above C = 1, where their many iterations multiply; at C = 1 every
+`gamma` below the default won at every shape (2.1×–11×) and, in the `svc-hard` table,
+every `gamma` above it (1.05×–3.2×). The poly kernel of degree 2 with `coef0 = 1` lost at
+C = 1 too, at 1 500 × 256 (0.85×–0.94×), so patched dispatch hands a poly fit whose degree
+is below 3 or whose `coef0` is not 0 to LIBSVM whatever the size (`svc_poly_min_degree`).
+For rbf the C rule below covers these corners; the previous rule's bounds on `gamma`, 0.8
+to 30 × `"scale"` above C = 1, are gone.
+
+**The data move it too.** Every grid above draws `X` from an isotropic Gaussian, whose
+intrinsic dimension is its width, and from 256 features that made C = 10 and 100 as safe
+as C = 1. Data whose rows lie near a few directions is another matter: iterations multiply
+with C at any width, and LIBSVM, which pays `O(n·d)` for a kernel row once and a few µs
+per visit after, wins them back. Grid `svc-structured`: binary fits at 1 024–4 000 rows
+and 256–512 features on five or ten latent directions plus noise (`lowrank`,
+`lowrank10`), singular values 1/i (`decay`), features averaged over 16 neighbours
+(`smooth`), Student-t(2) features (`t2`) and column scales 10^U(0, 2) (`colscale`), and
+scikit-learn's handwritten digits upsampled to 16², 20² and 28² pixels, at C = 0.1, 1 and
+10; and at C = 1, `gamma` from 0.03 to 100 × `"scale"`, the poly kernel, `tol = 1e-5`,
+balanced class weights on 10% positives (`lowrank-imb`), and 8 000 rows:
+
+<!-- python -m benchmarks.calibrate table svc-structured: scikit-learn 1.9.0 / 1.7.2 -->
+| rows × features, data, kernel | C = 0.1 | C = 0.2 | C = 1 | C = 10 | dispatch |
+|---|---|---|---|---|---|
+| 1 500 × 256, colscale, rbf, gamma = 1 × scale | 5.14 / 4.60 | — | 2.50 / 2.23 | 1.18 / 1.08 | MLX at C = 0.1, C = 1 |
+| 1 500 × 256, decay, rbf, gamma = 0.03 × scale | — | — | 4.46 / 4.09 | — | MLX |
+| 1 500 × 256, decay, rbf, gamma = 0.3 × scale | — | — | 3.26 / 2.96 | — | MLX |
+| 1 500 × 256, decay, rbf, gamma = 1 × scale | 4.17 / 3.79 | — | 2.15 / 1.93 | **0.73** / **0.66** | MLX at C = 0.1, C = 1 |
+| 1 500 × 256, decay, rbf, gamma = 1 × scale, tol = 1e-05 | — | — | 1.53 / 1.37 | — | MLX |
+| 1 500 × 256, decay, rbf, gamma = 10 × scale | — | — | 2.07 / 1.89 | — | MLX |
+| 1 500 × 256, decay, rbf, gamma = 100 × scale | — | — | 1.26 / 1.15 | — | MLX |
+| 1 500 × 256, decay, poly, degree 3, coef0 = 0 | — | — | 2.17 / 1.91 | **0.34** / **0.30** | MLX at C = 1 |
+| 1 500 × 256, lowrank, rbf, gamma = 0.03 × scale | — | — | 4.31 / 3.87 | — | MLX |
+| 1 500 × 256, lowrank, rbf, gamma = 0.3 × scale | — | — | 3.32 / 2.96 | — | MLX |
+| 1 500 × 256, lowrank, rbf, gamma = 1 × scale | 4.50 / 4.09 | — | 2.40 / 2.14 | **0.76** / **0.69** | MLX at C = 0.1, C = 1 |
+| 1 500 × 256, lowrank, rbf, gamma = 1 × scale, tol = 1e-05 | — | — | 1.87 / 1.72 | — | MLX |
+| 1 500 × 256, lowrank, rbf, gamma = 10 × scale | — | — | 1.97 / 1.79 | — | MLX |
+| 1 500 × 256, lowrank, rbf, gamma = 100 × scale | — | — | 1.18 / 1.06 | — | MLX |
+| 1 500 × 256, lowrank, poly, degree 3, coef0 = 0 | — | — | 1.41 / 1.24 | **0.34** / **0.29** | MLX at C = 1 |
+| 1 500 × 256, lowrank-imb, rbf, gamma = 1 × scale | — | — | 1.45 / 1.30 | — | MLX |
+| 1 500 × 256, lowrank-imb, rbf, gamma = 1 × scale, class_weight = balanced | 2.61 / 2.35 | 2.42 / 2.20 | 1.90 / 1.71 | — | MLX |
+| 1 500 × 256, lowrank10, rbf, gamma = 1 × scale | 4.60 / 4.13 | — | 2.36 / 2.15 | **0.60** / **0.54** | MLX at C = 0.1, C = 1 |
+| 1 500 × 256, smooth, rbf, gamma = 1 × scale | 4.86 / 4.42 | — | 2.46 / 2.24 | **0.92** / **0.82** | MLX at C = 0.1, C = 1 |
+| 1 500 × 256, t2, rbf, gamma = 1 × scale | 4.92 / 4.35 | — | 3.05 / 2.73 | **0.87** / **0.78** | MLX at C = 0.1, C = 1 |
+| 1 797 × 256, digits16, rbf, gamma = 1 × scale | 4.78 / 4.34 | — | 1.95 / 1.74 | **0.65** / **0.57** | MLX at C = 0.1, C = 1 |
+| 4 000 × 256, colscale, rbf, gamma = 1 × scale | 7.11 / 6.43 | — | 5.71 / 5.19 | 1.31 / 1.20 | MLX at C = 0.1, C = 1 |
+| 4 000 × 256, decay, rbf, gamma = 1 × scale | 6.15 / 5.54 | — | 3.61 / 3.28 | 1.30 / 1.18 | MLX at C = 0.1, C = 1 |
+| 4 000 × 256, lowrank, rbf, gamma = 1 × scale | 6.72 / 6.05 | — | 4.71 / 4.23 | 1.60 / 1.46 | MLX at C = 0.1, C = 1 |
+| 4 000 × 256, lowrank10, rbf, gamma = 1 × scale | 6.85 / 6.18 | — | 4.54 / 4.09 | 1.21 / 1.10 | MLX at C = 0.1, C = 1 |
+| 4 000 × 256, smooth, rbf, gamma = 1 × scale | 6.90 / 6.24 | — | 4.08 / 3.74 | 1.24 / 1.14 | MLX at C = 0.1, C = 1 |
+| 4 000 × 256, t2, rbf, gamma = 1 × scale | 7.33 / 6.57 | — | 5.35 / 4.79 | 1.38 / 1.25 | MLX at C = 0.1, C = 1 |
+| 8 000 × 256, decay, rbf, gamma = 1 × scale | — | — | 3.63 / 3.43 | — | MLX |
+| 8 000 × 256, lowrank, rbf, gamma = 1 × scale | — | — | 4.40 / 4.20 | — | MLX |
+| 1 797 × 400, digits20, rbf, gamma = 1 × scale | 6.14 / 5.58 | — | 2.24 / 2.07 | **0.81** / **0.73** | MLX at C = 0.1, C = 1 |
+| 1 024 × 512, colscale, rbf, gamma = 1 × scale | 5.91 / 5.34 | — | 3.92 / 3.45 | 1.65 / 1.48 | MLX at C = 0.1, C = 1 |
+| 1 024 × 512, decay, rbf, gamma = 0.03 × scale | — | — | 5.05 / 4.51 | — | MLX |
+| 1 024 × 512, decay, rbf, gamma = 0.3 × scale | — | — | 4.06 / 3.62 | — | MLX |
+| 1 024 × 512, decay, rbf, gamma = 1 × scale | 4.88 / 4.45 | — | 2.58 / 2.29 | **0.92** / **0.82** | MLX at C = 0.1, C = 1 |
+| 1 024 × 512, decay, rbf, gamma = 1 × scale, tol = 1e-05 | — | — | 1.84 / 1.65 | — | MLX |
+| 1 024 × 512, decay, rbf, gamma = 10 × scale | — | — | 2.44 / 2.19 | — | MLX |
+| 1 024 × 512, decay, rbf, gamma = 100 × scale | — | — | 1.42 / 1.30 | — | MLX |
+| 1 024 × 512, decay, poly, degree 3, coef0 = 0 | — | — | 3.23 / 2.84 | **0.48** / **0.43** | MLX at C = 1 |
+| 1 024 × 512, lowrank, rbf, gamma = 0.03 × scale | — | — | 5.11 / 4.62 | — | MLX |
+| 1 024 × 512, lowrank, rbf, gamma = 0.3 × scale | — | — | 3.99 / 3.60 | — | MLX |
+| 1 024 × 512, lowrank, rbf, gamma = 1 × scale | 5.16 / 4.71 | — | 2.84 / 2.54 | **0.89** / **0.81** | MLX at C = 0.1, C = 1 |
+| 1 024 × 512, lowrank, rbf, gamma = 1 × scale, tol = 1e-05 | — | — | 2.00 / 1.82 | — | MLX |
+| 1 024 × 512, lowrank, rbf, gamma = 10 × scale | — | — | 2.48 / 2.23 | — | MLX |
+| 1 024 × 512, lowrank, rbf, gamma = 100 × scale | — | — | 1.63 / 1.46 | — | MLX |
+| 1 024 × 512, lowrank, poly, degree 3, coef0 = 0 | — | — | 1.34 / 1.20 | **0.29** / **0.26** | MLX at C = 1 |
+| 1 024 × 512, lowrank-imb, rbf, gamma = 1 × scale | — | — | 1.72 / 1.58 | — | MLX |
+| 1 024 × 512, lowrank-imb, rbf, gamma = 1 × scale, class_weight = balanced | 3.12 / 2.79 | 2.95 / 2.65 | 2.31 / 2.04 | — | MLX |
+| 1 024 × 512, lowrank10, rbf, gamma = 1 × scale | 5.48 / 4.87 | — | 2.73 / 2.48 | **0.74** / **0.66** | MLX at C = 0.1, C = 1 |
+| 1 024 × 512, smooth, rbf, gamma = 1 × scale | 5.71 / 5.12 | — | 2.93 / 2.65 | 1.54 / 1.39 | MLX at C = 0.1, C = 1 |
+| 1 024 × 512, t2, rbf, gamma = 1 × scale | 4.97 / 4.43 | — | 4.28 / 3.75 | 1.07 / 0.95 | MLX at C = 0.1, C = 1 |
+| 2 000 × 512, colscale, rbf, gamma = 1 × scale | 8.41 / 7.42 | — | 5.52 / 4.87 | 2.31 / 2.08 | MLX at C = 0.1, C = 1 |
+| 2 000 × 512, decay, rbf, gamma = 1 × scale | 7.39 / 6.68 | — | 4.12 / 3.74 | 1.49 / 1.34 | MLX at C = 0.1, C = 1 |
+| 2 000 × 512, lowrank, rbf, gamma = 1 × scale | 8.24 / 7.43 | — | 5.05 / 4.49 | 1.57 / 1.39 | MLX at C = 0.1, C = 1 |
+| 2 000 × 512, lowrank10, rbf, gamma = 1 × scale | 8.20 / 7.30 | — | 4.53 / 4.02 | 1.16 / 1.04 | MLX at C = 0.1, C = 1 |
+| 2 000 × 512, smooth, rbf, gamma = 1 × scale | 9.13 / 8.15 | — | 4.82 / 4.39 | 1.98 / 1.79 | MLX at C = 0.1, C = 1 |
+| 2 000 × 512, t2, rbf, gamma = 1 × scale | 7.54 / 6.65 | — | 6.03 / 5.33 | 1.64 / 1.48 | MLX at C = 0.1, C = 1 |
+| 1 797 × 784, digits28, rbf, gamma = 1 × scale | 9.20 / 8.46 | — | 3.49 / 3.11 | 1.26 / 1.13 | MLX at C = 0.1, C = 1 |
+| 1 797 × 784, K = 3, digits28, rbf, gamma = 1 × scale | — | — | 2.74 / 2.48 | 1.05 / **0.94** | MLX at C = 1 |
+
+At C = 10 every law but the column scales lost at 1 500 × 256, and most at 1 024 × 512,
+on both versions — rbf down to 0.54×, poly to 0.26×, the digits at 256 and 400 pixels
+0.57×–0.81× and at 784 pixels with three classes 0.94× on 1.7.2 — and won from 2 000 rows
+(1.04×–2.3×); at C = 100, in runs outside the grid, they went down to 0.28×. At C ≤ 1
+every fit here won on both versions, 1.06×–9.2×: at every `gamma` (1.06× at 100 ×
+`"scale"`), with `tol = 1e-5`, with balanced class weights and at 8 000 rows. A fit cannot
+see its data's intrinsic dimension before it runs, so patched dispatch hands every rbf and
+poly fit with C above 1 to LIBSVM (`svc_max_c = 1`), recorded as `"below-crossover"`. It
+reads the mean box, C times the mean class and sample weight over the samples kept: C
+itself without weights, and with balanced class weights, which average to one; `C · w`
+for weights that are all `w`, which is exactly the problem with that C.
+
+What the rule gives up is every rbf and poly fit above C = 1 that won: the benchmark's
+target at C = 10 and 100 from 256 features (`svc`, 1.36×–3.8×), labels with little or no
+signal (`svc-hard`, 1.10×–2.7×), overlapping one-vs-one classes (`svc-multi-overlap`,
+1.39×–2.0×), `gamma` of 0.8–10 × `"scale"` (`svc-params`, 1.20×–4.6×), and the structured
+laws at 2 000–4 000 rows here (1.04×–2.3×). A directly imported class keeps them on MLX.
 
 Narrow data loses at C = 1 too. At 2–8 features rbf lost on 1.7.2 at every size measured,
 2 000 to 16 000 rows (0.50×–0.91×), and on 1.9.0 everywhere but a tie at 4 000 rows —
@@ -1115,9 +1275,9 @@ C = 1 to 100, grid `svc-multi-overlap`:
 | 7 500 × 128, K = 5 (pairs of 3 000) | 1.96 / 1.80 | 1.12 / 1.03 | 1.12 / 1.03 | scikit-learn |
 | 15 000 × 128, K = 10 (pairs of 3 000) | 2.00 / 1.82 | 1.10 / 1.01 | 1.10 / 1.01 | scikit-learn |
 | 2 000 × 256, K = 4 (pairs of 1 000) | 2.00 / 1.83 | 1.21 / 1.09 | 1.22 / 1.09 | scikit-learn |
-| 3 000 × 256, K = 4 (pairs of 1 500) | 2.54 / 2.35 | 1.52 / 1.39 | 1.52 / 1.39 | MLX |
-| 1 536 × 512, K = 3 (pairs of 1 024) | 3.48 / 3.19 | 2.01 / 1.82 | 2.00 / 1.82 | MLX |
-| 2 048 × 512, K = 4 (pairs of 1 024) | 3.52 / 3.20 | 2.04 / 1.85 | 2.03 / 1.86 | MLX |
+| 3 000 × 256, K = 4 (pairs of 1 500) | 2.54 / 2.35 | 1.52 / 1.39 | 1.52 / 1.39 | MLX at C = 1 |
+| 1 536 × 512, K = 3 (pairs of 1 024) | 3.48 / 3.19 | 2.01 / 1.82 | 2.00 / 1.82 | MLX at C = 1 |
+| 2 048 × 512, K = 4 (pairs of 1 024) | 3.52 / 3.20 | 2.04 / 1.85 | 2.03 / 1.86 | MLX at C = 1 |
 
 Pairs of 2 000 × 128 lost at C = 10 and 100 on 1.7.2 (0.91×–0.92×) and tied on 1.9.0;
 every pair from 3 000 × 128 up won or tied on both (1.01×–3.5×) — on these overlapping
@@ -1176,8 +1336,8 @@ Forced onto MLX, 25 interleaved pairs (5 for the linear kernel), scikit-learn 1.
 | 2 000 × 128, C = 10, kernel = poly | 96.65 | 98.65 | 1.02× | 1.03× | scikit-learn |
 | 4 000 × 128, C = 10 | 299.11 | 421.73 | 1.41× | 1.41× | scikit-learn |
 | 4 000 × 128, C = 10, kernel = poly | 299.77 | 395.03 | 1.32× | 1.32× | scikit-learn |
-| 4 000 × 256, C = 10 | 294.43 | 735.17 | 2.50× | 2.50× | MLX |
-| 4 000 × 256, C = 10, kernel = poly | 285.66 | 655.52 | 2.29× | 2.32× | MLX |
+| 4 000 × 256, C = 10 | 294.43 | 735.17 | 2.50× | 2.50× | scikit-learn |
+| 4 000 × 256, C = 10, kernel = poly | 285.66 | 655.52 | 2.29× | 2.32× | scikit-learn |
 | 4 000 × 256, C = 10, kernel = sigmoid | 647.17 | 426.00 | **0.66×** | 0.66× | scikit-learn |
 | 2 000 × 20, kernel = linear (5 pairs) | 552.00 | 37.80 | **0.07×** | 0.07× | scikit-learn |
 | 2 000 × 256, kernel = linear (5 pairs) | 21512.67 | 1059.74 | **0.05×** | 0.05× | scikit-learn |
@@ -1190,7 +1350,9 @@ rules that cannot see C, the labels or the iteration count: the same shapes at C
 lost. 2 000 × 128 at C = 10 won by 1.02×–1.06× here and lost on scikit-learn 1.7.2 (the
 `svc` table); 4 000 × 128 won here, on the benchmark's target, while labels without
 signal lost at 3 000–6 000 × 128 (the `svc-hard` table), which is why the width floor
-now sits at 256 features. Every case here that patched dispatch sends to MLX won,
+now sits at 256 features. 4 000 × 256 at C = 10 won here too, on Gaussian data, and goes
+to LIBSVM anyway: above C = 1 data of lower intrinsic dimension lost at those widths (the
+`svc-structured` table). Every case here that patched dispatch sends to MLX won,
 2.03×–3.72×.
 
 ## Logistic regression — tall, or many classes
@@ -1216,7 +1378,7 @@ pairs; bold and `~` as above. Grids `logreg-binary` and `logreg-multi`:
 | 5 000 | 0.64~ / 0.78~ | **0.56** / **0.55** | **0.41** / **0.45** | **0.37** / **0.39** | 1.23 / 1.14 | **0.46** / **0.48** | 0.81~ / 0.91~ | **0.66** / **0.62** | scikit-learn |
 | 20 000 | 0.78~ / 1.15~ | 0.99~ / 0.98~ | 1.22 / 1.18 | **0.86** / 0.79~ | 1.80 / 1.73 | 1.11 / 1.06 | 2.34 / 2.29 | 1.44 / 1.39 | scikit-learn |
 | 60 000 | 1.88 / 1.87 | 3.38 / 3.49 | 1.52 / 1.50 | 2.13 / 2.17 | 2.79 / 2.93 | 2.76 / 2.53 | 3.34 / 3.04 | 2.33 / 2.32 | MLX at 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 512, 5 classes × 64, 10 classes × 16, 10 classes × 128 |
-| 200 000 | 2.67 / 2.67 | 3.43 / 3.21 | 4.76 / 4.60 | 3.77 / 3.78 | 3.96 / 3.81 | 4.46 / 4.28 | 8.58 / 8.42 | 5.23 / 5.24 | MLX |
+| 200 000 | 2.67 / 2.67 | 3.43 / 3.21 | 4.76 / 4.60 | 3.77 / 3.78 | 3.96 / 3.81 | 4.46 / 4.28 | 8.58 / 8.42 | 5.23 / 5.24 | MLX at 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 512, 5 classes × 64, 10 classes × 16, 10 classes × 128 |
 
 What an MLX fit pays once is a pass over `X` — the column means, the centered float32
 copy and the float32 range check, each split by rows across up to eight threads — its
@@ -1250,33 +1412,69 @@ Labels that carry no signal converge in one or two, and noisy ones in about four
 `logreg-labels` fits both, random labels and `x₀ + N(0, 3²) > 0`:
 
 <!-- python -m benchmarks.calibrate table logreg-labels: scikit-learn 1.9.0 / 1.7.2 -->
-| labels, rows | 1 feature | 4 features | 16 features | 32 features | 64 features | 256 features | 3 classes × 1 | 3 classes × 2 | 3 classes × 4 | 3 classes × 16 | 3 classes × 64 | 3 classes × 256 | 5 classes × 1 | 5 classes × 2 | 10 classes × 1 | 10 classes × 64 | dispatch |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| noisy, 100 000 | 1.71 / 1.16 | 1.40 / 1.07~ | 1.25 / **0.88** | 1.36 / 1.03~ | 1.24 / 1.08~ | 1.01~ / 0.97 | — | — | — | — | — | — | — | — | — | — | scikit-learn |
-| noisy, 200 000 | 2.71 / 2.37 | 1.89 / 1.58 | 1.93 / 1.53 | 1.74 / 1.55 | 1.43 / 1.25 | 1.20 / 1.13 | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
-| noisy, 500 000 | 3.91 / 3.43 | 2.36 / 2.07 | 2.46 / 2.17 | 2.16 / 1.94 | 1.69 / 1.55 | 1.37 / 1.29 | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
-| noisy, 1 000 000 | 4.52 / 3.97 | 2.95 / 2.61 | 2.77 / 2.46 | 2.42 / 2.16 | 1.94 / 1.73 | 1.46 / 1.37 | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
-| random, 60 000 | — | — | — | — | — | — | **0.74** / 0.70~ | 1.27 / 1.11 | 1.12 / 1.06~ | 1.22 / 1.18 | 1.71 / 1.66 | 1.42 / 1.38 | **0.92** / 0.87~ | 1.31 / 1.24 | 1.15 / 1.74 | 1.76 / 1.70 | MLX at 3 classes × 2, 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 256, 5 classes × 2, 10 classes × 1, 10 classes × 64 |
-| random, 100 000 | 1.66 / 1.01~ | **0.81** / **0.61** | 1.17 / **0.77** | 1.16 / **0.82** | 1.01~ / **0.76** | **0.90** / **0.84** | 1.53~ / 1.51~ | 1.34 / 1.31 | 1.48 / 1.51 | 1.48 / 1.47 | 2.11 / 2.09 | 1.63 / 1.56 | 2.02 / 2.02 | 1.63 / 1.67 | 1.93 / 1.84 | 2.28 / 2.17 | MLX at 3 classes × 2, 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 256, 5 classes × 1, 5 classes × 2, 10 classes × 1, 10 classes × 64 |
-| random, 200 000 | 1.67 / 1.15 | 1.18 / 0.97~ | 1.36 / 1.12 | 1.45 / 1.27 | 1.18 / 1.03 | 1.03 / 0.96 | 1.34~ / 1.19~ | 1.32 / 1.36 | 1.58 / 1.55 | 2.40 / 2.45 | 2.10 / 1.98 | 2.02 / 1.98 | 1.37~ / 1.91 | 1.81 / 1.81 | 1.84 / 2.18 | 2.25 / 2.26 | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features, 3 classes × 1, 3 classes × 2, 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 256, 5 classes × 1, 5 classes × 2, 10 classes × 1, 10 classes × 64 |
-| random, 500 000 | 1.84 / 1.47 | 2.00 / 1.70 | 1.78 / 1.53 | 1.58 / 1.35 | 1.26 / 1.09 | 1.17 / 1.09 | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
-| random, 1 000 000 | 2.27 / 1.76 | 1.94 / 1.57 | 1.89 / 1.58 | 1.59 / 1.35 | 1.41 / 1.21 | 1.06 / 0.97 | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
+| labels, rows | 1 feature | 4 features | 16 features | 32 features | 64 features | 256 features | 3 classes × 1 | 3 classes × 2 | 3 classes × 4 | 3 classes × 16 | 3 classes × 64 | 3 classes × 256 | 5 classes × 1 | 5 classes × 2 | 6 classes × 1 | 7 classes × 1 | 8 classes × 1 | 9 classes × 1 | 10 classes × 1 | 10 classes × 64 | dispatch |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| noisy, 100 000 | 1.71 / 1.16 | 1.40 / 1.07~ | 1.25 / **0.88** | 1.36 / 1.03~ | 1.24 / 1.08~ | 1.01~ / 0.97 | — | — | — | — | — | — | — | — | — | — | — | — | — | — | scikit-learn |
+| noisy, 200 000 | 2.71 / 2.37 | 1.89 / 1.58 | 1.93 / 1.53 | 1.74 / 1.55 | 1.43 / 1.25 | 1.20 / 1.13 | — | — | — | — | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
+| noisy, 500 000 | 3.91 / 3.43 | 2.36 / 2.07 | 2.46 / 2.17 | 2.16 / 1.94 | 1.69 / 1.55 | 1.37 / 1.29 | — | — | — | — | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
+| noisy, 1 000 000 | 4.52 / 3.97 | 2.95 / 2.61 | 2.77 / 2.46 | 2.42 / 2.16 | 1.94 / 1.73 | 1.46 / 1.37 | — | — | — | — | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
+| random, 60 000 | — | — | — | — | — | — | **0.74** / 0.70~ | 1.27 / 1.11 | 1.12 / 1.06~ | 1.22 / 1.18 | 1.71 / 1.66 | 1.42 / 1.38 | **0.92** / 0.87~ | 1.31 / 1.24 | 0.98~ / 1.03 | 1.09 / 1.17 | 1.06 / 1.10 | 1.09 / 1.14~ | 1.15 / 1.74 | 1.76 / 1.70 | MLX at 3 classes × 2, 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 256, 5 classes × 2, 10 classes × 64 |
+| random, 100 000 | 1.66 / 1.01~ | **0.81** / **0.61** | 1.17 / **0.77** | 1.16 / **0.82** | 1.01~ / **0.76** | **0.90** / **0.84** | 1.53~ / 1.51~ | 1.34 / 1.31 | 1.48 / 1.51 | 1.48 / 1.47 | 2.11 / 2.09 | 1.63 / 1.56 | 2.02 / 2.02 | 1.63 / 1.67 | — | — | — | — | 1.93 / 1.84 | 2.28 / 2.17 | MLX at 3 classes × 2, 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 256, 5 classes × 2, 10 classes × 64 |
+| random, 120 000 | — | — | — | — | — | — | 1.21~ / 1.36~ | — | — | — | — | — | — | — | — | — | — | — | — | — | scikit-learn |
+| random, 150 000 | — | — | — | — | — | — | 1.07~ / 1.22~ | — | — | — | — | — | — | — | — | — | — | — | — | — | scikit-learn |
+| random, 200 000 | 1.67 / 1.15 | 1.18 / 0.97~ | 1.36 / 1.12 | 1.45 / 1.27 | 1.18 / 1.03 | 1.03 / 0.96 | 1.34~ / 1.19~ | 1.32 / 1.36 | 1.58 / 1.55 | 2.40 / 2.45 | 2.10 / 1.98 | 2.02 / 1.98 | 1.37~ / 1.91 | 1.81 / 1.81 | — | — | — | — | 1.84 / 2.18 | 2.25 / 2.26 | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features, 3 classes × 2, 3 classes × 4, 3 classes × 16, 3 classes × 64, 3 classes × 256, 5 classes × 2, 10 classes × 64 |
+| random, 500 000 | 1.84 / 1.47 | 2.00 / 1.70 | 1.78 / 1.53 | 1.58 / 1.35 | 1.26 / 1.09 | 1.17 / 1.09 | — | — | — | — | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
+| random, 1 000 000 | 2.27 / 1.76 | 1.94 / 1.57 | 1.89 / 1.58 | 1.59 / 1.35 | 1.41 / 1.21 | 1.06 / 0.97 | — | — | — | — | — | — | — | — | — | — | — | — | — | — | MLX at 1 feature, 4 features, 16 features, 32 features, 64 features |
 
 Separable classes tied at worst (1.00×~ at 60 000 × 256, three classes), so the
-multinomial row floor stands. Random labels at a single feature did not: at 60 000 rows
-three and five classes lost or tied (0.70×–0.92×) — a fit scikit-learn finishes in one
-iteration of 7–9 ms, where MLX's fixed cost is higher at one feature than at two, its
-matrix product with a one-column output being slow. From 360 000 element-ops, rows ×
-features × classes, every multinomial fit won or tied: 60 000 × 2 with three classes
-(1.11×–1.27×), 60 000 × 1 with ten (1.15×–1.74×), 100 000 × 1 with five (2.02×). So a
-multinomial fit also needs 360 000 element-ops (`logreg_min_work`, which a binary fit's
-own rules below make moot for it); that gives up 60 000 × 1 with three overlapping
-classes (1.87×–1.88× in the `logreg-multi` table) and 100 000 × 1 with three random ones
-(1.51×–1.53×, within noise). Labels with little or no signal lost at 100 000 rows — on
+multinomial row floor stands. Random labels at a single feature did not: a fit
+scikit-learn finishes in one iteration of 7–12 ms, where MLX's fixed cost is about 10 ms at
+60 000 × 1 whatever the class count — its matrix product with a one-column output is slow
+— against 7 at 60 000 × 2. At 60 000 × 1 three to nine classes lost or tied
+(0.70×–1.17×; six read 0.93×–0.94× on 1.9.0 in two runs outside the grid), and
+120 000–200 000 × 1 with three stayed within noise (1.07×–1.36×), while from two features
+every multinomial fit won or tied (1.06×~ at worst, 60 000 × 4 with three classes). So a
+multinomial fit needs two features (`logreg_multinomial_min_features`); that replaces a
+work floor of 360 000 rows × features × classes, which 60 000 × 1 with six classes met.
+It gives up the one-feature fits that won: five and ten random classes at
+100 000–200 000 rows (1.37×–2.2×), ten at 60 000 (1.15×–1.74×), and 200 000 × 1 with three
+overlapping ones (2.67× in the `logreg-multi` table). Labels with little or no signal lost at 100 000 rows — on
 1.7.2 at 4–256 features (0.61×–0.88×), on 1.9.0 at 4 and 256 (0.81×, 0.90×) — and random
 ones at 256 features stood at 0.96×–1.17× from 200 000 rows, too close to call. So a binary fit needs 200 000 rows and at most 64 features, where every label set
 measured won or tied (0.97× at worst); the price is the binary wins between 100 000 and
 200 000 rows, and beyond 64 features (1.30×–2.3× in the `logreg-binary` table).
+
+**Solver parameters stop a fit early too.** A looser `tol` or a smaller `max_iter` stops a
+fit with real signal within an iteration or two, as labels without any stop. Grid
+`logreg-params`: the benchmark's binary target and labels with moderate multinomial-logit
+signal (`signal`: the most likely class under `XW/√d` plus Gumbel noise), binary at
+200 000 × 1–64, three classes at 60 000 × 2–64 and overlapping blobs at 60 000 × 16, at
+`tol` from the default 1e-4 to 0.01 and `max_iter` from 1 to 5:
+
+<!-- python -m benchmarks.calibrate table logreg-params: scikit-learn 1.9.0 / 1.7.2 -->
+| labels, rows × features | defaults | tol = 0.001 | tol = 0.003 | tol = 0.01 | max_iter = 1 | max_iter = 2 | max_iter = 3 | max_iter = 5 | dispatch |
+|---|---|---|---|---|---|---|---|---|---|
+| binary, K = 2, 200 000 × 1 | 3.29 / 3.11 | 3.31 / 3.28 | 3.10 / 2.99 | 3.01 / 2.73 | 1.72 / 1.23 | 2.20 / 1.57 | 2.44 / 1.91 | 3.00 / 2.73 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| binary, K = 2, 200 000 × 4 | 2.33 / 2.19 | 2.30 / 2.12 | 2.19 / 2.05 | 1.96 / 1.78 | 1.16 / **0.84** | 1.41 / 1.16 | 1.65 / 1.45 | 1.92 / 1.80 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| binary, K = 2, 200 000 × 16 | 2.30 / 2.13 | 2.20 / 2.07 | 2.11 / 2.03 | 1.92 / 1.73 | 1.13 / **0.93** | 1.43 / 1.20 | 1.60 / 1.43 | 1.90 / 1.72 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| binary, K = 2, 200 000 × 64 | 1.78 / 1.60 | 1.68 / 1.56 | 1.67 / 1.55 | 1.57 / 1.43 | **0.90** / **0.75** | 1.14 / 1.01~ | 1.30 / 1.18 | 1.56 / 1.46 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| blobs, K = 3, 60 000 × 16 | 1.56 / 1.50 | 1.36 / 1.33 | 1.42 / 1.41 | 1.37 / 1.35 | **0.89** / **0.83** | 1.02~ / 0.96~ | 1.12 / 0.99~ | 1.25 / 1.20 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 2, 200 000 × 1 | 3.90 / 3.83 | 3.07 / 2.88 | 2.77 / 2.61 | 2.53 / 2.09 | 1.72 / 1.26 | 2.17 / 1.63 | 2.54 / 1.94 | 3.11 / 2.87 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 2, 200 000 × 4 | 1.89 / 1.69 | 1.64 / 1.47 | 1.70 / 1.47 | 1.41 / 1.18 | 1.11 / **0.82** | 1.40 / 1.19 | 1.67 / 1.49 | 1.89 / 1.68 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 2, 200 000 × 16 | 1.83 / 1.67 | 1.42 / 1.23 | 1.36 / 1.14 | 1.15 / **0.82** | 1.15 / **0.86** | 1.36 / 1.20 | 1.64 / 1.44 | 1.83 / 1.65 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 2, 200 000 × 64 | 1.68 / 1.46 | 1.33 / 1.16 | 1.28 / 1.15 | 1.11 / 0.97 | **0.89** / **0.75** | 1.09 / 0.97 | 1.29 / 1.15 | 1.61 / 1.53 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 3, 60 000 × 2 | 1.41 / 1.39 | 1.33 / 1.20 | 1.32 / 1.24 | 1.19 / 1.12 | 1.01~ / 0.98~ | 1.21 / 1.11 | 1.32 / 1.21 | 1.42 / 1.36 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 3, 60 000 × 8 | 1.43 / 1.42 | 1.38 / 1.34 | 1.38 / 1.22 | 1.14 / 1.04 | 0.97~ / **0.89** | 1.17 / 1.04 | 1.31 / 1.16 | 1.43 / 1.42 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+| signal, K = 3, 60 000 × 64 | 2.08 / 2.12 | 1.97 / 2.13 | 2.12 / 2.18 | 1.52 / 1.53 | 1.25 / 1.25 | 1.51 / 1.52 | 1.74 / 1.62 | 1.98 / 1.95 | MLX at defaults, tol = 0.001, max_iter = 3, max_iter = 5 |
+
+`tol = 0.01` stopped a binary fit of 200 000 × 16 after one iteration and lost on 1.7.2
+(0.82×), and `max_iter = 1` lost at 4–64 features on one version or both (0.75×–0.93×);
+`max_iter = 2` tied at worst (0.96×–0.97×), and from `tol = 1e-3` down and `max_iter = 3`
+up every fit won or tied (0.99×~ at worst). So patched dispatch hands a fit with `tol`
+above 1e-3 or `max_iter` below 3 to scikit-learn, whatever its size (`logreg_max_tol`,
+`logreg_min_max_iter`), recorded as `"below-crossover"`; a directly imported class keeps
+it on MLX. That gives up `tol` of 3e-3 (1.14×–3.1×) and of 0.01 (1.04×–3.0×) where they
+won, and `max_iter = 2` (1.01×–2.2×).
 
 The 0.1.0a2 rule — 20 000 rows and 2·10⁷ elements, both required, no width limit — sent
 20 000 × 1 024 (0.83×–0.87× even now) to MLX and kept 1 000 000 × 16 (4.0×–4.4×) from it.
@@ -1318,8 +1516,8 @@ the benchmark's well-separated blobs:
   laws of `knn-data`, `knn-structured` and `knn-narrow`; the probe reads the one property
   of the data that was seen to decide, but no set of laws is all data. `SVC`'s are the
   binary target above, labels with a weak signal, none and XOR, overlapping, separated
-  and random classes, C from 0.1 to 100, and `gamma`, `degree` and `coef0` as
-  `svc-params` and `svc-hard` vary them; C beyond 100 was not tabulated.
-  `LogisticRegression`'s are labels with a clear signal, a weak one and none. The
-  neighbor rules read the constructor's `n_neighbors`; a query that asks for another k
-  runs where the fit did.
+  and random classes, C from 0.1 to 100, `gamma`, `degree` and `coef0` as `svc-params`
+  and `svc-hard` vary them, and the laws of `svc-structured`; C beyond 100 was not
+  tabulated. `LogisticRegression`'s are labels with a clear signal, a weak one and none,
+  and `tol` and `max_iter` as `logreg-params` varies them. The neighbor rules read the
+  constructor's `n_neighbors` at fit, and a query's own when it asks for more.

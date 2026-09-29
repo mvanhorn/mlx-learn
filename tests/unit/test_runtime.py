@@ -67,14 +67,17 @@ NO_CROSSOVER = {
     "knn_probe_max_uncertified": 1.0,
     "knn_wide_features": 0,
     "knn_max_neighbors": 2**31,
-    "knn_min_samples_per_neighbor": 0,
+    "knn_wide_min_samples": 0,
     "logreg_min_samples": 0,
-    "logreg_min_work": 0,
+    "logreg_multinomial_min_features": 0,
+    "logreg_max_tol": float("inf"),
+    "logreg_min_max_iter": 0,
     "logreg_binary_min_samples": 0,
     "logreg_binary_max_features": 2**31,
     "svc_min_features": 0,
     "svc_min_samples": 0,
     "svc_min_work": 0,
+    "svc_max_c": float("inf"),
 }
 
 needs_gpu = pytest.mark.skipif(not gpu_available(), reason="needs a working MLX GPU")

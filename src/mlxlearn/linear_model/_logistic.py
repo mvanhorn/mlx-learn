@@ -312,10 +312,9 @@ class MLXLogisticMixin(BackendMixin):
         """Whether stock scikit-learn is expected to win at this size.
 
         Every fit needs ``logreg_min_samples`` rows. A multinomial fit also needs
-        ``logreg_min_work`` element-ops, the work proxy being
-        ``n_samples × n_features × n_classes`` — one weight vector per class —
-        because each objective evaluation is a pair of ``(n, d) × (d, n_classes)``
-        products.
+        ``logreg_multinomial_min_features`` features: MLX's GEMM with an output of
+        one column is slow, so a one-feature multinomial fit costs the MLX path about
+        10 ms at 60 000 rows whatever the class count, where two features cost it 7.
 
         A binary fit must also be tall, and not too wide: at least
         ``logreg_binary_min_samples`` rows and at most
@@ -333,9 +332,11 @@ class MLXLogisticMixin(BackendMixin):
         rows they won or tied. A multinomial fit does ``n_classes`` times the GPU
         work for the same copy, and won from 60 000 rows at every width measured,
         overlapping classes or well separated (1.00x-8.6x) — but on labels without
-        signal, which converge in one iteration, 60 000 x 1 with three and five
-        classes lost or tied (0.70x-0.92x), and every multinomial fit from 360 000
-        element-ops won or tied.
+        signal, which converge in one iteration, one-feature fits stayed near MLX's
+        fixed cost: 60 000 x 1 lost or tied with three to nine classes (0.70x-1.17x),
+        and 120 000-200 000 x 1 with three stayed within noise, while from two
+        features every multinomial fit won or tied. Patched mode also reads ``tol``
+        and ``max_iter`` (:meth:`_param_handoff`).
         """
         tuning = get_tuning()
         if n_samples < tuning.logreg_min_samples:
@@ -343,13 +344,12 @@ class MLXLogisticMixin(BackendMixin):
                 f"{n_samples} samples x {n_features} features is below the measured "
                 f"logistic-regression crossover ({tuning.logreg_min_samples} samples)"
             )
-        work = n_samples * n_features * max(int(n_targets), 1)
-        if n_targets > 1 and work < tuning.logreg_min_work:
+        if n_targets > 1 and n_features < tuning.logreg_multinomial_min_features:
             return True, (
-                f"a multinomial fit of {n_samples} samples x {n_features} features x "
-                f"{n_targets} classes is below the measured logistic-regression "
-                f"crossover ({tuning.logreg_min_work} element-ops, rows x features x "
-                "classes)"
+                f"a multinomial fit of {n_samples} samples x {n_features} feature"
+                f"{'' if n_features == 1 else 's'} x {n_targets} classes is below the "
+                "measured logistic-regression crossover (a multinomial fit needs "
+                f"{tuning.logreg_multinomial_min_features} features)"
             )
         if n_targets <= 1 and (
             n_samples < tuning.logreg_binary_min_samples
@@ -367,9 +367,9 @@ class MLXLogisticMixin(BackendMixin):
         """:meth:`_below_crossover` from the raw input, before any validation.
 
         The class count only changes the answer for a problem that clears the
-        sample floor and would be refused as binary — or, as a multinomial fit of
-        three classes, would fall short of the work floor — so ``y`` is only looked
-        at then, and cheaply (:func:`_count_targets`).
+        sample floor and would be refused as binary — or, as a multinomial fit, for
+        its single feature — so ``y`` is only looked at then, and cheaply
+        (:func:`_count_targets`).
         """
         n_samples, n_features = shape
         tuning = get_tuning()
@@ -377,10 +377,46 @@ class MLXLogisticMixin(BackendMixin):
         if n_samples >= tuning.logreg_min_samples and (
             n_samples < tuning.logreg_binary_min_samples
             or n_features > tuning.logreg_binary_max_features
-            or n_samples * n_features * 3 < tuning.logreg_min_work
+            or n_features < tuning.logreg_multinomial_min_features
         ):
             n_targets = _count_targets(y)
         return self._below_crossover(n_samples, n_features, n_targets)
+
+    def _param_handoff(self) -> tuple[str, str] | None:
+        """Patched mode's handoff by solver parameters: ``(reason, detail)``, or ``None``.
+
+        A fit that stops within an iteration or two is mostly MLX's fixed cost — the
+        float32 copy of ``X``, its upload, a device round trip per evaluation — and
+        a looser ``tol`` or a smaller ``max_iter`` stops a fit with real signal there
+        as surely as labels without any do. On the benchmark's binary target and on
+        labels with moderate multinomial-logit signal (``docs/benchmarks.md``, table
+        ``logreg-params``), ``tol = 0.01`` stopped a binary fit of 200 000 x 16 after
+        one iteration and lost on scikit-learn 1.7.2 (0.82x), and ``max_iter`` of 1
+        or 2 lost at 200 000 x 4-64 and at 60 000 x 8-16 with three classes
+        (0.72x-0.95x); from ``tol = 1e-3`` down, and from ``max_iter = 3`` up, every
+        fit measured won. So a fit needs ``tol`` of at most ``logreg_max_tol`` and
+        ``max_iter`` of at least ``logreg_min_max_iter``.
+
+        Patched mode only (``_select_backend``'s ``handoff``), as the other
+        estimators' parameter rules are: a directly imported class has no stock
+        solver to hand the fit to. Recorded as ``"below-crossover"``.
+        """
+        tuning = get_tuning()
+        if not float(self.tol) <= tuning.logreg_max_tol:
+            return "below-crossover", (
+                f"tol={self.tol:g} is above the measured logistic-regression crossover "
+                f"for its solver parameters (tol at most {tuning.logreg_max_tol:g}): a "
+                "fit this loose stops within an iteration or two, and is then mostly "
+                "the MLX path's fixed cost"
+            )
+        if int(self.max_iter) < tuning.logreg_min_max_iter:
+            return "below-crossover", (
+                f"max_iter={self.max_iter} is below the measured logistic-regression "
+                "crossover for its solver parameters (max_iter at least "
+                f"{tuning.logreg_min_max_iter}): a fit this short is mostly the MLX "
+                "path's fixed cost"
+            )
+        return None
 
     def _select_fit_backend(self, X, y, sample_weight) -> tuple[str, bool]:
         """Decide the backend for ``fit`` from the raw input. Returns ``(backend, decided)``.
@@ -400,6 +436,7 @@ class MLXLogisticMixin(BackendMixin):
             "fit",
             shape=shape,
             crossover=lambda n, d: self._crossover_from_raw((n, d), y),
+            handoff=lambda n, d: self._param_handoff(),
             capability_check=lambda: self._check_logistic_params(X),
             data_check=lambda: self._check_logistic_data(X, y, sample_weight),
         )
@@ -627,6 +664,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                 "fit",
                 shape=X_checked.shape,
                 crossover=lambda n, d: self._below_crossover(n, d, n_targets),
+                handoff=lambda n, d: self._param_handoff(),
             )
             if backend == "sklearn":
                 return self._fit_with_sklearn(X, y, sample_weight)

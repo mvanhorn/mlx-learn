@@ -452,6 +452,7 @@ class NeighborIndex:
     backend: str
     X_lo: np.ndarray | None = None
     _state: _DeviceState | None = field(default=None, repr=False)
+    _host64: np.ndarray | None = field(default=None, repr=False)
     _lock: Any = field(default_factory=threading.Lock, repr=False)
     device: InitVar[str | None] = None
 
@@ -517,9 +518,34 @@ class NeighborIndex:
         # A lock is process-local and never pickled; each unpickled index gets its own.
         self._lock = threading.Lock()
         self._state = None
+        self._host64 = None
         # Rebuilt lazily on the first query rather than here, so that unpickling
         # never touches a device, and on the device that query runs on; see
         # _compute_device.
+
+    def host_rows(self) -> np.ndarray:
+        """The training rows in float64, translated by ``center``: built once and kept.
+
+        ``X + X_lo − center``, the input to about 2⁻⁴⁸ of each coordinate (float32
+        input exactly) and translated by the same mean the search uses, for a caller
+        that answers a query on the host instead of searching the index: translated
+        by ``center`` too, its queries get the distances a search around the origin
+        would lose to cancellation on data far from it. Read-only. Built on the first
+        call, under the index's lock so concurrent first calls build one copy; like
+        the device state, it is derived, and not pickled.
+        """
+        rows = self._host64
+        if rows is not None:
+            return rows
+        with self._lock:
+            if self._host64 is None:
+                rows = self.X.astype(np.float64)
+                if self.X_lo is not None:
+                    rows += self.X_lo
+                rows -= self.center.astype(np.float64)
+                rows.flags.writeable = False
+                self._host64 = rows
+            return self._host64
 
     # ------------------------------------------------------------------ probe
 

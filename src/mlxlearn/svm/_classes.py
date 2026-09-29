@@ -143,6 +143,10 @@ def _libsvm_sample_weight(sample_weight, X: np.ndarray) -> np.ndarray | None:
     return check_sample_weight(sample_weight, X, dtype=np.float64)
 
 
+def _is_none_or_balanced(class_weight) -> bool:
+    return class_weight is None or (isinstance(class_weight, str) and class_weight == "balanced")
+
+
 def ovr_decision_function(
     predictions: np.ndarray, confidences: np.ndarray, n_classes: int
 ) -> np.ndarray:
@@ -314,11 +318,13 @@ class MLXSVCMixin(BackendMixin):
 
         The linear and sigmoid kernels are excluded outright, and rbf and poly must
         clear a **width** floor as well as the sample and work floors, because
-        width is what decides. Patched mode also reads the kernel parameters
-        themselves (:meth:`_kernel_handoff`). The calibration is
-        ``docs/benchmarks.md``'s ``svc``, ``svc-hard``, ``svc-params``,
-        ``svc-sigmoid``, ``svc-linear``, ``svc-narrow``, ``svc-multi`` and
-        ``svc-multi-overlap`` tables, measured against scikit-learn 1.9.0 and 1.7.2.
+        width is what decides on isotropic Gaussian data. Patched mode also reads
+        C and the kernel parameters (:meth:`_kernel_handoff`), which on data of
+        lower intrinsic dimension decide at any width. The calibration is
+        ``docs/benchmarks.md``'s ``svc``, ``svc-hard``, ``svc-structured``,
+        ``svc-params``, ``svc-sigmoid``, ``svc-linear``, ``svc-narrow``,
+        ``svc-multi`` and ``svc-multi-overlap`` tables, measured against
+        scikit-learn 1.9.0 and 1.7.2.
 
         Where the time goes, measured. Up to the row cache's capacity — about
         7 240 rows per one-vs-one subproblem at the default ``cache_size=200`` — a
@@ -335,18 +341,20 @@ class MLXSVCMixin(BackendMixin):
         see that before it runs: on labels with little or no signal nearly every
         row is one, and at 128 features 3 000-6 000 rows lost at C = 10 and 100
         (0.83x-0.94x), as did one-vs-one pairs of 3 000 x 128 (0.81x-0.91x). From
-        256 features every label law measured won at every C, from 1 500 x 256 and
-        1 024 x 512 (1.21x-5.9x). So the width floor is 256 features; the work
-        floor, 1 500 x 256, keeps 1 000 x 256 on LIBSVM, and ``svc_min_samples``
-        lets 1 024 x 512 through. Narrow data past the cache, where rows are
+        256 features every label law measured on Gaussian data won at every C, from
+        1 500 x 256 and 1 024 x 512 (1.21x-5.9x) — but not on data of lower intrinsic
+        dimension above C = 1 (:meth:`_kernel_handoff`). So the width floor is 256
+        features; the work floor, 1 500 x 256, keeps 1 000 x 256 on LIBSVM, and
+        ``svc_min_samples`` lets 1 024 x 512 through. Narrow data past the cache, where rows are
         fetched on demand, loses at C = 1 too. A work floor alone cannot see any of
         that: the first release's ``n·d >= 10⁶`` could not tell 16 000 x 64 from
         4 000 x 256.
 
-        The kernel parameters move that crossing, not only the iteration count: a
-        kernel close to the linear one takes many iterations per row over rows
-        LIBSVM has cached, and loses at any width (:meth:`_kernel_handoff`). The
-        linear kernel's many cheap iterations are exactly the case where
+        C and the kernel parameters move that crossing, through the iteration count:
+        a larger box, or a kernel close to the linear one, takes many iterations per
+        row over rows LIBSVM has cached, and loses at any width
+        (:meth:`_kernel_handoff`). The linear kernel's many cheap iterations are
+        exactly the case where
         per-iteration overhead is the whole cost, and it is excluded at every size;
         so is the sigmoid kernel, which won at C = 0.1 and lost at C = 10 and 100 at
         nearly every width, down to 0.06x.
@@ -400,24 +408,33 @@ class MLXSVCMixin(BackendMixin):
                 )
         return False, ""
 
-    def _kernel_handoff(self, gamma_ratio: float | None) -> tuple[str, str] | None:
-        """Patched mode's handoff by kernel parameters: ``(reason, detail)``, or ``None``.
+    def _kernel_handoff(self, mean_box: float | None = None) -> tuple[str, str] | None:
+        """Patched mode's handoff by C and the kernel parameters: ``(reason, detail)``.
 
-        The closer a kernel is to the linear one, the more SMO iterations a fit
-        takes per row and the cheaper LIBSVM's become once its cache holds the rows
-        they revisit — which is why the linear kernel is excluded outright. An rbf
-        kernel much wider than the data's own spread (``gamma`` below
-        ``svc_min_gamma_ratio`` times ``"scale"``) and a polynomial kernel of low
-        degree, or with a ``coef0`` that mixes in the lower-degree terms, behave
-        like it: at C = 10 and 100 they lost at every shape measured. So, at the
-        other end, does an rbf kernel far *narrower* than the data (``gamma`` above
-        ``svc_max_gamma_ratio`` times ``"scale"``, which ``gamma=1`` is on
-        standardized data of more than 30 features): every row becomes a support
-        vector, each visited over a row LIBSVM has cached, and at 100-1 000 times
-        ``"scale"`` it lost at C = 10 (table ``svc-hard``). rbf outside those bounds
-        still won at ``C <= svc_low_gamma_max_c``, where there are few iterations to
-        lose on. ``gamma_ratio`` is ``None`` before the data are validated
-        (:meth:`_gamma_ratio`), and the rbf half waits for it.
+        ``None`` when the fit may run on MLX. How many SMO iterations a fit takes per
+        row decides it — mlxlearn pays tens of microseconds for each, LIBSVM a few
+        once its cache holds the rows they revisit — and C, the box every dual
+        variable lives in, is what lets them multiply: the larger the box, the more
+        often the solver revisits the same rows. How much more depends on the data's
+        intrinsic dimension, which neither the width nor anything else a fit can
+        cheaply see reflects. On isotropic Gaussian data every binary fit above the
+        size floors won at C = 10 and 100 (tables ``svc``, ``svc-hard``); on data of
+        low intrinsic dimension — a few latent directions plus noise, singular values
+        1/i, features smoothed or heavy-tailed, scikit-learn's digits upsampled to
+        256 and 400 pixels — they lost at C = 10 (table ``svc-structured``). At
+        C <= 1 every one of those fits won, at every ``gamma`` measured. So an rbf or
+        poly fit needs a box of at most ``svc_max_c``: its mean box ``mean_box``,
+        C times the mean class and sample weight over the samples it keeps
+        (:meth:`_mean_box`) — C itself without weights, and with balanced class
+        weights, which average to one. ``None`` means it is not known yet: the
+        weights need the validated targets, and the box waits for them.
+
+        A polynomial kernel of low degree, or with a ``coef0`` that mixes in the
+        lower-degree terms, stays close to the linear kernel even at C = 1: degree
+        2 with ``coef0 = 1`` lost at 1 500 x 256 (table ``svc-params``). So poly also
+        needs degree ``svc_poly_min_degree`` or more and ``coef0 = 0``. The linear
+        kernel, whose iterations are the cheapest of all, is excluded at every size
+        (:meth:`_below_crossover`).
 
         Patched mode only (``_select_backend``'s ``handoff``), as the neighbor
         estimators' width rules are: what it measures is LIBSVM winning, and a
@@ -426,54 +443,42 @@ class MLXSVCMixin(BackendMixin):
         Recorded as ``"below-crossover"``.
         """
         tuning = get_tuning()
-        if self.kernel == "rbf":
-            if gamma_ratio is None or float(self.C) <= tuning.svc_low_gamma_max_c:
-                return None
-            if gamma_ratio < tuning.svc_min_gamma_ratio:
-                return "below-crossover", (
-                    f"gamma is {gamma_ratio:.3g} times scikit-learn's 'scale' value, and "
-                    f"C={float(self.C):g}: an rbf kernel this wide takes the linear "
-                    "kernel's many cheap iterations, outside the measured SVC crossover "
-                    f"for its kernel parameters (gamma at least "
-                    f"{tuning.svc_min_gamma_ratio:g} times 'scale', or C at most "
-                    f"{tuning.svc_low_gamma_max_c:g})"
-                )
-            if gamma_ratio > tuning.svc_max_gamma_ratio:
-                return "below-crossover", (
-                    f"gamma is {gamma_ratio:.3g} times scikit-learn's 'scale' value, and "
-                    f"C={float(self.C):g}: an rbf kernel this narrow makes nearly every "
-                    "row a support vector, each of which LIBSVM visits faster once its "
-                    "cache holds the row, outside the measured SVC crossover for its "
-                    f"kernel parameters (gamma at most {tuning.svc_max_gamma_ratio:g} "
-                    f"times 'scale', or C at most {tuning.svc_low_gamma_max_c:g})"
-                )
-        elif self.kernel == "poly":
-            if int(self.degree) < tuning.svc_poly_min_degree or float(self.coef0) != 0.0:
-                return "below-crossover", (
-                    f"the poly kernel of degree {self.degree} with coef0={self.coef0!r} "
-                    "is outside the measured SVC crossover for its kernel parameters "
-                    f"(degree at least {tuning.svc_poly_min_degree}, coef0=0)"
-                )
+        if self.kernel not in ("rbf", "poly"):
+            return None
+        if mean_box is not None and not mean_box <= tuning.svc_max_c:
+            what = f"C={float(self.C):g}" if mean_box == float(self.C) else (
+                f"C={float(self.C):g} times the mean class and sample weight, "
+                f"{mean_box:g},"
+            )
+            return "below-crossover", (
+                f"{what} is above the measured SVC crossover for the box constraint "
+                f"(at most {tuning.svc_max_c:g}): a larger box lets SMO revisit the "
+                "same rows many times over, which LIBSVM does faster once its cache "
+                "holds them"
+            )
+        if self.kernel == "poly" and (
+            int(self.degree) < tuning.svc_poly_min_degree or float(self.coef0) != 0.0
+        ):
+            return "below-crossover", (
+                f"the poly kernel of degree {self.degree} with coef0={self.coef0!r} "
+                "is outside the measured SVC crossover for its kernel parameters "
+                f"(degree at least {tuning.svc_poly_min_degree}, coef0=0)"
+            )
         return None
 
-    def _gamma_ratio(self, X: np.ndarray) -> float | None:
-        """rbf's ``gamma`` as a multiple of scikit-learn's ``"scale"``: ``γ·d·Var(X)``.
+    def _mean_box(self, y_encoded: np.ndarray, sample_weight: np.ndarray | None) -> float:
+        """The mean box ``C · class_weight · sample_weight`` over the samples it keeps.
 
-        1 for ``gamma="scale"`` (0 for data of zero variance, which ``"scale"``
-        resolves to ``gamma=1``), ``Var(X)`` for ``"auto"``. A kernel width relative to
-        the data's own distances, which is what the rule reads: ``γ‖x − x′‖²`` is
-        about twice this ratio for two typical rows. ``None`` for the other kernels
-        and for a ``gamma`` the capability check refuses. One pass over ``X``.
+        :meth:`_sample_box`'s per-sample bounds, averaged over those above zero —
+        the samples LIBSVM and :meth:`_fit_ovo` actually solve for. Weights that
+        are all ``w`` make it ``C · w``, exactly the problem with that C; balanced
+        class weights average to one, and leave it ``C``.
         """
-        if self.kernel != "rbf" or callable(self.kernel):
-            return None
-        variance = float(X.var())
-        if isinstance(self.gamma, str):
-            if self.gamma == "scale":
-                return 1.0 if variance != 0.0 else 0.0
-            return variance if self.gamma == "auto" else None
-        gamma = float(self.gamma)
-        return gamma * X.shape[1] * variance if gamma > 0.0 else None
+        box = float(self.C) * self.class_weight_[y_encoded]
+        if sample_weight is not None:
+            box = box * sample_weight
+        box = box[box > 0.0]
+        return float(np.mean(box)) if box.size else float(self.C)
 
     def _crossover_from_raw(self, shape: tuple[int, int], y) -> tuple[bool, str]:
         """:meth:`_below_crossover` from the raw input, before any validation.
@@ -1143,8 +1148,14 @@ class SVC(MLXSVCMixin, _SkSVC):
             "fit",
             shape=_safe_shape(X),
             crossover=lambda n, d: self._crossover_from_raw((n, d), y),
-            # The poly half of the kernel rule needs no data; rbf's waits for gamma.
-            handoff=lambda n, d: self._kernel_handoff(None),
+            # The poly kernel needs no data, and nor does the box without weights,
+            # or with balanced class weights, which average to one; other weights
+            # scale C sample by sample and are read below, once the targets are.
+            handoff=lambda n, d: self._kernel_handoff(
+                float(self.C)
+                if sample_weight is None and _is_none_or_balanced(self.class_weight)
+                else None
+            ),
             capability_check=lambda: self._check_svc_capability(X),
         )
         if backend == "sklearn":
@@ -1174,9 +1185,8 @@ class SVC(MLXSVCMixin, _SkSVC):
             "fit",
             shape=X64.shape,
             crossover=lambda n, d: self._below_crossover(n, d, n_classes=n_classes),
-            # Patched mode only, and only once the size rules have passed the fit:
-            # the ratio costs a pass over X.
-            handoff=lambda n, d: self._kernel_handoff(self._gamma_ratio(X64)),
+            # Patched mode only, and only once the size rules have passed the fit.
+            handoff=lambda n, d: self._kernel_handoff(self._mean_box(y_encoded, weights)),
         )
         if backend == "sklearn":
             return self._fit_with_sklearn(X, y, sample_weight)

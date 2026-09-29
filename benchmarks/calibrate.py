@@ -92,11 +92,12 @@ class Point:
     fit: bool = False
     algorithm: str = "auto"  # knn: the scikit-learn algorithm, given to both sides
     # knn: "gauss", "lowrank" or another law of _knn_data; svc and logreg: "binary"
-    # (benchmarks/run.py's binary target), "noisy", "random", "xor", "mixed", "blobs"
-    # or "separated-blobs" (see _fit_data). The estimator's first, by default.
+    # (benchmarks/run.py's binary target), "noisy", "random", "xor", "mixed", "blobs",
+    # "separated-blobs", or a structured law of _fit_data. The estimator's first, by
+    # default.
     data: str = ""
     kernel: str = "rbf"
-    C: float = 1.0
+    C: float = 1.0  # svc and logreg
     n_classes: int = 2
     k: int = 10  # knn: n_neighbors
     # svc: gamma as a multiple of scikit-learn's "scale" value, 1 / (d · Var X);
@@ -104,6 +105,9 @@ class Point:
     gamma: float = 0.0
     degree: int = 3
     coef0: float = 0.0
+    tol: float = 0.0  # svc and logreg; 0 means the estimator's default
+    max_iter: int = 0  # logreg; 0 means the grids' 200
+    class_weight: str = ""  # svc: "" (none) or "balanced"
 
     def __post_init__(self) -> None:
         if not self.data:
@@ -125,12 +129,23 @@ class Point:
                 key = f"{key}/degree={self.degree}"
             if self.coef0:
                 key = f"{key}/coef0={self.coef0:g}"
+            if self.tol:
+                key = f"{key}/tol={self.tol:g}"
+            if self.class_weight:
+                key = f"{key}/class_weight={self.class_weight}"
             if self.data not in ("binary", "separated-blobs"):
                 key = f"{key}/{self.data}"
             if self.queries:
                 return [f"{key}/predict/q{q}" for q in self.queries]
             return [key]
-        return [f"logreg/{self.n}x{self.d}/K={self.n_classes}/{self.data}"]
+        key = f"logreg/{self.n}x{self.d}/K={self.n_classes}/{self.data}"
+        if self.C != 1.0:
+            key = f"{key}/C={self.C:g}"
+        if self.tol:
+            key = f"{key}/tol={self.tol:g}"
+        if self.max_iter:
+            key = f"{key}/max_iter={self.max_iter}"
+        return [key]
 
     @property
     def seed(self) -> int:
@@ -167,6 +182,10 @@ _DENSE_ROWS = (
     400_000, 600_000, 1_000_000, 1_600_000,
 )
 _DENSE_FEATURES = (16, 24, 32, 48, 64, 96, 128, 256)
+
+#: Batch sizes of the `knn-batches` grid: every few queries from 8 to 64, where a
+#: 2 048-4 096-feature batch crosses 256 KiB of float32 rows.
+_HUMP_QUERIES = (8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 40, 48, 64)
 
 
 def _dense_shapes() -> list[tuple[int, int]]:
@@ -351,7 +370,7 @@ GRIDS: dict[str, Grid] = {
         "`LogisticRegression` fits (max_iter=200) whose labels carry little or no signal "
         "— pure noise, binary and multinomial, and x0 + N(0, 3²) > 0 — so both solvers "
         "stop within a few iterations and the fixed cost of the MLX path is most of the "
-        "fit: the binary row floor and width limit, and the multinomial work floor.",
+        "fit: the binary row floor and width limit, and the multinomial width floor.",
         tuple(
             Point("logreg", n, d, data=data)
             for data in ("random", "noisy")
@@ -363,14 +382,39 @@ GRIDS: dict[str, Grid] = {
             for n in (60_000, 100_000, 200_000)
             for K, d in ((3, 1), (3, 2), (5, 1), (5, 2), (10, 1), (3, 4), (3, 16), (3, 64),
                          (3, 256), (10, 64))
+        )
+        + tuple(
+            Point("logreg", n, 1, n_classes=K, data="random")
+            for n, K in ((60_000, 6), (60_000, 7), (60_000, 8), (60_000, 9), (120_000, 3),
+                         (150_000, 3))
         ),
         layout="logreg-data",
+    ),
+    "logreg-params": Grid(
+        "`LogisticRegression` fits away from the default `tol` and `max_iter`, on the "
+        "benchmark's binary target and on labels with moderate multinomial-logit signal, "
+        "binary at 200 000 rows and three classes at 60 000: a looser `tol` or a smaller "
+        "`max_iter` stops both solvers within an iteration or two, where the fit is "
+        "mostly MLX's fixed cost — the `logreg_max_tol` and `logreg_min_max_iter` rules.",
+        tuple(
+            Point("logreg", n, d, n_classes=K, data=data, tol=tol, max_iter=max_iter)
+            for data, K, shapes in (
+                ("binary", 2, ((200_000, 1), (200_000, 4), (200_000, 16), (200_000, 64))),
+                ("signal", 2, ((200_000, 1), (200_000, 4), (200_000, 16), (200_000, 64))),
+                ("signal", 3, ((60_000, 2), (60_000, 8), (60_000, 64))),
+                ("blobs", 3, ((60_000, 16),)),
+            )
+            for n, d in shapes
+            for tol, max_iter in ((0.0, 0), (1e-3, 0), (3e-3, 0), (1e-2, 0), (0.0, 1),
+                                  (0.0, 2), (0.0, 3), (0.0, 5))
+        ),
+        layout="logreg-params",
     ),
     "svc-params": Grid(
         "Binary `SVC` fits on MLX against LIBSVM away from the default kernel parameters, "
         "at shapes the size floors send to MLX: rbf at gamma from 0.03 to 10 times "
         "scikit-learn's 'scale' value, poly at degree 2 to 4 and coef0 of 0 and 1, "
-        "C = 1-100 — the `svc_min_gamma_ratio` and poly rules.",
+        "C = 1-100 — the poly rule, and the corners the `svc_max_c` rule covers.",
         tuple(
             Point("svc", n, d, kernel=kernel, C=C, gamma=gamma, degree=degree, coef0=coef0)
             for n, d in ((3_000, 128), (8_000, 128), (1_500, 256), (4_000, 256), (1_100, 512),
@@ -451,7 +495,7 @@ GRIDS: dict[str, Grid] = {
         "Neighbor queries on MLX against stock brute force at k = 1-200 (the other grids "
         "use k = 10), every batch size from 1 to 4096: at the narrow corner of the size "
         "rules and on short, wide training sets up to 4 096 features — the "
-        "`knn_max_neighbors` and `knn_min_samples_per_neighbor` rules.",
+        "`knn_max_neighbors` rule.",
         tuple(
             point
             for shapes, ks in (
@@ -497,7 +541,7 @@ GRIDS: dict[str, Grid] = {
         "labels with little or no signal (x0 + N(0, 3²) > 0, random, XOR), binary and "
         "one-vs-one, and rbf kernels far narrower than scikit-learn's 'scale' (gamma 10 "
         "to 1 000 times it), C = 1-100, either side of the width floor: the "
-        "`svc_min_features` and `svc_max_gamma_ratio` rules.",
+        "`svc_min_features` rule, and corners the `svc_max_c` rule covers.",
         tuple(
             Point("svc", n, d, C=C, data=data)
             for n, d in ((3_000, 128), (6_000, 128), (8_000, 128), (1_500, 256), (2_500, 256),
@@ -525,6 +569,76 @@ GRIDS: dict[str, Grid] = {
         ),
         layout="svc-hard",
         iterations=5,
+    ),
+    "svc-structured": Grid(
+        "Binary `SVC` fits on MLX against LIBSVM on data whose intrinsic dimension is not "
+        "its width — five or ten latent directions plus noise, singular values 1/i, "
+        "features smoothed over 16 neighbours, Student-t(2) features, column scales "
+        "10^U(0, 2), and scikit-learn's digits upsampled to 16², 20² and 28² pixels — at "
+        "C = 0.1-10, and at C = 1 away from the defaults (gamma 0.03-100 x 'scale', the "
+        "poly kernel, tol = 1e-5, balanced class weights on 10% positives, 8 000 rows): "
+        "the `svc_max_c` rule.",
+        tuple(
+            Point("svc", n, d, C=C, data=data)
+            for data in ("lowrank", "lowrank10", "decay", "smooth", "t2", "colscale")
+            for n, d in ((1_500, 256), (4_000, 256), (1_024, 512), (2_000, 512))
+            for C in (0.1, 1.0, 10.0)
+        )
+        + tuple(
+            Point("svc", 1_797, side * side, C=C, data=f"digits{side}")
+            for side in (16, 20, 28)
+            for C in (0.1, 1.0, 10.0)
+        )
+        + tuple(
+            Point("svc", 1_797, 784, C=C, n_classes=3, data="digits28") for C in (1.0, 10.0)
+        )
+        + tuple(
+            Point("svc", n, d, gamma=gamma, data=data)
+            for data in ("lowrank", "decay")
+            for n, d in ((1_500, 256), (1_024, 512))
+            for gamma in (0.03, 0.3, 10.0, 100.0)
+        )
+        + tuple(
+            Point("svc", n, d, kernel="poly", C=C, data=data)
+            for data in ("lowrank", "decay")
+            for n, d in ((1_500, 256), (1_024, 512))
+            for C in (1.0, 10.0)
+        )
+        + tuple(
+            Point("svc", n, d, tol=1e-5, data=data)
+            for data in ("lowrank", "decay")
+            for n, d in ((1_500, 256), (1_024, 512))
+        )
+        + tuple(
+            Point("svc", n, d, C=C, class_weight=weight, data="lowrank-imb")
+            for n, d in ((1_500, 256), (1_024, 512))
+            for C, weight in ((1.0, ""), (0.1, "balanced"), (0.2, "balanced"),
+                              (1.0, "balanced"))
+        )
+        + tuple(Point("svc", 8_000, 256, data=data) for data in ("lowrank", "decay")),
+        layout="svc-structured",
+        iterations=5,
+    ),
+    "knn-batches": Grid(
+        "Neighbor queries on MLX against stock brute force at every batch size from 8 to "
+        "64 on short, wide training sets, 4 096-8 192 rows at 2 048-4 096 features, k = 10 "
+        "and at the most neighbors the rules allow: right after a stock query, whose "
+        "OpenMP threads are still spinning, an MLX call of some batch sizes — about 256 KiB "
+        "of float32 queries — runs up to twice as slow as its neighbours. The "
+        "`knn_min_train_samples` row floor.",
+        tuple(
+            point
+            for shapes, k in (
+                (((4_096, 2_048), (4_096, 2_560), (4_096, 3_072), (4_500, 2_304),
+                  (5_000, 2_048), (5_000, 4_096), (6_000, 2_048), (6_000, 3_072),
+                  (6_000, 4_096), (7_500, 4_096), (8_192, 2_048), (8_192, 3_072),
+                  (8_192, 4_096), (12_000, 2_048)), 10),
+                (((6_000, 3_072), (6_000, 4_096)), 40),
+                (((7_500, 4_096), (8_192, 2_048), (8_192, 4_096)), 50),
+            )
+            for point in _knn_points(shapes, _HUMP_QUERIES, k=k)
+        ),
+        layout="knn-k-worst",
     ),
 }
 
@@ -596,6 +710,14 @@ def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
         X = rng.normal(size=(n, d))
         score = X[:, 0] + rng.normal(scale=0.5, size=n)
         return X, np.digitize(score, np.quantile(score, np.linspace(0, 1, K + 1)[1:-1]))
+    if point.data == "signal":  # moderate multinomial-logit signal, K classes
+        X = rng.normal(size=(n, d))
+        W = rng.normal(size=(d, K))
+        return X, np.argmax(X @ W / np.sqrt(d) + rng.gumbel(size=(n, K)), axis=1)
+    if point.data.startswith("digits"):
+        return _digits(point)
+    if point.data in _STRUCTURED:
+        return _structured(point.data, n, d, rng)
     y = rng.integers(0, K, size=n)
     if point.data == "separated-blobs":  # benchmarks/run.py's n_classes target
         centers = rng.normal(scale=2.0, size=(K, d))
@@ -604,6 +726,63 @@ def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
     else:
         raise ValueError(f"unknown data {point.data!r}")
     return centers[y] + rng.normal(size=(n, d)), y
+
+
+#: Binary fit data whose features are not isotropic Gaussian, and so whose intrinsic
+#: dimension is not its width (_structured).
+_STRUCTURED = ("lowrank", "lowrank10", "lowrank-imb", "decay", "smooth", "t2", "colscale")
+
+
+def _structured(law: str, n: int, d: int, rng: np.random.Generator):
+    """Binary targets on data of lower intrinsic dimension, or heavier tails, than N(0, I).
+
+    ``lowrank``/``lowrank10``: 5 or 10 latent Gaussian directions plus N(0, 0.3²) noise
+    in every feature, labelled by the first latent plus N(0, 1) — ``lowrank-imb`` the
+    same, cut so that about 10% are positive. ``decay``: full rank with singular values
+    1/i, labelled by the top direction. ``smooth``: each feature a moving average of 16
+    adjacent white-noise columns. ``t2``: Student-t features with 2 degrees of freedom.
+    ``colscale``: column scales 10^U(0, 2).
+    """
+    if law.startswith("lowrank"):
+        rank = 10 if law == "lowrank10" else 5
+        Z = rng.normal(size=(n, rank))
+        X = Z @ rng.normal(size=(rank, d)) + 0.3 * rng.normal(size=(n, d))
+        cut = 1.8 if law == "lowrank-imb" else 0.0
+        return X, (Z[:, 0] + rng.normal(size=n) > cut).astype(int)
+    if law == "decay":
+        scale = 1.0 / np.arange(1, d + 1)
+        Q, _ = np.linalg.qr(rng.normal(size=(d, d)))
+        Z = rng.normal(size=(n, d)) * scale
+        return Z @ Q.T, (Z[:, 0] / scale[0] + rng.normal(size=n) > 0).astype(int)
+    if law == "smooth":
+        c = np.cumsum(rng.normal(size=(n, d + 15)), axis=1)
+        X = (c[:, 15:] - np.concatenate([np.zeros((n, 1)), c[:, :-16]], axis=1)) / 4.0
+        return X, (X[:, d // 2] + rng.normal(size=n) > 0).astype(int)
+    if law == "t2":
+        X = rng.standard_t(2.0, size=(n, d))
+        return X, (X[:, 0] + rng.normal(size=n) > 0).astype(int)
+    if law == "colscale":
+        X = rng.normal(size=(n, d)) * 10.0 ** rng.uniform(0.0, 2.0, size=d)
+        return X, (X[:, 0] / X[:, 0].std() + rng.normal(size=n) > 0).astype(int)
+    raise ValueError(f"unknown data {law!r}")
+
+
+def _digits(point: Point):
+    """scikit-learn's 8 x 8 digits, 1 797 images upsampled bilinearly to S x S.
+
+    ``point.data`` is ``"digits<S>"``; binary is ``digit >= 5``, K classes ``digit % K``.
+    """
+    from scipy.ndimage import zoom
+    from sklearn.datasets import load_digits
+
+    side = int(point.data.removeprefix("digits"))
+    digits = load_digits()
+    X = np.stack([zoom(image / 16.0, side / 8.0, order=1) for image in digits.images])
+    X = X.reshape(len(X), -1)
+    if (point.n, point.d) != X.shape:
+        raise ValueError(f"{point.data} is {X.shape[0]} x {X.shape[1]}, not {point.n} x {point.d}")
+    K = point.n_classes
+    return X, (digits.target >= 5).astype(int) if K == 2 else digits.target % K
 
 
 # -------------------------------------------------------------------------- running
@@ -724,13 +903,20 @@ def _measure_fit(point: Point, iterations: int, todo: set[str]):
         if point.gamma:
             # A multiple of the "scale" value: the ratio the dispatch rule reads.
             params["gamma"] = point.gamma / (point.d * float(X.var()))
+        if point.tol:
+            params["tol"] = point.tol
+        if point.class_weight:
+            params["class_weight"] = point.class_weight
         make_mlx, make_sk = (lambda: patched.SVC(**params)), (lambda: sklearn.svm.SVC(**params))
         if point.queries:
             yield from _measure_predict(point, X, y, make_mlx, make_sk, iterations, todo)
             return
     else:
-        make_mlx = lambda: patched.LogisticRegression(max_iter=200)  # noqa: E731
-        make_sk = lambda: sklearn.linear_model.LogisticRegression(max_iter=200)  # noqa: E731
+        params = {"max_iter": point.max_iter or 200, "C": point.C}
+        if point.tol:
+            params["tol"] = point.tol
+        make_mlx = lambda: patched.LogisticRegression(**params)  # noqa: E731
+        make_sk = lambda: sklearn.linear_model.LogisticRegression(**params)  # noqa: E731
     seen: dict = {}
 
     def mlx_fit():
@@ -826,7 +1012,8 @@ def run(name: str, output: Path, *, iterations: int | None = None, limit: int | 
                 "d": point.d, "algorithm": point.algorithm, "data": point.data,
                 "kernel": point.kernel, "C": point.C, "n_classes": point.n_classes,
                 "k": point.k, "gamma": point.gamma, "degree": point.degree,
-                "coef0": point.coef0,
+                "coef0": point.coef0, "tol": point.tol, "max_iter": point.max_iter,
+                "class_weight": point.class_weight,
                 **versions, "time": time.time(), **record,
             }
             with output.open("a", encoding="utf-8") as fh:
@@ -889,7 +1076,10 @@ def dispatch(record: dict) -> str:
                             degree=record.get("degree", 3), coef0=record.get("coef0", 0.0))
         below = (
             model._below_crossover(n, d, n_classes=record["n_classes"])[0]
-            or model._kernel_handoff(record.get("gamma") or 1.0) is not None
+            # The C rule reads the mean box, C x the mean class and sample weight: C
+            # itself here, as the grids pass no sample weights and balanced class
+            # weights average to one.
+            or model._kernel_handoff(record["C"]) is not None
         )
         if not below and record["operation"] == "predict":
             work = record["q"] * record["n_sv"] * d
@@ -898,7 +1088,14 @@ def dispatch(record: dict) -> str:
             return "host" if work <= get_tuning().svc_host_inference_work else "MLX"
     else:
         K = record["n_classes"]
-        below = patched.LogisticRegression()._below_crossover(n, d, 1 if K == 2 else K)[0]
+        model = patched.LogisticRegression(
+            C=record.get("C", 1.0), tol=record.get("tol") or 1e-4,
+            max_iter=record.get("max_iter") or 200,
+        )
+        below = (
+            model._below_crossover(n, d, 1 if K == 2 else K)[0]
+            or model._param_handoff() is not None
+        )
     return "scikit-learn" if below else "MLX"
 
 
@@ -1003,8 +1200,36 @@ def _svc_hard_row(r):
     return (r["d"], r["n"], r["n_classes"], labels, variant_key), ", ".join(p for p in parts if p)
 
 
+def _svc_structured_row(r):
+    variant_key, variant = _svc_variant(r)
+    classes = "" if r["n_classes"] == 2 else f", K = {r['n_classes']}"
+    parts = [_shape(r["n"], r["d"]) + classes, r["data"], variant]
+    if r.get("tol"):
+        parts.append(f"tol = {r['tol']:g}")
+    if r.get("class_weight"):
+        parts.append(f"class_weight = {r['class_weight']}")
+    key = (r["d"], r["n"], r["n_classes"], r["data"], variant_key, r.get("tol") or 0.0,
+           r.get("class_weight") or "")
+    return key, ", ".join(parts)
+
+
 def _logreg_data_row(r):
     return (r["data"], r["n"]), f"{r['data']}, {_shape(r['n'])}"
+
+
+def _logreg_params_row(r):
+    K = r["n_classes"]
+    return (r["data"], K, r["n"], r["d"]), f"{r['data']}, K = {K}, {_shape(r['n'], r['d'])}"
+
+
+def _logreg_params_column(r):
+    if r.get("tol"):
+        return (1, r["tol"]), f"tol = {r['tol']:g}"
+    if r.get("max_iter"):
+        return (2, r["max_iter"]), f"max_iter = {r['max_iter']}"
+    if r.get("C", 1.0) != 1.0:
+        return (3, r["C"]), f"C = {r['C']:g}"
+    return (0, 0), "defaults"
 
 
 _LAYOUTS = {
@@ -1017,6 +1242,8 @@ _LAYOUTS = {
     "svc": (_svc_row, _svc_column, "rows × features"),
     "svc-params": (_svc_params_row, _svc_c_column, "rows × features, kernel"),
     "svc-hard": (_svc_hard_row, _svc_c_column, "rows × features, labels, kernel"),
+    "svc-structured": (_svc_structured_row, _svc_c_column, "rows × features, data, kernel"),
+    "logreg-params": (_logreg_params_row, _logreg_params_column, "labels, rows × features"),
     "svc-multi-c": (_svc_multi_row, _svc_c_column, "rows × features, classes"),
     "svc-predict": (_svc_predict_row, _q_column, "fit (support vectors)"),
     "logreg": (_logreg_row, _logreg_column, "rows"),

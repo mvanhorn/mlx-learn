@@ -56,9 +56,9 @@ def _pair_work(p):
     return 2 * p.n / p.n_classes * p.d
 
 
-def _multinomial_work(p):
-    # The work floor binds multinomial fits only; a binary point sorts above it.
-    return p.n * p.d * p.n_classes if p.n_classes > 2 else math.inf
+def _multinomial_width(p):
+    # The width floor binds multinomial fits only; a binary point sorts above it.
+    return p.d if p.n_classes > 2 else math.inf
 
 
 @pytest.mark.parametrize(
@@ -69,22 +69,21 @@ def _multinomial_work(p):
         (("knn-tree", "knn", "knn-narrow"), "knn_min_features", _width),
         (("knn",), "knn_wide_features", _width),
         (("knn",), "knn_narrow_min_samples", _rows),
+        (("knn-batches",), "knn_wide_min_samples", _rows),
         # A ceiling: k at most the knob stays on MLX.
         (("knn-k",), "knn_max_neighbors", lambda p: p.k - 1),
-        (("knn-k",), "knn_min_samples_per_neighbor", lambda p: p.n / p.k),
         (("svc", "svc-hard"), "svc_min_features", _width),
         (("svc",), "svc_min_samples", _rows),
         (("svc",), "svc_min_work", _work),
         (("svc-multi", "svc-multi-overlap"), "svc_min_pair_work", _pair_work),
-        (("svc-params",), "svc_min_gamma_ratio", lambda p: p.gamma or 1.0),
-        # A ceiling: a ratio at most the knob stays on MLX.
-        (("svc-params", "svc-hard"), "svc_max_gamma_ratio",
-         lambda p: math.nextafter(p.gamma or 1.0, 0.0)),
         # A ceiling: C at most the knob stays on MLX, so C = 1 must sort below it.
-        (("svc-params",), "svc_low_gamma_max_c", lambda p: math.nextafter(p.C, 0.0)),
+        (("svc-structured",), "svc_max_c", lambda p: math.nextafter(p.C, 0.0)),
         (("svc-params",), "svc_poly_min_degree", lambda p: p.degree),
         (("logreg-multi",), "logreg_min_samples", _rows),
-        (("logreg-multi", "logreg-labels"), "logreg_min_work", _multinomial_work),
+        (("logreg-labels",), "logreg_multinomial_min_features", _multinomial_width),
+        # A ceiling: a tol at most the knob stays on MLX (0 is the default, 1e-4).
+        (("logreg-params",), "logreg_max_tol", lambda p: math.nextafter(p.tol or 1e-4, 0.0)),
+        (("logreg-params",), "logreg_min_max_iter", lambda p: p.max_iter or 200),
         (("logreg-binary", "logreg-labels"), "logreg_binary_min_samples", _rows),
         (("logreg-binary", "logreg-labels"), "logreg_binary_max_features", lambda p: p.d - 1),
     ],
@@ -147,16 +146,16 @@ def _record(grid, n, d, speedup, significant=True, version="1.9.0", **extra):
 
 def test_a_table_marks_losses_and_noise_and_says_where_dispatch_sends_each_row():
     records = [
-        _record("svc", 4_000, 16, 0.50, kernel="poly", C=10.0),
-        _record("svc", 4_000, 16, 0.60, version="1.7.2", kernel="poly", C=10.0),
-        _record("svc", 4_000, 256, 2.00, kernel="poly", C=10.0),
+        _record("svc", 4_000, 16, 0.50, kernel="poly", C=1.0),
+        _record("svc", 4_000, 16, 0.60, version="1.7.2", kernel="poly", C=1.0),
+        _record("svc", 4_000, 256, 2.00, kernel="poly", C=1.0),
         _record("svc", 4_000, 256, 1.02, significant=False, version="1.7.2",
-                kernel="poly", C=10.0),
+                kernel="poly", C=1.0),
     ]
     text = calibrate.render("svc", records)
     lines = text.splitlines()
     assert "1.9.0 / 1.7.2" in lines[0]
-    assert lines[1] == "| rows × features | poly, C = 10 | dispatch |"
+    assert lines[1] == "| rows × features | poly, C = 1 | dispatch |"
     assert "| 4 000 × 16 | **0.50** / **0.60** | scikit-learn |" in lines
     assert "| 4 000 × 256 | 2.00 / 1.02~ | MLX |" in lines
 
@@ -245,6 +244,6 @@ def test_every_calibration_table_in_the_docs_names_a_grid():
     assert cited <= set(GRIDS)
     # Every grid that calibrates a threshold is on the record.
     assert {"knn", "knn-rows", "knn-tree", "knn-narrow", "knn-data", "knn-structured",
-            "knn-k", "svc", "svc-sigmoid", "svc-multi", "svc-multi-overlap", "svc-params",
-            "svc-hard", "svc-predict", "logreg-binary", "logreg-multi", "logreg-separable",
-            "logreg-labels"} <= cited
+            "knn-k", "knn-batches", "svc", "svc-sigmoid", "svc-multi", "svc-multi-overlap",
+            "svc-params", "svc-hard", "svc-structured", "svc-predict", "logreg-binary",
+            "logreg-multi", "logreg-separable", "logreg-labels", "logreg-params"} <= cited

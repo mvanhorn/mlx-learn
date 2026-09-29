@@ -1149,48 +1149,62 @@ def test_the_svc_crossover_accounts_for_the_number_of_classes():
 
 
 @pytest.mark.gpu
-def test_patched_dispatch_hands_near_linear_kernels_to_libsvm():
-    """Kernels close to the linear one take its many cheap iterations, which LIBSVM
-    runs faster: rbf with ``gamma`` well below ``"scale"`` at C above 1, and poly of
-    degree 2 or with a ``coef0``. So does an rbf kernel far narrower than
-    ``"scale"`` at C above 1, which makes every row a support vector. Patched only:
-    Layer 1 keeps them on MLX."""
+def test_patched_dispatch_hands_a_box_above_one_and_near_linear_poly_to_libsvm():
+    """How many SMO iterations a fit takes per row decides it, and C lets them
+    multiply: on data of low intrinsic dimension rbf and poly fits lost at C = 10
+    whatever the width, and won at C <= 1 at every gamma measured. So a patched fit
+    needs a mean box, C x class weight x sample weight, of at most 1, and poly also
+    needs degree 3 or more and ``coef0 = 0``. Patched only: Layer 1 keeps them on
+    MLX."""
     X, y = _data(n_samples=300, n_features=8, seed=1)
     tuning = get_tuning()
-    small = 0.5 * tuning.svc_min_gamma_ratio / (X.shape[1] * X.var())
-    large = 2.0 * tuning.svc_max_gamma_ratio / (X.shape[1] * X.var())
-    large_c = 10.0 * max(tuning.svc_low_gamma_max_c, 1.0)
+    above = 10.0 * tuning.svc_max_c
     no_floor = {
         "svc_min_features": 0, "svc_min_samples": 0, "svc_min_work": 0,
         "svc_min_pair_work": 0,
     }
+    scale = 1.0 / (X.shape[1] * X.var())
     cases = [
-        ({"gamma": small, "C": large_c}, True),
-        ({"gamma": small, "C": tuning.svc_low_gamma_max_c}, False),
-        ({"gamma": large, "C": large_c}, True),
-        ({"gamma": large, "C": tuning.svc_low_gamma_max_c}, False),
-        ({"C": large_c}, False),
-        ({"kernel": "poly", "degree": tuning.svc_poly_min_degree - 1}, True),
-        ({"kernel": "poly", "coef0": 1.0}, True),
-        ({"kernel": "poly", "C": large_c}, False),
+        ({"C": above}, True, "box constraint"),
+        ({"C": tuning.svc_max_c}, False, ""),
+        ({"C": tuning.svc_max_c, "gamma": 0.01 * scale}, False, ""),
+        ({"C": tuning.svc_max_c, "gamma": 1_000.0 * scale}, False, ""),
+        ({"kernel": "poly", "C": above}, True, "box constraint"),
+        ({"kernel": "poly", "degree": tuning.svc_poly_min_degree - 1}, True, "kernel parameters"),
+        ({"kernel": "poly", "coef0": 1.0}, True, "kernel parameters"),
+        ({"kernel": "poly"}, False, ""),
+        # Balanced class weights average to one, so the mean box is C.
+        ({"C": tuning.svc_max_c, "class_weight": "balanced"}, False, ""),
+        ({"C": tuning.svc_max_c, "class_weight": {0: 1.0, 1: 5.0}}, True, "mean class and"),
     ]
     with tuning_context(**no_floor):
-        for params, handed in cases:
+        for params, handed, why in cases:
             model = PatchedSVC(**params).fit(X, y)
             assert (model.execution_backend_ == "sklearn") == handed, params
             if handed:
                 assert model.fit_event_.reason == "below-crossover"
-                assert "kernel parameters" in model.fit_event_.detail
+                assert why in model.fit_event_.detail, (params, model.fit_event_.detail)
                 np.testing.assert_array_equal(
                     model.predict(X), SkSVC(**params).fit(X, y).predict(X)
                 )
-        assert SVC(gamma=small, C=large_c).fit(X, y).execution_backend_ == "mlx"
-        assert SVC(gamma=large, C=large_c).fit(X, y).execution_backend_ == "mlx"
+        # Sample weights scale the box as C does: all 5 is C = 5, all 0.05 at C = 10 is
+        # C = 0.5, and a zero weight drops its sample rather than lowering the mean.
+        fives = np.full(len(y), 5.0)
+        assert PatchedSVC().fit(X, y, sample_weight=fives).execution_backend_ == "sklearn"
+        halves = np.where(np.arange(len(y)) % 2 == 0, 0.0, 1.0)
+        assert PatchedSVC().fit(X, y, sample_weight=halves).execution_backend_ != "sklearn"
+        small = np.full(len(y), 0.05)
+        assert PatchedSVC(C=above).fit(X, y, sample_weight=small).execution_backend_ != "sklearn"
+        assert SVC(C=above).fit(X, y).execution_backend_ == "mlx"
         assert SVC(kernel="poly", degree=2).fit(X, y).execution_backend_ == "mlx"
 
 
-def test_the_poly_rule_is_decided_before_the_data_are_read(monkeypatch):
-    """It needs only the parameters, so a handed-off fit pays for no validation."""
+@pytest.mark.parametrize(
+    "params",
+    [{"kernel": "poly", "degree": 2}, {"C": 10.0}, {"C": 10.0, "class_weight": "balanced"}],
+)
+def test_the_c_and_poly_rules_are_decided_before_the_data_are_read(params, monkeypatch):
+    """They need only the parameters, so a handed-off fit pays for no validation."""
     import mlxlearn.svm._classes as svc_module
 
     def forbidden(*args, **kwargs):
@@ -1200,19 +1214,8 @@ def test_the_poly_rule_is_decided_before_the_data_are_read(monkeypatch):
     monkeypatch.setattr(svc_module, "check_float32_range", forbidden)
     X, y = _data(n_samples=300, n_features=8, seed=1)
     with tuning_context(svc_min_features=0, svc_min_samples=0, svc_min_work=0):
-        model = PatchedSVC(kernel="poly", degree=2).fit(X, y)
+        model = PatchedSVC(**params).fit(X, y)
     assert model.execution_backend_ == "sklearn"
-
-
-def test_the_gamma_ratio_is_gamma_in_units_of_scikit_learns_scale():
-    """``gamma · d · Var(X)``: 1 for ``"scale"``, ``Var(X)`` for ``"auto"``."""
-    X = np.random.default_rng(0).normal(scale=3.0, size=(200, 8))
-    variance = X.var()
-    assert SVC(gamma="scale")._gamma_ratio(X) == 1.0
-    assert SVC(gamma="auto")._gamma_ratio(X) == pytest.approx(variance)
-    assert SVC(gamma=0.5)._gamma_ratio(X) == pytest.approx(0.5 * 8 * variance)
-    assert SVC(gamma="scale")._gamma_ratio(np.ones((50, 3))) == 0.0
-    assert SVC(kernel="poly")._gamma_ratio(X) is None
 
 
 @pytest.mark.gpu
