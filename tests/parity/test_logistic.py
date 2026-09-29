@@ -49,7 +49,6 @@ BACKENDS = ["cpu", "mlx"]
 _NO_CROSSOVER = {
     "logreg_min_samples": 0,
     "logreg_multinomial_min_features": 0,
-    "logreg_max_tol": float("inf"),
     "logreg_min_max_iter": 0,
     "logreg_binary_min_samples": 0,
     "logreg_binary_max_features": 2**31,
@@ -925,7 +924,11 @@ def test_a_multinomial_fit_needs_two_features():
     "params, handed",
     [
         ({}, False),
-        ({"tol": 1e-3}, False),
+        ({"tol": 1e-4}, False),
+        ({"tol": 1e-5}, False),
+        ({"tol": np.nextafter(1e-4, 1.0)}, True),
+        ({"tol": 5e-4}, True),
+        ({"tol": 1e-3}, True),
         ({"tol": 1e-2}, True),
         ({"max_iter": 3}, False),
         ({"max_iter": 2}, True),
@@ -934,9 +937,9 @@ def test_a_multinomial_fit_needs_two_features():
 )
 def test_patched_dispatch_hands_short_fits_to_scikit_learn(params, handed):
     """A looser ``tol`` or a smaller ``max_iter`` stops a fit within an iteration or
-    two, where it is mostly MLX's fixed cost: ``tol = 0.01`` and ``max_iter`` of 1-2
-    lost, ``tol = 1e-3`` and ``max_iter = 3`` won. Patched only, and decided before
-    the data are read."""
+    two, where it is mostly MLX's fixed cost: a ``tol`` above scikit-learn's default
+    (1e-4, where the size rules were measured) and ``max_iter`` of 1-2 go to
+    scikit-learn. Patched only, and decided before the data are read."""
     n = 1000
     X, y = _narrow(2, n, 4)
     lifted = {"logreg_min_samples": n, "logreg_binary_min_samples": n}
@@ -948,7 +951,8 @@ def test_patched_dispatch_hands_short_fits_to_scikit_learn(params, handed):
     assert direct.execution_backend_ != "sklearn"
     if handed:
         assert model.fit_event_.reason == "below-crossover"
-        assert "solver parameters" in model.fit_event_.detail
+        why = "scikit-learn's default of 0.0001" if "tol" in params else "solver parameters"
+        assert why in model.fit_event_.detail, model.fit_event_.detail
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ConvergenceWarning)
             ref = SkLogisticRegression(**params).fit(X, y)

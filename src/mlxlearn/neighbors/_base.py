@@ -298,10 +298,13 @@ class MLXNeighborsMixin(BackendMixin):
         The fit decided by the constructor's ``n_neighbors``; a query may ask for a
         different k (``kneighbors(n_neighbors=...)``, or ``set_params`` after the
         fit), and one above ``knn_max_neighbors`` costs MLX what it would have cost a
-        fit with that k (table ``knn-k``). Such a query is answered by
-        scikit-learn's brute force over the float64 training rows instead
-        (:meth:`_kneighbors_brute`), which kept up with a stock model's at every
-        shape measured; see ``docs/benchmarks.md``.
+        fit with that k (tables ``knn-k`` and ``knn-query-k``: down to 0.73x at
+        8 192 x 2 048 with k = 200). Such a query is answered by scikit-learn's brute
+        force over the float64 training rows instead (:meth:`_kneighbors_brute`),
+        which kept up with a stock model's on float64 data at every shape measured,
+        and on float32 data at a million rows lost by a few percent (0.93x-0.95x),
+        the copy being float64 where stock searches float32; see
+        ``docs/benchmarks.md``.
 
         Patched mode only, and never on a backend forced by
         ``MLXLEARN_FORCE_BACKEND`` — at the query, or at the fit that built the
@@ -569,7 +572,9 @@ class MLXNeighborsMixin(BackendMixin):
             ``patch_sklearn()`` a query on an MLX-fitted model that asks for more
             than 50 neighbors is answered by scikit-learn's brute force over a
             float64 copy of the training rows, translated by their mean, built on
-            the first such query and kept with the model.
+            the first such query and kept with the model: that query pays for the
+            copy, ``8 · n_samples · n_features`` bytes (25-85 ms at a million rows
+            and 64 features).
         return_distance : bool, default=True
             Whether to return distances alongside indices.
 
@@ -677,7 +682,9 @@ class MLXNeighborsMixin(BackendMixin):
         the ``kneighbors`` precision of ``docs/fp32_policy.md`` §3.4. Elsewhere it is
         stock scikit-learn's answer to rounding. The model and its rows,
         ``8 · n_samples · n_features`` bytes, are built on the first such query and
-        kept, and neither is pickled.
+        kept, and neither is pickled: that first query costs 2-29 ms more at 8 192 rows
+        and 1 024-2 048 features or 65 536 x 256, and 25-85 ms at 1 000 000 x 64 (table
+        ``knn-query-k``).
         """
         center = self._index_.center.astype(np.float64)
         if X is not None:

@@ -309,7 +309,7 @@ def _patched_route(case: run.Case) -> str:
             return "binary:" if "binary" in detail else "below-crossover"
         return "params:" if model._param_handoff() is not None else "mlx"
     kernel = case.option("kernel")
-    params = {k: case.options[k] for k in ("degree", "coef0") if k in case.options}
+    params = {k: case.options[k] for k in ("degree", "coef0", "cache_size") if k in case.options}
     model = patched.SVC(kernel=kernel, C=case.option("C"), **params)
     below, detail = model._below_crossover(n, d, n_classes=n_classes)
     if below:
@@ -420,7 +420,7 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
     )
     # The solver-parameter rule, both halves, at a shape the size rules send to MLX.
     params = [c for c, r in logreg if r == "params:"]
-    assert any(c.options.get("tol", 0.0) > tuning.logreg_max_tol for c in params)
+    assert any(c.options.get("tol", 0.0) > 1e-4 for c in params)  # the default tol
     assert any(c.options.get("max_iter", 200) < tuning.logreg_min_max_iter for c in params)
 
     svc = cases("svc")
@@ -440,14 +440,15 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         for c, r in svc
     )
     assert any(r == "pair:" for _, r in svc)
-    # The C and kernel-parameter rules, at a shape the size floors send to MLX: C above
-    # the measured box, and a low-degree poly kernel at C = 1.
+    # The kernel, C and cache rules, at a shape the size floors send to MLX: C above
+    # the measured box, the poly kernel at C = 1, and a cache below the default.
     kernel_handoffs = [c for c, r in svc if r == "kernel:"]
     assert any(c.option("C") > tuning.svc_max_c for c in kernel_handoffs)
     assert any(
         c.option("kernel") == "poly" and c.option("C") <= tuning.svc_max_c
         for c in kernel_handoffs
     )
+    assert any(c.options.get("cache_size", 200.0) < 200.0 for c in kernel_handoffs)
     assert all(
         c.n_features >= tuning.svc_min_features and c.n_samples * c.n_features >= tuning.svc_min_work
         for c in kernel_handoffs

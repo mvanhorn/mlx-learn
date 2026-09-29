@@ -254,8 +254,8 @@ named in brackets, which `python -m benchmarks.calibrate` regenerates:
 |---|---|
 | **Neighbor queries** | **1.0×–5.7× for single rows, 1.3×–7.7× for 256-query batches, 2.6×–6.2× for 4096-query batches**, and every batch size between won or tied, against scikit-learn's brute-force search, on wide data — 256 features or more, from 8 192 rows and 6 million elements, such as embeddings — and on tall data, a million rows or more from 64 features [`knn`, `knn-rows`, `knn-narrow`]. Short of a million rows below 256 features a mid-size batch of 8–512 queries loses once the GPU has idled (down to 0.44×), short of 8 192 rows at 256 features and more an MLX call made right after a stock one runs some batches of 16–32 queries up to twice as slow and lost (down to 0.77×) [`knn-batches`], below 64 features some batch loses even at a million rows, and with at most 15 features scikit-learn's KD-tree answers single rows faster than an MLX call [`knn-tree`]; patched dispatch hands all of those fits to scikit-learn. So it does fits with more than 50 neighbors, and a query asking for more on an MLX-fitted model goes to its brute force, where k = 100 and 200 lost batches of 8–4 096 queries (down to 0.33×) [`knn-k`], and data the search cannot certify on its first pass — duplicated rows, clusters, a column on a far larger scale than the rest, down to 0.03× [`knn-data`], and with as few as 2 of 256 rows uncertified, down to 0.64× [`knn-structured`] — which a patched fit detects by probing 256 of its own rows. |
 | Neighbor `fit` | 0.05×–0.09× of stock brute force, which stores a reference where mlxlearn uploads and prepares the index [`knn`, `knn-rows`]; under `patch_sklearn()` the fit also probes 256 of its rows (one 256-query search pass: 2.1–9.7 ms at 256–4 096 features, 43–62 ms at a million rows and more), 0.04×–0.08× in all. Repaid after roughly 330–1 700 queries in batches of 256 or more, 470–4 200 with the probe. |
-| `SVC` | **1.67×–8.4× from 256 features at C ≤ 1** (rbf and poly at the default kernel parameters, from 1 500 rows at 256 features and 1 024 at 512, up to 8 000 rows) [`svc`], 1.76×–5.9× on labels with little or no signal and 2.9×–4.2× one-vs-one [`svc-hard`], and 1.3×–9.2× on data of low intrinsic dimension — a few latent directions, decaying spectra, smoothed or heavy-tailed features, upsampled digits [`svc-structured`]; **10×–20×** at 16 000–32 000 × 256 [`svc-large`]; `predict` on a model fitted on MLX, **1.06×–2.7× for a single row and 3.8×–164× from 8 rows** [`svc-predict`]. Above C = 1 the answer turns on the data's intrinsic dimension, which a fit cannot see: on Gaussian data C = 10 and 100 won from 256 features, on low-rank, smoothed, heavy-tailed or digit data they lost at 1 024–1 797 rows (down to 0.26× at C = 10) [`svc-structured`]. So patched dispatch keeps every fit above C = 1 — C times the mean class and sample weight — on LIBSVM, as it does narrower or smaller data, which is slower on MLX at C = 10 or past the kernel cache [`svc-hard`], and poly of degree 2 or with a `coef0` [`svc-params`]; `kernel="linear"` and `kernel="sigmoid"` never leave it [`svc-linear`, `svc-sigmoid`]. |
-| `LogisticRegression` | **Multinomial: 1.5×–8.6× from 60 000 rows** on overlapping classes [`logreg-multi`], 1.0×–4.7× on well-separated ones [`logreg-separable`], and a tie or better on labels with no signal from two features [`logreg-labels`]. **Binary: 1.6×–6.2× from 200 000 rows at up to 64 features** [`logreg-binary`], and a tie or better on labels with little or no signal there [`logreg-labels`]. A fit that converges in an iteration or two is mostly MLX's fixed cost, so shorter or wider binary fits, one-feature multinomial fits, and fits that `tol` above 1e-3 or `max_iter` below 3 stop early (down to 0.75×) [`logreg-params`] go to scikit-learn. |
+| `SVC` | **2.2×–8.4× from 256 features at C ≤ 1** (the rbf kernel at the default `gamma`, from 1 500 rows at 256 features and 1 024 at 512, up to 8 000 rows) [`svc`], 2.8×–5.9× on labels with little or no signal and 2.9×–4.2× one-vs-one [`svc-hard`], 1.3×–9.2× on data of low intrinsic dimension — a few latent directions, decaying spectra, smoothed or heavy-tailed features, upsampled digits [`svc-structured`] — and 1.7×–6.3× on random labels, Cauchy features and more digits [`svc-poly`]; **10×–20×** at 16 000–32 000 × 256 [`svc-large`]; `predict` on a model fitted on MLX, **1.06×–2.7× for a single row and 3.8×–164× from 8 rows** [`svc-predict`]. Above C = 1 the answer turns on the data's intrinsic dimension, which a fit cannot see: on Gaussian data C = 10 and 100 won from 256 features, on low-rank, smoothed, heavy-tailed or digit data they lost at 1 024–1 797 rows (down to 0.26× at C = 10) [`svc-structured`]. So patched dispatch keeps every fit above C = 1 — C times the mean class and sample weight — on LIBSVM, as it does narrower or smaller data, which is slower on MLX at C = 10 or past the kernel cache [`svc-hard`], and a `cache_size` below the default 200 MB (down to 0.92×) [`svc-cache`]. Only the rbf kernel leaves it: poly lost even at C ≤ 1 on digits, random labels and a `gamma` above `"scale"` (down to 0.46×) [`svc-poly`], and linear and sigmoid lost nearly everywhere [`svc-linear`, `svc-sigmoid`]. |
+| `LogisticRegression` | **Multinomial: 1.5×–8.6× from 60 000 rows** on overlapping classes [`logreg-multi`], 1.0×–4.7× on well-separated ones [`logreg-separable`], and a tie or better on labels with no signal from two features [`logreg-labels`]. **Binary: 1.6×–6.2× from 200 000 rows at up to 64 features** [`logreg-binary`], and a tie or better on labels with little or no signal there [`logreg-labels`]. A fit that converges in an iteration or two is mostly MLX's fixed cost, so shorter or wider binary fits, one-feature multinomial fits, and fits that a `tol` above the default 1e-4 or a `max_iter` below 3 stop early (down to 0.50× on random labels) [`logreg-params`] go to scikit-learn. |
 
 Reproduce them from a clone of the repository (the benchmarks are not in the wheel):
 
@@ -264,6 +264,50 @@ python -m benchmarks.calibrate list                # the grids, one per threshol
 python -m benchmarks.calibrate run knn --output bench/knn.jsonl
 python -m benchmarks.run --profile published --report bench/published.md
 ```
+
+## Known limits of patched dispatch
+
+The rules that decide where a patched fit runs are measurements, not guarantees. Each one
+was calibrated on the grids committed with [`docs/benchmarks.md`](https://github.com/tabulai/mlx-learn/blob/main/docs/benchmarks.md#known-limits-of-patched-dispatch),
+which cover:
+
+- **Neighbors:** Gaussian, uniform and clustered data, repeated rows, a column on a far
+  larger scale than the rest, binary and count features; 2–4 096 features and 2 048 to
+  2 million rows; k from 1 to 200, fitted or asked of a query; every query batch from 1 to
+  4 096 rows; float64 and float32.
+- **`SVC`:** the rbf kernel at C from 0.1 to 100 and `gamma` from 0.03 to 1 000 times
+  `"scale"` (poly, sigmoid and linear were measured too, and stay on scikit-learn); labels
+  with a clear signal, a weak one, none, and XOR; binary and one-vs-one; Gaussian data, a
+  few latent directions plus noise, decaying spectra, smoothed, Student-t and Cauchy
+  features, column scales over two decades, and handwritten digits upsampled to
+  256–784 pixels; balanced class weights; `cache_size` from 1 to 1 000 MB; 2–512
+  features and 1 000–32 000 rows.
+- **`LogisticRegression`:** binary and multinomial labels with a clear signal, a moderate
+  one and none; 1–1 024 features and 5 000 to 1 000 000 rows; `tol` from 1e-5 to 0.01 and
+  `max_iter` from 1 to 200.
+
+One measured case loses by a few percent inside them: a query for more than 50 neighbors
+on a model fitted on MLX from float32 data at a million rows, which the float64 copy
+behind the handoff answers at 0.93×–0.95× of stock [`knn-query-k`]. The first such query
+on any model also pays once to build that copy (25–85 ms at a million rows × 64).
+
+MLX pays a higher fixed cost than scikit-learn per call and per solver iteration — a
+float32 copy, a device round trip, waking an idle GPU. The rules account for what a fit
+can see before it runs: its shape, its parameters, and for the neighbor estimators a
+probe of its own rows. What it cannot see — how many rows become support vectors, the
+data's intrinsic dimension, how many iterations it takes to converge — can still make a
+fit on data unlike those grids slower than stock scikit-learn.
+
+To keep a workload on scikit-learn: patch only the estimators you want accelerated
+(`patch_sklearn(["NearestNeighbors"])`), call `unpatch_sklearn()`, or set
+`MLXLEARN_FORCE_BACKEND=sklearn` in the environment before mlxlearn is imported (or call
+`mlxlearn.reset_config()` after setting it), which sends every patched fit to scikit-learn
+whatever its size (a directly imported class, which has no scikit-learn to hand a fit to,
+then raises). To report a case that is slower under `patch_sklearn()`, open an issue
+at <https://github.com/tabulai/mlx-learn/issues> with the shape, the estimator's
+parameters, the fit's `fit_event_` (which rule sent it where), the timings with and
+without patching, the scikit-learn, MLX and mlxlearn versions and the machine, and — if
+you can — a few lines that generate data like yours.
 
 ## Precision
 

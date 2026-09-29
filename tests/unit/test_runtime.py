@@ -70,7 +70,6 @@ NO_CROSSOVER = {
     "knn_wide_min_samples": 0,
     "logreg_min_samples": 0,
     "logreg_multinomial_min_features": 0,
-    "logreg_max_tol": float("inf"),
     "logreg_min_max_iter": 0,
     "logreg_binary_min_samples": 0,
     "logreg_binary_max_features": 2**31,

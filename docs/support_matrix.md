@@ -159,14 +159,17 @@ wide ones. These are decided from the input's shape before any scan or copy of `
 `LogisticRegression`'s binary rule from whether the raw labels hold two values, whatever
 their type (strings and a pandas `Series` of class names included) — recorded with reason
 `"below-crossover"` (or `"tree-wins"`), and never warned about. Some rules read more than
-the shape, once the shape rules have passed a fit to MLX: `SVC` reads C, and after
-validation the class and sample weights that scale it; a neighbor fit reads its
-`n_neighbors`, and probes its own rows once its index is built (reason `"data-probe"`),
-and a neighbor query reads the `n_neighbors` it asks for; and `LogisticRegression` counts
-the classes and reads `tol` and `max_iter`. The thresholds are private
-`Tuning` values, each calibrated on a table in [`benchmarks.md`](benchmarks.md) that
-`python -m benchmarks.calibrate` regenerates, and overridable with `MLXLEARN_*`
-environment variables.
+the shape, once the shape rules have passed a fit to MLX: `SVC` reads the kernel, C and
+`cache_size`, and after validation the class and sample weights that scale C; a neighbor
+fit reads its `n_neighbors`, and probes its own rows once its index is built (reason
+`"data-probe"`), and a neighbor query reads the `n_neighbors` it asks for; and
+`LogisticRegression` counts the classes and reads `tol` and `max_iter`. The thresholds
+are private `Tuning` values, or scikit-learn's own defaults where a rule reads one, each
+calibrated on a table in [`benchmarks.md`](benchmarks.md) that
+`python -m benchmarks.calibrate` regenerates; the `Tuning` values are overridable with
+`MLXLEARN_*` environment variables. The rules hold on the data those tables measured;
+[`benchmarks.md`](benchmarks.md#known-limits-of-patched-dispatch) says what that covers,
+and what it cannot.
 
 | Estimator | Goes to scikit-learn when |
 |---|---|
@@ -174,12 +177,12 @@ environment variables.
 | neighbor estimators | fewer than `knn_min_features` features, at any size: to scikit-learn's KD-tree where `algorithm="auto"` would build one (at most 15 features, `n_neighbors < n_samples // 2`, a KD-tree metric; reason `"tree-wins"`), to its brute force otherwise |
 | neighbor estimators | fewer than `knn_wide_features` features **and** fewer than `knn_narrow_min_samples` rows: mid-size query batches lose there once the GPU has idled |
 | neighbor estimators | `knn_wide_features` features or more **and** fewer than `knn_wide_min_samples` rows: an MLX call made right after a stock scikit-learn one runs some mid-size batches up to twice as slow, and stock brute force answers them about as fast on so few rows |
-| neighbor estimators | `n_neighbors` above `knn_max_neighbors`: MLX pays per query for every neighbor it keeps. The constructor's `n_neighbors` decides the fit; a query on an MLX-fitted model that asks for more — `kneighbors(n_neighbors=...)`, or `n_neighbors` raised with `set_params` — is answered by scikit-learn's brute force over a float64 copy of the training rows, translated by their mean as the MLX search is, built on the first such query and kept with the model (not pickled) |
+| neighbor estimators | `n_neighbors` above `knn_max_neighbors`: MLX pays per query for every neighbor it keeps. The constructor's `n_neighbors` decides the fit; a query on an MLX-fitted model that asks for more — `kneighbors(n_neighbors=...)`, or `n_neighbors` raised with `set_params` — is answered by scikit-learn's brute force over a float64 copy of the training rows, translated by their mean as the MLX search is, built on the first such query and kept with the model (not pickled); that first query pays for the copy, `8 · n_samples · n_features` bytes (25–85 ms at a million rows and 64 features) |
 | neighbor estimators | data the first float32 search pass cannot certify — more than `knn_probe_max_uncertified` (none, by default) of `knn_probe_rows` (256) training rows probed at fit — or integer-valued data with fewer than `knn_wide_features` features (reason `"data-probe"`): duplicated rows, clusters or a column on a far larger scale than the rest send a query row to a slower second search, and the batch waits for it, so a few such rows in a hundred are enough |
 | `LogisticRegression` | fewer than `logreg_min_samples` rows; or a multinomial fit with fewer than `logreg_multinomial_min_features` features; or a binary fit with fewer than `logreg_binary_min_samples` rows **or** more than `logreg_binary_max_features` features: a fit that converges in an iteration or two, as labels without signal do, is mostly MLX's fixed cost |
-| `LogisticRegression` | `tol` above `logreg_max_tol` or `max_iter` below `logreg_min_max_iter`, at any size: they stop a fit within an iteration or two too (read from the parameters, before any scan of `X`) |
+| `LogisticRegression` | `tol` above scikit-learn's default (1e-4), or `max_iter` below `logreg_min_max_iter`, at any size: they stop a fit within a few iterations too (read from the parameters, before any scan of `X`) |
 | `SVC` | `kernel="linear"` or `kernel="sigmoid"`, at any size; fewer than `svc_min_features` features, `svc_min_samples` rows **or** `svc_min_work` rows × features; or, with more than two classes, a mean one-vs-one pair `(2n/K)·n_features` below `svc_min_pair_work` |
-| `SVC` | rbf or poly with a mean box above `svc_max_c`, at any size: C times the mean class and sample weight over the samples kept — C itself without weights or with balanced class weights, read from the parameters before any scan of `X`; other weights after validation. How many SMO iterations a larger box costs depends on the data's intrinsic dimension, which a fit cannot see; poly with degree below `svc_poly_min_degree` or `coef0` other than 0 |
+| `SVC` | any kernel but rbf — `kernel="poly"` too, at any size and any degree; an rbf fit with a mean box above `svc_max_c`: C times the mean class and sample weight over the samples kept — C itself without weights, with balanced class weights, or with sample weights normalized to mean 1 (compared with a relative tolerance of 1e-9, so that rounding cannot move a fit), read from the parameters before any scan of `X`; other weights after validation. How many SMO iterations a larger box costs depends on the data's intrinsic dimension, which a fit cannot see; and a `cache_size` below scikit-learn's default (200 MB), where rows are evaluated on demand |
 
 `device` does not change any of this: `device="cpu"` selects MLX's CPU device for work
 that is sent to MLX, not scikit-learn. A directly imported class never dispatches to

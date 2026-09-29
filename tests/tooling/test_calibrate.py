@@ -70,19 +70,17 @@ def _multinomial_width(p):
         (("knn",), "knn_wide_features", _width),
         (("knn",), "knn_narrow_min_samples", _rows),
         (("knn-batches",), "knn_wide_min_samples", _rows),
-        # A ceiling: k at most the knob stays on MLX.
+        # A ceiling: k at most the knob stays on MLX — asked of the fit, and of a query.
         (("knn-k",), "knn_max_neighbors", lambda p: p.k - 1),
+        (("knn-query-k",), "knn_max_neighbors", lambda p: p.query_k - 1),
         (("svc", "svc-hard"), "svc_min_features", _width),
         (("svc",), "svc_min_samples", _rows),
         (("svc",), "svc_min_work", _work),
         (("svc-multi", "svc-multi-overlap"), "svc_min_pair_work", _pair_work),
         # A ceiling: C at most the knob stays on MLX, so C = 1 must sort below it.
         (("svc-structured",), "svc_max_c", lambda p: math.nextafter(p.C, 0.0)),
-        (("svc-params",), "svc_poly_min_degree", lambda p: p.degree),
         (("logreg-multi",), "logreg_min_samples", _rows),
         (("logreg-labels",), "logreg_multinomial_min_features", _multinomial_width),
-        # A ceiling: a tol at most the knob stays on MLX (0 is the default, 1e-4).
-        (("logreg-params",), "logreg_max_tol", lambda p: math.nextafter(p.tol or 1e-4, 0.0)),
         (("logreg-params",), "logreg_min_max_iter", lambda p: p.max_iter or 200),
         (("logreg-binary", "logreg-labels"), "logreg_binary_min_samples", _rows),
         (("logreg-binary", "logreg-labels"), "logreg_binary_max_features", lambda p: p.d - 1),
@@ -94,6 +92,32 @@ def test_every_threshold_has_a_grid_on_both_sides_of_it(names, knob, size):
     points = [p for name in names for p in GRIDS[name].points]
     floor = getattr(get_tuning(), knob)
     assert min(map(size, points)) < floor <= max(map(size, points))
+
+
+@pytest.mark.parametrize(
+    "name, size, threshold",
+    [
+        # A ceiling: a tol at most the default, 1e-4, stays on MLX (0 is the default).
+        ("logreg-params", lambda p: math.nextafter(p.tol or 1e-4, 0.0), 1e-4),
+        # A floor: a cache_size of at least the default, 200 MB, stays on MLX (0 is it).
+        ("svc-cache", lambda p: p.cache_size or 200.0, 200.0),
+    ],
+    ids=["logreg-params-tol", "svc-cache"],
+)
+def test_every_rule_without_a_knob_has_a_grid_on_both_sides_of_it(name, size, threshold):
+    """The rules that read scikit-learn's own defaults are measured either side too."""
+    points = GRIDS[name].points
+    assert min(map(size, points)) < threshold <= max(map(size, points))
+
+
+def test_the_poly_grid_measures_poly_and_rbf_on_the_same_data():
+    """Patched dispatch sends rbf to MLX and never poly: the grid behind that holds
+    both kernels at C <= 1 on every law of data it measures poly on."""
+    points = GRIDS["svc-poly"].points
+    assert all(p.C <= get_tuning().svc_max_c for p in points)
+    poly = {p.data for p in points if p.kernel == "poly"}
+    rbf = {p.data for p in points if p.kernel == "rbf"}
+    assert poly - {"lowrank"} == rbf
 
 
 def _committed(grid):
@@ -146,16 +170,16 @@ def _record(grid, n, d, speedup, significant=True, version="1.9.0", **extra):
 
 def test_a_table_marks_losses_and_noise_and_says_where_dispatch_sends_each_row():
     records = [
-        _record("svc", 4_000, 16, 0.50, kernel="poly", C=1.0),
-        _record("svc", 4_000, 16, 0.60, version="1.7.2", kernel="poly", C=1.0),
-        _record("svc", 4_000, 256, 2.00, kernel="poly", C=1.0),
+        _record("svc", 4_000, 16, 0.50, kernel="rbf", C=1.0),
+        _record("svc", 4_000, 16, 0.60, version="1.7.2", kernel="rbf", C=1.0),
+        _record("svc", 4_000, 256, 2.00, kernel="rbf", C=1.0),
         _record("svc", 4_000, 256, 1.02, significant=False, version="1.7.2",
-                kernel="poly", C=1.0),
+                kernel="rbf", C=1.0),
     ]
     text = calibrate.render("svc", records)
     lines = text.splitlines()
     assert "1.9.0 / 1.7.2" in lines[0]
-    assert lines[1] == "| rows × features | poly, C = 1 | dispatch |"
+    assert lines[1] == "| rows × features | rbf, C = 1 | dispatch |"
     assert "| 4 000 × 16 | **0.50** / **0.60** | scikit-learn |" in lines
     assert "| 4 000 × 256 | 2.00 / 1.02~ | MLX |" in lines
 
@@ -245,5 +269,6 @@ def test_every_calibration_table_in_the_docs_names_a_grid():
     # Every grid that calibrates a threshold is on the record.
     assert {"knn", "knn-rows", "knn-tree", "knn-narrow", "knn-data", "knn-structured",
             "knn-k", "knn-batches", "svc", "svc-sigmoid", "svc-multi", "svc-multi-overlap",
-            "svc-params", "svc-hard", "svc-structured", "svc-predict", "logreg-binary",
-            "logreg-multi", "logreg-separable", "logreg-labels", "logreg-params"} <= cited
+            "svc-params", "svc-hard", "svc-structured", "svc-predict", "svc-poly",
+            "svc-cache", "logreg-binary", "logreg-multi", "logreg-separable", "logreg-labels",
+            "logreg-params", "knn-query-k"} <= cited

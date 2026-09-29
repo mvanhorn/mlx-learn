@@ -1149,13 +1149,14 @@ def test_the_svc_crossover_accounts_for_the_number_of_classes():
 
 
 @pytest.mark.gpu
-def test_patched_dispatch_hands_a_box_above_one_and_near_linear_poly_to_libsvm():
+def test_patched_dispatch_sends_only_rbf_with_a_box_of_one_and_the_default_cache():
     """How many SMO iterations a fit takes per row decides it, and C lets them
-    multiply: on data of low intrinsic dimension rbf and poly fits lost at C = 10
-    whatever the width, and won at C <= 1 at every gamma measured. So a patched fit
-    needs a mean box, C x class weight x sample weight, of at most 1, and poly also
-    needs degree 3 or more and ``coef0 = 0``. Patched only: Layer 1 keeps them on
-    MLX."""
+    multiply: on data of low intrinsic dimension rbf fits lost at C = 10 whatever the
+    width, and won at C <= 1 at every gamma measured. So a patched fit needs a mean
+    box, C x class weight x sample weight, of at most 1. The poly kernel lost even at
+    C <= 1 on data outside the Gaussian grids and goes to LIBSVM whatever its
+    parameters, as linear and sigmoid do; so does a cache_size below scikit-learn's
+    default. Patched only: Layer 1 keeps them on MLX."""
     X, y = _data(n_samples=300, n_features=8, seed=1)
     tuning = get_tuning()
     above = 10.0 * tuning.svc_max_c
@@ -1169,10 +1170,16 @@ def test_patched_dispatch_hands_a_box_above_one_and_near_linear_poly_to_libsvm()
         ({"C": tuning.svc_max_c}, False, ""),
         ({"C": tuning.svc_max_c, "gamma": 0.01 * scale}, False, ""),
         ({"C": tuning.svc_max_c, "gamma": 1_000.0 * scale}, False, ""),
-        ({"kernel": "poly", "C": above}, True, "box constraint"),
-        ({"kernel": "poly", "degree": tuning.svc_poly_min_degree - 1}, True, "kernel parameters"),
-        ({"kernel": "poly", "coef0": 1.0}, True, "kernel parameters"),
-        ({"kernel": "poly"}, False, ""),
+        ({"kernel": "poly"}, True, "only the rbf kernel"),
+        ({"kernel": "poly", "C": 0.1}, True, "only the rbf kernel"),
+        ({"kernel": "poly", "degree": 2, "coef0": 1.0}, True, "only the rbf kernel"),
+        ({"kernel": "poly", "C": above}, True, "only the rbf kernel"),
+        ({"kernel": "sigmoid"}, True, "always handed to scikit-learn"),
+        ({"kernel": "linear"}, True, "always handed to scikit-learn"),
+        ({"cache_size": 1.0}, True, "cache_size=1 is below"),
+        ({"cache_size": 199.0}, True, "cache_size=199 is below"),
+        ({"cache_size": 200.0}, False, ""),
+        ({"cache_size": 1_000.0}, False, ""),
         # Balanced class weights average to one, so the mean box is C.
         ({"C": tuning.svc_max_c, "class_weight": "balanced"}, False, ""),
         ({"C": tuning.svc_max_c, "class_weight": {0: 1.0, 1: 5.0}}, True, "mean class and"),
@@ -1195,15 +1202,61 @@ def test_patched_dispatch_hands_a_box_above_one_and_near_linear_poly_to_libsvm()
         assert PatchedSVC().fit(X, y, sample_weight=halves).execution_backend_ != "sklearn"
         small = np.full(len(y), 0.05)
         assert PatchedSVC(C=above).fit(X, y, sample_weight=small).execution_backend_ != "sklearn"
+        # Layer 1 has no LIBSVM to hand anything to: poly still runs, on the GPU.
         assert SVC(C=above).fit(X, y).execution_backend_ == "mlx"
+        assert SVC(kernel="poly").fit(X, y).execution_backend_ == "mlx"
         assert SVC(kernel="poly", degree=2).fit(X, y).execution_backend_ == "mlx"
+        assert SVC(cache_size=1.0).fit(X, y).execution_backend_ == "mlx"
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("weighting", ["balanced", "lognormal"])
+def test_weights_that_average_to_one_leave_the_box_at_c_despite_rounding(weighting):
+    """Balanced class weights, and sample weights normalized to mean 1, average to
+    one only up to rounding: at 2% positives the balanced weights' mean over the
+    samples is 1.0000000000000002 in float64, and so is the mean of these lognormal
+    weights. The mean box they give at C = 1 must still read as C, so the fit stays
+    on MLX; a strict comparison sent it to LIBSVM."""
+    from sklearn.utils.class_weight import compute_class_weight
+
+    rng = np.random.default_rng(37)
+    n = 1_000
+    X = rng.normal(size=(n, 8))
+    y = (rng.random(n) < 0.02).astype(int)
+    assert 0.01 < y.mean() < 0.03
+    weights = rng.lognormal(0.0, 1.0, size=n)
+    weights = weights / weights.mean()
+    if weighting == "balanced":
+        params, fit_kw = {"class_weight": "balanced"}, {}
+        naive = compute_class_weight("balanced", classes=np.array([0, 1]), y=y)[y]
+    else:
+        params, fit_kw = {}, {"sample_weight": weights}
+        naive = weights
+    # The precondition that makes this a test of rounding: the plain mean is above 1.
+    assert float(np.mean(1.0 * naive)) > 1.0
+    no_floor = {"svc_min_features": 0, "svc_min_samples": 0, "svc_min_work": 0}
+    with tuning_context(**no_floor):
+        model = PatchedSVC(C=1.0, **params).fit(X, y, **fit_kw)
+        assert model.execution_backend_ != "sklearn", model.fit_event_
+        assert model.fit_event_.reason == "selected"
+        assert model._kernel_handoff(model._mean_box(np.asarray(y), fit_kw.get("sample_weight"))) is None
+        # A box measurably above one still goes to LIBSVM.
+        heavier = PatchedSVC(C=1.0 + 1e-6, **params).fit(X, y, **fit_kw)
+        assert heavier.execution_backend_ == "sklearn"
+        assert "box constraint" in heavier.fit_event_.detail
 
 
 @pytest.mark.parametrize(
     "params",
-    [{"kernel": "poly", "degree": 2}, {"C": 10.0}, {"C": 10.0, "class_weight": "balanced"}],
+    [
+        {"kernel": "poly"},
+        {"kernel": "poly", "degree": 2},
+        {"C": 10.0},
+        {"C": 10.0, "class_weight": "balanced"},
+        {"cache_size": 100.0},
+    ],
 )
-def test_the_c_and_poly_rules_are_decided_before_the_data_are_read(params, monkeypatch):
+def test_the_kernel_c_and_cache_rules_are_decided_before_the_data_are_read(params, monkeypatch):
     """They need only the parameters, so a handed-off fit pays for no validation."""
     import mlxlearn.svm._classes as svc_module
 

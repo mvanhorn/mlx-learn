@@ -120,8 +120,10 @@ def _summarize(samples: list[float], label: str) -> Measurement:
     )
 
 
-def _timed(fn: Callable[[], object]) -> float:
-    """One synchronized call, after a collection and with the collector off."""
+def _timed(fn: Callable[[], object], setup: Callable[[], object] | None = None) -> float:
+    """One synchronized call, after ``setup``, a collection, and with the collector off."""
+    if setup is not None:
+        setup()
     gc.collect()
     gc.disable()
     try:
@@ -220,6 +222,7 @@ def compare(
     shape: tuple[int, ...],
     warmup: int = 2,
     iterations: int = 7,
+    mlx_setup: Callable[[], object] | None = None,
     **extra,
 ) -> Comparison:
     """Time both implementations, interleaved, each side going first in turn.
@@ -229,8 +232,14 @@ def compare(
     whichever ran second. The order within a pair matters too, which is why it
     alternates and why each call is timed exactly as :func:`measure` times one —
     collected before, synchronized inside — whichever backend it ran on.
+
+    ``mlx_setup``, when given, runs before every mlxlearn call, warm-up included,
+    outside the timed window: to time a first call — one that builds something the
+    model then keeps — as often as the comparison needs.
     """
     for _ in range(warmup):
+        if mlx_setup is not None:
+            mlx_setup()
         mlx_fn()
         sk_fn()
     _sync()
@@ -239,11 +248,11 @@ def compare(
     sk_samples: list[float] = []
     for i in range(iterations):
         if i % 2 == 0:
-            mlx_samples.append(_timed(mlx_fn))
+            mlx_samples.append(_timed(mlx_fn, mlx_setup))
             sk_samples.append(_timed(sk_fn))
         else:
             sk_samples.append(_timed(sk_fn))
-            mlx_samples.append(_timed(mlx_fn))
+            mlx_samples.append(_timed(mlx_fn, mlx_setup))
 
     return Comparison(
         label=label,

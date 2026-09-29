@@ -108,6 +108,16 @@ class Point:
     tol: float = 0.0  # svc and logreg; 0 means the estimator's default
     max_iter: int = 0  # logreg; 0 means the grids' 200
     class_weight: str = ""  # svc: "" (none) or "balanced"
+    cache_size: float = 0.0  # svc; 0 means scikit-learn's default, 200 MB
+    # knn: the k each query asks for, kneighbors(n_neighbors=...); 0 means the fitted k.
+    query_k: int = 0
+    dtype: str = "float64"  # knn: of the training rows and the queries
+    # knn with query_k: "" times the query as patched dispatch routes it (a fit it sends
+    # to MLX; above knn_max_neighbors, scikit-learn's brute force over a float64 copy
+    # built on the first such query and kept), "first" the same with that copy dropped
+    # before every call — the first such query — and "mlx" the query on MLX (a forced
+    # fit, whose queries stay there).
+    path: str = ""
 
     def __post_init__(self) -> None:
         if not self.data:
@@ -119,6 +129,12 @@ class Point:
             base = f"knn/{self.n}x{self.d}/{self.algorithm}/{self.data}"
             if self.k != _K:
                 base = f"{base}/k={self.k}"
+            if self.query_k:
+                base = f"{base}/query_k={self.query_k}"
+            if self.dtype != "float64":
+                base = f"{base}/{self.dtype}"
+            if self.path:
+                base = f"{base}/{self.path}"
             ops = (["fit"] if self.fit else []) + [f"q{q}" for q in self.queries]
             return [f"{base}/{op}" for op in ops]
         if self.estimator == "svc":
@@ -133,6 +149,8 @@ class Point:
                 key = f"{key}/tol={self.tol:g}"
             if self.class_weight:
                 key = f"{key}/class_weight={self.class_weight}"
+            if self.cache_size:
+                key = f"{key}/cache_size={self.cache_size:g}"
             if self.data not in ("binary", "separated-blobs"):
                 key = f"{key}/{self.data}"
             if self.queries:
@@ -186,6 +204,10 @@ _DENSE_FEATURES = (16, 24, 32, 48, 64, 96, 128, 256)
 #: Batch sizes of the `knn-batches` grid: every few queries from 8 to 64, where a
 #: 2 048-4 096-feature batch crosses 256 KiB of float32 rows.
 _HUMP_QUERIES = (8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 40, 48, 64)
+
+#: Batch sizes of the `knn-query-k` grid, and those it times the first large-k query at.
+_QUERY_K_BATCHES = (1, 16, 64, 256, 1_024)
+_QUERY_K_FIRST = (1, 64, 1_024)
 
 
 def _dense_shapes() -> list[tuple[int, int]]:
@@ -392,23 +414,27 @@ GRIDS: dict[str, Grid] = {
     ),
     "logreg-params": Grid(
         "`LogisticRegression` fits away from the default `tol` and `max_iter`, on the "
-        "benchmark's binary target and on labels with moderate multinomial-logit signal, "
-        "binary at 200 000 rows and three classes at 60 000: a looser `tol` or a smaller "
-        "`max_iter` stops both solvers within an iteration or two, where the fit is "
-        "mostly MLX's fixed cost — the `logreg_max_tol` and `logreg_min_max_iter` rules.",
+        "benchmark's binary target, on labels with moderate multinomial-logit signal and "
+        "on random labels, binary at 200 000 rows and three classes at 60 000: a looser "
+        "`tol` or a smaller `max_iter` stops both solvers within an iteration or two, "
+        "where the fit is mostly MLX's fixed cost — the rule that `tol` be at most the "
+        "default, 1e-4, and `logreg_min_max_iter`. 21 pairs each: at 9 the ratios near 1 "
+        "did not reproduce.",
         tuple(
             Point("logreg", n, d, n_classes=K, data=data, tol=tol, max_iter=max_iter)
             for data, K, shapes in (
                 ("binary", 2, ((200_000, 1), (200_000, 4), (200_000, 16), (200_000, 64))),
                 ("signal", 2, ((200_000, 1), (200_000, 4), (200_000, 16), (200_000, 64))),
+                ("random", 2, ((200_000, 16), (200_000, 64))),
                 ("signal", 3, ((60_000, 2), (60_000, 8), (60_000, 64))),
                 ("blobs", 3, ((60_000, 16),)),
             )
             for n, d in shapes
-            for tol, max_iter in ((0.0, 0), (1e-3, 0), (3e-3, 0), (1e-2, 0), (0.0, 1),
-                                  (0.0, 2), (0.0, 3), (0.0, 5))
+            for tol, max_iter in ((0.0, 0), (1e-5, 0), (5e-4, 0), (1e-3, 0), (3e-3, 0),
+                                  (1e-2, 0), (0.0, 1), (0.0, 2), (0.0, 3), (0.0, 5))
         ),
         layout="logreg-params",
+        iterations=21,
     ),
     "svc-params": Grid(
         "Binary `SVC` fits on MLX against LIBSVM away from the default kernel parameters, "
@@ -640,6 +666,82 @@ GRIDS: dict[str, Grid] = {
         ),
         layout="knn-k-worst",
     ),
+    "knn-query-k": Grid(
+        "`kneighbors(n_neighbors=k)` on a model fitted with k = 10, against the same query "
+        "on a stock model, at shapes patched dispatch fits on MLX, float64 and float32 "
+        "data: k = 50 on MLX, and k = 51-200 three ways — answered as patched dispatch "
+        "answers it, by scikit-learn's brute force over a float64 copy of the training "
+        "rows (steady state, and the first such query, which builds the copy), and on "
+        "MLX. The `knn_max_neighbors` rule at query time. 21 pairs each: at 9 the "
+        "handoff's ratios, all near 1, did not reproduce.",
+        tuple(
+            Point("knn", n, d, queries, dtype=dtype, query_k=k, path=path)
+            for n, d in ((8_192, 1_024), (8_192, 2_048), (65_536, 256), (1_000_000, 64))
+            for dtype in ("float64", "float32")
+            for k, path, queries in (
+                (50, "", _QUERY_K_BATCHES),
+                *(
+                    (k, path, _QUERY_K_FIRST if path == "first" else _QUERY_K_BATCHES)
+                    for k in (51, 60, 100, 200)
+                    for path in ("", "first", "mlx")
+                ),
+            )
+        ),
+        layout="knn-query-k",
+        iterations=21,
+    ),
+    "svc-poly": Grid(
+        "Binary and one-vs-one `SVC` fits with the poly kernel (degree 3, coef0 = 0) on "
+        "MLX against LIBSVM at C = 0.2-1, on data the other grids do not hold — "
+        "scikit-learn's digits upsampled to 16², 20² and 28² pixels (digit >= 5, its "
+        "parity, digit mod 4), five latent directions plus noise with random labels, "
+        "Cauchy features — and on five latent directions at gamma 1.25 and 1.5 times "
+        "'scale'; the rbf kernel beside it at C = 1: why patched dispatch never sends "
+        "poly to MLX.",
+        tuple(
+            Point("svc", 1_797, side * side, kernel=kernel, C=C, n_classes=K, data=data)
+            for data, side, K in (("digits16", 16, 2), ("digits16-parity", 16, 2),
+                                  ("digits20", 20, 2), ("digits28", 28, 4))
+            for kernel, Cs in (("poly", (0.2, 0.5, 1.0)), ("rbf", (1.0,)))
+            for C in Cs
+        )
+        + tuple(
+            Point("svc", n, d, kernel=kernel, C=C, data=data)
+            for data in ("lowrank-rand", "cauchy")
+            for n, d in ((1_500, 256), (3_000, 256), (1_024, 512))
+            for kernel, Cs in (("poly", (0.5, 1.0)), ("rbf", (1.0,)))
+            for C in Cs
+            # At 1 500 x 256 and 3 000 x 256 these Cauchy rows are too far from the
+            # origin for the poly kernel's float32 inner product (UnsupportedInputError:
+            # a capability limit, which patched mode hands to LIBSVM): nothing to time.
+            if not (data == "cauchy" and kernel == "poly" and d == 256)
+        )
+        + tuple(
+            Point("svc", n, d, kernel="poly", gamma=gamma, data="lowrank")
+            for n, d in ((1_500, 256), (2_000, 512))
+            for gamma in (1.25, 1.5)
+        ),
+        layout="svc-structured",
+        iterations=7,
+    ),
+    "svc-cache": Grid(
+        "Binary rbf `SVC` fits on MLX against LIBSVM at C = 1 with `cache_size` from 1 MB "
+        "to 1 000 MB, both sides given the same, on five latent directions plus noise and "
+        "on the benchmark's Gaussian target: the rule that `cache_size` be at least "
+        "scikit-learn's default, 200 MB.",
+        tuple(
+            Point("svc", n, d, cache_size=cache, data=data)
+            for data, n, d, caches in (
+                ("lowrank", 4_000, 256, (1.0, 3.0, 10.0, 40.0, 100.0, 0.0, 1_000.0)),
+                ("lowrank", 3_000, 512, (1.0, 10.0, 0.0)),
+                ("lowrank", 8_000, 256, (1.0, 0.0, 1_000.0)),
+                ("binary", 4_000, 256, (1.0, 10.0, 0.0, 1_000.0)),
+            )
+            for cache in caches
+        ),
+        layout="svc-cache",
+        iterations=7,
+    ),
 }
 
 
@@ -730,7 +832,8 @@ def _fit_data(point: Point) -> tuple[np.ndarray, np.ndarray]:
 
 #: Binary fit data whose features are not isotropic Gaussian, and so whose intrinsic
 #: dimension is not its width (_structured).
-_STRUCTURED = ("lowrank", "lowrank10", "lowrank-imb", "decay", "smooth", "t2", "colscale")
+_STRUCTURED = ("lowrank", "lowrank10", "lowrank-imb", "lowrank-rand", "decay", "smooth",
+               "t2", "colscale", "cauchy")
 
 
 def _structured(law: str, n: int, d: int, rng: np.random.Generator):
@@ -738,15 +841,19 @@ def _structured(law: str, n: int, d: int, rng: np.random.Generator):
 
     ``lowrank``/``lowrank10``: 5 or 10 latent Gaussian directions plus N(0, 0.3²) noise
     in every feature, labelled by the first latent plus N(0, 1) — ``lowrank-imb`` the
-    same, cut so that about 10% are positive. ``decay``: full rank with singular values
-    1/i, labelled by the top direction. ``smooth``: each feature a moving average of 16
-    adjacent white-noise columns. ``t2``: Student-t features with 2 degrees of freedom.
-    ``colscale``: column scales 10^U(0, 2).
+    same, cut so that about 10% are positive, ``lowrank-rand`` labelled at random.
+    ``decay``: full rank with singular values 1/i, labelled by the top direction.
+    ``smooth``: each feature a moving average of 16 adjacent white-noise columns.
+    ``t2``: Student-t features with 2 degrees of freedom. ``colscale``: column scales
+    10^U(0, 2). ``cauchy``: standard Cauchy features, labelled by tanh(x0) plus
+    N(0, 0.5²).
     """
     if law.startswith("lowrank"):
         rank = 10 if law == "lowrank10" else 5
         Z = rng.normal(size=(n, rank))
         X = Z @ rng.normal(size=(rank, d)) + 0.3 * rng.normal(size=(n, d))
+        if law == "lowrank-rand":
+            return X, rng.integers(0, 2, size=n)
         cut = 1.8 if law == "lowrank-imb" else 0.0
         return X, (Z[:, 0] + rng.normal(size=n) > cut).astype(int)
     if law == "decay":
@@ -764,24 +871,31 @@ def _structured(law: str, n: int, d: int, rng: np.random.Generator):
     if law == "colscale":
         X = rng.normal(size=(n, d)) * 10.0 ** rng.uniform(0.0, 2.0, size=d)
         return X, (X[:, 0] / X[:, 0].std() + rng.normal(size=n) > 0).astype(int)
+    if law == "cauchy":
+        X = rng.standard_cauchy(size=(n, d))
+        return X, (np.tanh(X[:, 0]) + 0.5 * rng.normal(size=n) > 0).astype(int)
     raise ValueError(f"unknown data {law!r}")
 
 
 def _digits(point: Point):
     """scikit-learn's 8 x 8 digits, 1 797 images upsampled bilinearly to S x S.
 
-    ``point.data`` is ``"digits<S>"``; binary is ``digit >= 5``, K classes ``digit % K``.
+    ``point.data`` is ``"digits<S>"``, binary ``digit >= 5`` and K classes ``digit % K``,
+    or ``"digits<S>-parity"``, binary ``digit % 2``.
     """
     from scipy.ndimage import zoom
     from sklearn.datasets import load_digits
 
-    side = int(point.data.removeprefix("digits"))
+    name, _, labels = point.data.partition("-")
+    side = int(name.removeprefix("digits"))
     digits = load_digits()
     X = np.stack([zoom(image / 16.0, side / 8.0, order=1) for image in digits.images])
     X = X.reshape(len(X), -1)
     if (point.n, point.d) != X.shape:
         raise ValueError(f"{point.data} is {X.shape[0]} x {X.shape[1]}, not {point.n} x {point.d}")
     K = point.n_classes
+    if labels == "parity":
+        return X, digits.target % 2
     return X, (digits.target >= 5).astype(int) if K == 2 else digits.target % K
 
 
@@ -825,6 +939,9 @@ def _versions() -> dict:
 
 
 def _measure_knn(point: Point, iterations: int, todo: set[str]):
+    if point.query_k:
+        yield from _measure_query_k(point, iterations, todo)
+        return
     import sklearn.neighbors
 
     from mlxlearn.patching import _estimators as patched
@@ -877,14 +994,59 @@ def _measure_knn(point: Point, iterations: int, todo: set[str]):
         yield key, {"operation": "kneighbors", "q": q, **extra, **_summary(result)}
 
 
-def _queries(model, batches: np.ndarray) -> Callable[[], object]:
+def _queries(model, batches: np.ndarray, k: int | None = None) -> Callable[[], object]:
     """``model.kneighbors`` on the next of ``batches`` at each call, cycling."""
     position = iter(range(1 << 62))
 
     def query():
-        return model.kneighbors(batches[next(position) % len(batches)])
+        return model.kneighbors(batches[next(position) % len(batches)], n_neighbors=k)
 
     return query
+
+
+def _measure_query_k(point: Point, iterations: int, todo: set[str]):
+    """``kneighbors(n_neighbors=point.query_k)`` on a model fitted with ``point.k``.
+
+    The fit is patched dispatch's own, unforced, and must land on MLX — except for
+    ``path="mlx"``, whose forced fit keeps its queries there too. ``path="first"``
+    drops the float64 copy a large-k query builds, and the stock model built over it,
+    before every call, outside the timed window.
+    """
+    import sklearn.neighbors
+
+    from mlxlearn.patching import _estimators as patched
+
+    rng = np.random.default_rng(point.seed)
+    dtype = np.dtype(point.dtype)
+    X = _knn_data(point, point.n, rng, train=True).astype(dtype)
+    if point.path == "mlx":
+        with _forced():
+            model = patched.NearestNeighbors(n_neighbors=point.k).fit(X)
+    else:
+        model = patched.NearestNeighbors(n_neighbors=point.k).fit(X)
+    assert model.execution_backend_ == "mlx", model.fit_event_
+    stock = sklearn.neighbors.NearestNeighbors(n_neighbors=point.k).fit(X)
+    setup = None
+    if point.path == "first":
+
+        def setup():
+            model.__dict__.pop("_host_brute_", None)
+            model._index_._host64 = None
+
+    for q, key in zip(point.queries, point.keys(), strict=True):
+        if key not in todo:
+            continue
+        if q == 1:
+            batches = _knn_data(point, _WARMUP + iterations, rng)[:, None, :].astype(dtype)
+        else:
+            batches = _knn_data(point, q, rng)[None, :, :].astype(dtype)
+        result = compare(_queries(model, batches, point.query_k),
+                         _queries(stock, batches, point.query_k), label=key,
+                         shape=(point.n, point.d), iterations=iterations, warmup=_WARMUP,
+                         mlx_setup=setup)
+        answered = "sklearn" if "_host_brute_" in model.__dict__ else "mlx"
+        yield key, {"operation": "kneighbors", "q": q, "answered_by": answered,
+                    **_summary(result)}
 
 
 def _measure_fit(point: Point, iterations: int, todo: set[str]):
@@ -907,6 +1069,8 @@ def _measure_fit(point: Point, iterations: int, todo: set[str]):
             params["tol"] = point.tol
         if point.class_weight:
             params["class_weight"] = point.class_weight
+        if point.cache_size:
+            params["cache_size"] = point.cache_size
         make_mlx, make_sk = (lambda: patched.SVC(**params)), (lambda: sklearn.svm.SVC(**params))
         if point.queries:
             yield from _measure_predict(point, X, y, make_mlx, make_sk, iterations, todo)
@@ -1013,7 +1177,8 @@ def run(name: str, output: Path, *, iterations: int | None = None, limit: int | 
                 "kernel": point.kernel, "C": point.C, "n_classes": point.n_classes,
                 "k": point.k, "gamma": point.gamma, "degree": point.degree,
                 "coef0": point.coef0, "tol": point.tol, "max_iter": point.max_iter,
-                "class_weight": point.class_weight,
+                "class_weight": point.class_weight, "cache_size": point.cache_size,
+                "query_k": point.query_k, "dtype": point.dtype, "path": point.path,
                 **versions, "time": time.time(), **record,
             }
             with output.open("a", encoding="utf-8") as fh:
@@ -1066,6 +1231,9 @@ def dispatch(record: dict) -> str:
             n_neighbors=record.get("k", _K), algorithm=record["algorithm"]
         )
         below = model._below_crossover(n, d)[0] or model._patched_handoff(n, d) is not None
+        if not below and record.get("query_k"):
+            # A query asking for more neighbors than the fit, on an index it fitted.
+            below = model._query_neighbors_handoff(record["query_k"]) is not None
         if not below and "probe_rows" in record:
             # The data rule, on what the fit-time probe found when this was measured.
             found = {"rows": record["probe_rows"], "uncertified": record["probe_uncertified"],
@@ -1073,7 +1241,8 @@ def dispatch(record: dict) -> str:
             below = model._probe_handoff(n, d, found) is not None
     elif record["estimator"] == "svc":
         model = patched.SVC(kernel=record["kernel"], C=record["C"],
-                            degree=record.get("degree", 3), coef0=record.get("coef0", 0.0))
+                            degree=record.get("degree", 3), coef0=record.get("coef0", 0.0),
+                            cache_size=record.get("cache_size") or 200.0)
         below = (
             model._below_crossover(n, d, n_classes=record["n_classes"])[0]
             # The C rule reads the mean box, C x the mean class and sample weight: C
@@ -1159,7 +1328,10 @@ def _svc_variant(r) -> tuple[tuple, str]:
         factor = r.get("gamma") or 1.0
         return (0, factor, 0, 0.0), f"rbf, gamma = {factor:g} × scale"
     degree, coef0 = r.get("degree", 3), r.get("coef0", 0.0)
-    return (1, 1.0, degree, coef0), f"{r['kernel']}, degree {degree}, coef0 = {coef0:g}"
+    label = f"{r['kernel']}, degree {degree}, coef0 = {coef0:g}"
+    if r.get("gamma"):
+        label = f"{label}, gamma = {r['gamma']:g} × scale"
+    return (1, r.get("gamma") or 1.0, degree, coef0), label
 
 
 def _svc_params_row(r):
@@ -1213,6 +1385,29 @@ def _svc_structured_row(r):
     return key, ", ".join(parts)
 
 
+_QUERY_PATHS = {"": (0, "as dispatched"), "first": (1, "as dispatched, first query"),
+                "mlx": (2, "on MLX")}
+
+
+def _knn_query_k_row(r):
+    order, path = _QUERY_PATHS[r.get("path", "")]
+    if r["query_k"] <= 50:
+        path = "on MLX (as dispatched)"
+    key = (r["d"], r["n"], r.get("dtype", "float64"), r["query_k"], order)
+    label = f"{_shape(r['n'], r['d'])}, {r.get('dtype', 'float64')}, k = {r['query_k']}, {path}"
+    return key, label
+
+
+def _svc_cache_row(r):
+    data = "Gaussian" if r["data"] == "binary" else r["data"]
+    return (r["d"], r["n"], data), f"{_shape(r['n'], r['d'])}, {data}"
+
+
+def _cache_column(r):
+    cache = r.get("cache_size") or 200.0
+    return (cache,), f"cache_size = {cache:g}"
+
+
 def _logreg_data_row(r):
     return (r["data"], r["n"]), f"{r['data']}, {_shape(r['n'])}"
 
@@ -1239,6 +1434,8 @@ _LAYOUTS = {
     "knn-data-worst": (_knn_data_row, _knn_column, "rows × features, data"),
     "knn-k": (_knn_k_row, _knn_column, "rows × features, k"),
     "knn-k-worst": (_knn_k_row, _knn_column, "rows × features, k"),
+    "knn-query-k": (_knn_query_k_row, _knn_column, "rows × features, dtype, query k, path"),
+    "svc-cache": (_svc_cache_row, _cache_column, "rows × features, data"),
     "svc": (_svc_row, _svc_column, "rows × features"),
     "svc-params": (_svc_params_row, _svc_c_column, "rows × features, kernel"),
     "svc-hard": (_svc_hard_row, _svc_c_column, "rows × features, labels, kernel"),

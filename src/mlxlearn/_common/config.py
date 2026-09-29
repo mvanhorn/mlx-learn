@@ -267,14 +267,19 @@ class Tuning:
     # queries (0.84x-0.99x); from 150 rows per neighbor every batch won or tied, and
     # the row floors above leave more than 160 at every k this allows. So a fit needs
     # n_neighbors of at most knn_max_neighbors. A query on an MLX-fitted index that
-    # asks for more is answered by scikit-learn's brute force over the float64
-    # training rows, which kept up with a stock model's (within noise at 8 192-
-    # 1 000 000 rows, k = 60-200 and 1-1 024 queries, once re-measured); on MLX it had
-    # lost, down to 0.62x at 8 192 x 2 048 with k = 200. What the k rule gives up is
-    # k = 100-200 at 96-128 features and a million rows (1.2x-3.0x), k = 100 at
-    # 100 000 x 256 (1.1x-4.3x) and at 8 192 x 1 024 (1.15x-1.9x) — and at query time
-    # the same: k = 60-200 at 65 536 x 256 (1.13x-3.5x), 8 192 x 1 024 (1.1x-1.8x) and
-    # a million x 64 (1.07x-2.1x).
+    # asks for more is answered by scikit-learn's brute force over a float64 copy of
+    # the training rows (table `knn-query-k`, 21 pairs a point: 8 192 x 1 024 and
+    # 2 048, 65 536 x 256 and 1 000 000 x 64, float64 and float32, k = 50-200, 1-1 024
+    # queries). On float64 data it kept up with a stock model's, 0.88x-1.09x with one
+    # significant loss in 160 (0.88x); on float32 data at a million rows it lost by a
+    # few percent (0.93x-0.95x at 16-1 024 queries), stock searching float32 rows and
+    # the copy being float64. On MLX those queries lost at 8 192 x 2 048 with k = 200
+    # (0.73x-0.86x) and at 1 000 000 x 64 with k = 100-200 and 1 024 queries
+    # (0.77x-0.86x). The first such query builds the copy, 8 * n_samples * n_features
+    # bytes: 2-29 ms at the three smaller shapes and 25-85 ms at a million x 64. What
+    # the k rule gives up is k = 100-200 at 96-128 features and a million rows
+    # (1.2x-3.0x), k = 100 at 100 000 x 256 (1.1x-4.3x) and at 8 192 x 1 024
+    # (1.15x-1.9x) — and at query time MLX's wins at k = 51-200 (1.08x-4.5x).
     knn_max_neighbors: int = 50
     #
     # All of the above is calibrated on Gaussian data. Patched mode also reads the
@@ -346,17 +351,19 @@ class Tuning:
     #
     # Patched mode also reads tol and max_iter (LogisticRegression._param_handoff). A
     # fit that stops within an iteration or two is mostly MLX's fixed cost whatever its
-    # labels, and a looser tol or a smaller max_iter stops one with real signal there
-    # (table `logreg-params`: the benchmark's binary target and labels with moderate
-    # multinomial-logit signal, binary at 200000 x 1-64, three classes at 60000 x
-    # 2-64). tol = 0.01 stopped a binary fit of 200000 x 16 after one iteration and lost
-    # on 1.7.2 (0.82x), and max_iter = 1 lost at 4-64 features on one version or both
-    # (0.75x-0.93x); max_iter = 2 tied at worst (0.96x-0.97x), and from tol = 1e-3 down
-    # and max_iter = 3 up every fit won or tied (0.99x at worst). So a patched fit needs
-    # tol of at most logreg_max_tol and max_iter of at least logreg_min_max_iter. It
-    # gives up tol of 3e-3 (1.14x-3.1x) and 0.01 (1.04x-3.0x) where they won, and
-    # max_iter = 2 (1.01x-2.2x).
-    logreg_max_tol: float = 1e-3
+    # labels, and a looser tol or a smaller max_iter stops one there (table
+    # `logreg-params`, 21 pairs a point, every loss reproduced by a second run: the
+    # benchmark's binary target, labels with moderate multinomial-logit signal and
+    # random labels, binary at 200000 x 1-64, three classes at 60000 x 2-64). On random
+    # labels tol = 3e-3 and 0.01 lost at 200000 x 16 and 64 on both versions
+    # (0.50x-0.82x), and tol = 5e-4 and 1e-3 at 200000 x 64 on 1.7.2 (0.90x-0.93x);
+    # at the default, 1e-4, and at 1e-5 every fit won (1.07x at worst). max_iter = 1
+    # lost at 200000 x 64 on both versions and at 60000 x 16 with three classes on
+    # 1.7.2 (0.76x-0.94x); max_iter = 2 tied at worst (0.98x), and from 3 every fit won
+    # (1.05x at worst). So a patched fit needs tol of at most the estimator's default —
+    # the tol every size rule was measured at, a rule with no knob — and max_iter of at
+    # least logreg_min_max_iter. It gives up every looser tol that won (1.05x-3.5x)
+    # and max_iter = 2 (1.05x-2.4x).
     logreg_min_max_iter: int = 3
     #
     # SVC: the axis that matters is *width* (see SVC._below_crossover). Per SMO
@@ -382,7 +389,7 @@ class Tuning:
     # versions, 1.36x-8.4x, on this Gaussian data. The linear kernel (table
     # `svc-linear`) and the sigmoid kernel (table `svc-sigmoid`: won at C = 0.1, lost
     # at C = 10 and 100 nearly everywhere, down to 0.06x) are excluded at every size;
-    # for rbf and poly, patched mode also reads C and the kernel parameters (below).
+    # patched mode excludes poly too, and reads C and cache_size for rbf (below).
     svc_min_features: int = 256
     svc_min_samples: int = 1_024
     svc_min_work: int = 384_000  # n_samples * n_features
@@ -401,30 +408,41 @@ class Tuning:
     # construction.
     svc_min_pair_work: int = 384_000
     #
-    # Patched mode also reads C and the kernel parameters (SVC._kernel_handoff). The
-    # floors above were set on isotropic Gaussian data, whose intrinsic dimension is
-    # its width. What decides is how many SMO iterations a fit takes per row, and on
-    # data of lower intrinsic dimension C multiplies them (table `svc-structured`:
-    # five or ten latent directions plus noise, singular values 1/i, features smoothed
-    # over 16 neighbours, Student-t(2) features and column scales 10^U(0, 2) at
-    # 1 024-4 000 x 256-512, and scikit-learn's digits upsampled to 256-784 pixels).
-    # At C = 10 they lost at 1 024-1 797 rows on both versions, down to 0.54x for rbf
-    # and 0.26x for poly, the digits at 256 and 400 pixels 0.57x-0.81x; at C <= 1 every
-    # one of them won, 1.06x-9.2x, at every gamma from 0.03 to 100 times "scale", with
-    # tol = 1e-5, with balanced class weights and at 8 000 rows. So an rbf or poly fit
-    # needs a mean box — C times the mean class and sample weight, which balanced
-    # class weights leave at C — of at most svc_max_c. That replaces the bounds on
-    # gamma, which applied only above C = 1. It gives up every rbf and poly fit above
+    # Patched mode sends only the rbf kernel to MLX, and reads C and cache_size
+    # (SVC._kernel_handoff). The floors above were set on isotropic Gaussian data,
+    # whose intrinsic dimension is its width. What decides is how many SMO iterations
+    # a fit takes per row, and on data of lower intrinsic dimension C multiplies them
+    # (table `svc-structured`: five or ten latent directions plus noise, singular
+    # values 1/i, features smoothed over 16 neighbours, Student-t(2) features and
+    # column scales 10^U(0, 2) at 1 024-4 000 x 256-512, and scikit-learn's digits
+    # upsampled to 256-784 pixels). At C = 10 they lost at 1 024-1 797 rows on both
+    # versions, down to 0.54x for rbf and 0.26x for poly, the digits at 256 and 400
+    # pixels 0.57x-0.81x; at C <= 1 every rbf fit won, 1.06x-9.2x, at every gamma from
+    # 0.03 to 100 times "scale", with tol = 1e-5, with balanced class weights and at
+    # 8 000 rows. So an rbf fit needs a mean box — C times the mean class and sample
+    # weight, which balanced class weights, or sample weights normalized to mean 1,
+    # leave at C — of at most svc_max_c, compared with a relative tolerance of 1e-9 so
+    # that the rounding of that mean cannot move a fit. It gives up every rbf fit above
     # C = 1 that won: the benchmark's target at C = 10 and 100 from 256 features
     # (table `svc`, 1.36x-3.8x), labels with little or no signal (`svc-hard`,
     # 1.10x-2.7x), overlapping one-vs-one classes (`svc-multi-overlap`, 1.39x-2.0x),
     # gamma of 0.8-10 times "scale" (`svc-params`, 1.20x-4.6x) and the structured data
-    # at 2 000-4 000 rows (`svc-structured`, 1.04x-2.3x). The poly kernel also needs
-    # degree svc_poly_min_degree or more and coef0 = 0: at C = 1, degree 2 with
-    # coef0 = 1 lost at 1 500 x 256 (0.85x-0.94x, `svc-params`); degree 3 and 4 at
-    # coef0 = 0 won or tied everywhere.
+    # at 2 000-4 000 rows (`svc-structured`, 1.04x-2.3x).
+    #
+    # The poly kernel joins the linear and sigmoid kernels in patched mode's
+    # never-on-MLX set (table `svc-poly`): even at C <= 1 it lost on data the other
+    # grids did not hold — at C = 1 on digits upsampled to 256-784 pixels and on five
+    # latent directions with random labels at 1 500 x 256 (0.46x-0.73x), at C = 0.5 on
+    # the digits (0.61x-0.87x), and at gamma 1.25-1.5 times "scale" (0.46x-0.89x) —
+    # where rbf, on the same data, won everywhere (1.70x-6.3x). It gives up every poly
+    # fit the previous rule (degree 3 or more, coef0 = 0, C <= 1) sent to MLX that won,
+    # 1.07x-7.0x across the grids. And a fit whose cache_size is below scikit-learn's
+    # default of 200 MB goes to LIBSVM too (table `svc-cache`): rows a smaller cache
+    # cannot hold are evaluated on demand, and at 1 MB five latent directions at
+    # 4 000 x 256 lost on 1.7.2 (0.92x; 0.95x on 1.9.0), while at 200 and 1 000 MB
+    # every fit won (3.4x-6.6x). It gives up 3-100 MB where they won (1.03x-4.6x).
+    # Neither rule has a knob.
     svc_max_c: float = 1.0
-    svc_poly_min_degree: int = 3
     #
     # Not a dispatch rule but where a fitted SVC computes (SVC._pairwise_decision): a
     # predict or decision_function of at most this much work — query rows x support

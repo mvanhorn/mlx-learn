@@ -89,6 +89,10 @@ _PENALTY_DEPRECATED = (
     == "deprecated"
 )
 
+#: scikit-learn's default ``tol``, read off its signature: patched mode hands a fit
+#: with a looser one to scikit-learn (:meth:`MLXLogisticMixin._param_handoff`).
+_DEFAULT_TOL = float(inspect.signature(_SkLogisticRegression.__init__).parameters["tol"].default)
+
 
 class MLXLogisticMixin(BackendMixin):
     """Capability gating and crossover dispatch for the logistic estimators."""
@@ -388,26 +392,29 @@ class MLXLogisticMixin(BackendMixin):
         A fit that stops within an iteration or two is mostly MLX's fixed cost — the
         float32 copy of ``X``, its upload, a device round trip per evaluation — and
         a looser ``tol`` or a smaller ``max_iter`` stops a fit with real signal there
-        as surely as labels without any do. On the benchmark's binary target and on
-        labels with moderate multinomial-logit signal (``docs/benchmarks.md``, table
-        ``logreg-params``), ``tol = 0.01`` stopped a binary fit of 200 000 x 16 after
-        one iteration and lost on scikit-learn 1.7.2 (0.82x), and ``max_iter`` of 1
-        or 2 lost at 200 000 x 4-64 and at 60 000 x 8-16 with three classes
-        (0.72x-0.95x); from ``tol = 1e-3`` down, and from ``max_iter = 3`` up, every
-        fit measured won. So a fit needs ``tol`` of at most ``logreg_max_tol`` and
-        ``max_iter`` of at least ``logreg_min_max_iter``.
+        as surely as labels without any do. So a fit needs ``tol`` of at most
+        scikit-learn's default, 1e-4 — the ``tol`` every size rule was measured at —
+        and ``max_iter`` of at least ``logreg_min_max_iter``
+        (``docs/benchmarks.md``, table ``logreg-params``: the benchmark's binary
+        target, labels with moderate multinomial-logit signal and random labels, 21
+        pairs a point, every loss reproduced by a second run). On random labels
+        ``tol`` of 3e-3 and 0.01 lost at 200 000 x 16 and 64 on both scikit-learn
+        versions (0.50x-0.82x), and 5e-4 and 1e-3 at 200 000 x 64 on 1.7.2
+        (0.90x-0.93x); at the default and at 1e-5 every fit won. ``max_iter = 1`` lost
+        at 200 000 x 64 and at 60 000 x 16 with three classes (0.76x-0.94x), and from
+        ``max_iter = 3`` every fit won.
 
         Patched mode only (``_select_backend``'s ``handoff``), as the other
         estimators' parameter rules are: a directly imported class has no stock
         solver to hand the fit to. Recorded as ``"below-crossover"``.
         """
         tuning = get_tuning()
-        if not float(self.tol) <= tuning.logreg_max_tol:
+        if not float(self.tol) <= _DEFAULT_TOL:
             return "below-crossover", (
-                f"tol={self.tol:g} is above the measured logistic-regression crossover "
-                f"for its solver parameters (tol at most {tuning.logreg_max_tol:g}): a "
-                "fit this loose stops within an iteration or two, and is then mostly "
-                "the MLX path's fixed cost"
+                f"tol={self.tol:g} is above scikit-learn's default of {_DEFAULT_TOL:g}, "
+                "where the logistic-regression crossover was measured: a looser fit "
+                "stops within a few iterations, and is then mostly the MLX path's "
+                "fixed cost"
             )
         if int(self.max_iter) < tuning.logreg_min_max_iter:
             return "below-crossover", (
@@ -519,7 +526,10 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     tol : float, default=1e-4
         Tolerance on ``max|gradient|``, the same criterion and scale scikit-learn's
         lbfgs path uses. A value below what float32 can resolve — ``0``, say — is
-        honored as "run to the float32 floor"; see Notes.
+        honored as "run to the float32 floor"; see Notes. Under
+        ``patch_sklearn()`` a ``tol`` above the default hands the fit to
+        scikit-learn: a looser fit stops within a few iterations, where the MLX
+        path's fixed cost is most of it.
     C : float, default=1.0
         Inverse regularization strength. ``np.inf`` means unpenalized.
     fit_intercept : bool, default=True

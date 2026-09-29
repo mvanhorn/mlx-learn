@@ -55,7 +55,8 @@ class Case:
     ``sklearn_algorithm`` (the ``NearestNeighbors`` algorithm, which selects the
     stock baseline; the mlxlearn side is given it too), ``n_neighbors``,
     ``query_neighbors`` (the k a ``kneighbors`` call asks for, when not the fitted
-    one), ``kernel`` and ``C`` (SVC), ``tol`` and ``max_iter`` (LogisticRegression),
+    one), ``kernel``, ``C`` and ``cache_size`` (SVC), ``tol`` and ``max_iter``
+    (LogisticRegression),
     ``n_classes`` (classification targets) — and each one appears in
     the label, so two differently configured cases can never share a name.
     ``iterations`` caps the run's iteration count for a case whose single call
@@ -148,9 +149,9 @@ PROFILES: dict[str, list[Case]] = {
         Case("logreg", "fit", 60_000, 64, options={"n_classes": 5}),
         # Multinomial on one feature, three classes.
         Case("logreg", "fit", 60_000, 1, options={"n_classes": 3}),
-        # A fit the solver parameters stop within an iteration or two, at a shape the
-        # size rules send to MLX: a loose tol, a short max_iter.
-        Case("logreg", "fit", 200_000, 16, options={"tol": 0.01}),
+        # A fit the solver parameters stop within a few iterations, at a shape the size
+        # rules send to MLX: a tol looser than the default, a short max_iter.
+        Case("logreg", "fit", 200_000, 16, options={"tol": 1e-3}),
         Case("logreg", "fit", 200_000, 16, options={"max_iter": 2}),
         # SVC: below every floor; enough rows but too narrow, at 64 and at 128
         # features; wide (MLX); and a many-class problem each of whose pairs is below
@@ -161,10 +162,11 @@ PROFILES: dict[str, list[Case]] = {
         Case("svc", "fit", 4_000, 256),
         *_svc_grid([(2_048, 512)], n_classes=4),
         *_svc_grid([(2_048, 512)], n_classes=16),
-        # SVC above the measured box, C = 10, and poly of degree 2 (scikit-learn),
-        # whatever the size.
+        # SVC above the measured box, C = 10, the poly kernel at its defaults, and a
+        # cache smaller than scikit-learn's default (scikit-learn), whatever the size.
         Case("svc", "fit", 1_500, 256, options={"C": 10.0}),
-        Case("svc", "fit", 1_500, 256, options={"kernel": "poly", "degree": 2}),
+        Case("svc", "fit", 1_500, 256, options={"kernel": "poly"}),
+        Case("svc", "fit", 1_500, 256, options={"cache_size": 1.0}),
         # SVC inference on a model fitted on MLX: one row, answered on the host, and a
         # thousand, on the device.
         Case("svc", "predict", 4_000, 256, 1),
@@ -341,7 +343,11 @@ def _estimators(case: Case, layer: str):
         # The data are standard normal, so scikit-learn's "scale" is 1 / n_features
         # and a numeric gamma is gamma * n_features times it.
         params.update(
-            {k: case.options[k] for k in ("gamma", "degree", "coef0") if k in case.options}
+            {
+                k: case.options[k]
+                for k in ("gamma", "degree", "coef0", "cache_size")
+                if k in case.options
+            }
         )
         return (lambda: mlx_svm.SVC(**params), lambda: sklearn.svm.SVC(**params))
     raise ValueError(f"unknown algorithm {case.algorithm!r}")

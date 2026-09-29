@@ -46,6 +46,7 @@ scikit-learn derives from them. ``tests/parity/test_svc.py`` does all three.
 from __future__ import annotations
 
 import inspect
+import math
 import warnings
 from typing import ClassVar, NamedTuple
 
@@ -97,15 +98,34 @@ __all__ = ["SVC", "MLXSVCMixin"]
 
 _SUPPORTED_SHAPES = ("ovo", "ovr")
 
-#: Kernels patched dispatch never sends to MLX, whatever the size, with the fit that
-#: shows why (``docs/benchmarks.md``, the ``svc-linear`` and ``svc-sigmoid`` tables).
+#: Kernels patched dispatch never sends to MLX, whatever the size, with the fits that
+#: show why (``docs/benchmarks.md``, the ``svc-linear``, ``svc-sigmoid`` and
+#: ``svc-poly`` tables). Patched mode sends only ``"rbf"`` to MLX.
 _NEVER_ON_MLX = {
     "linear": "every size tried (0.07x-0.10x of LIBSVM)",
     "sigmoid": (
         "C = 10 and 100 at nearly every size tried from 128 features (down to 0.06x "
         "of LIBSVM), and at C = 1 at 1 000 x 256 (0.40x-0.44x)"
     ),
+    "poly": (
+        "C = 0.5 and 1 on digits upsampled to 256-784 pixels, on five latent directions "
+        "with random labels and with gamma above 'scale' (down to 0.46x of LIBSVM)"
+    ),
 }
+
+#: Of those, the kernels Layer 1 also keeps off the GPU at every size, on MLX's CPU
+#: device (:meth:`MLXSVCMixin._below_crossover`). Layer 1 keeps poly on its size
+#: rules; only patched mode hands it to LIBSVM (:meth:`MLXSVCMixin._kernel_handoff`).
+_BELOW_CROSSOVER_KERNELS = ("linear", "sigmoid")
+
+#: scikit-learn's default ``cache_size``, in MB, read off its signature: patched mode
+#: hands a fit with a smaller cache to LIBSVM (:meth:`MLXSVCMixin._kernel_handoff`).
+_DEFAULT_CACHE_SIZE = float(inspect.signature(_SkSVC.__init__).parameters["cache_size"].default)
+
+#: The relative tolerance the mean box is compared with: balanced class weights, or
+#: sample weights normalized to mean 1, average to one up to rounding, and must leave
+#: the box at C (:meth:`MLXSVCMixin._kernel_handoff`).
+_BOX_RTOL = 1e-9
 
 #: scikit-learn's message for a non-finite fitted model, verbatim so that code
 #: matching on it keeps working, plus what went wrong on the MLX path.
@@ -318,11 +338,12 @@ class MLXSVCMixin(BackendMixin):
 
         The linear and sigmoid kernels are excluded outright, and rbf and poly must
         clear a **width** floor as well as the sample and work floors, because
-        width is what decides on isotropic Gaussian data. Patched mode also reads
-        C and the kernel parameters (:meth:`_kernel_handoff`), which on data of
-        lower intrinsic dimension decide at any width. The calibration is
-        ``docs/benchmarks.md``'s ``svc``, ``svc-hard``, ``svc-structured``,
-        ``svc-params``, ``svc-sigmoid``, ``svc-linear``, ``svc-narrow``,
+        width is what decides on isotropic Gaussian data. Patched mode also hands
+        poly over at every size, and reads C and ``cache_size``
+        (:meth:`_kernel_handoff`), which on data of lower intrinsic dimension decide
+        at any width. The calibration is ``docs/benchmarks.md``'s ``svc``,
+        ``svc-hard``, ``svc-structured``, ``svc-params``, ``svc-poly``,
+        ``svc-cache``, ``svc-sigmoid``, ``svc-linear``, ``svc-narrow``,
         ``svc-multi`` and ``svc-multi-overlap`` tables, measured against
         scikit-learn 1.9.0 and 1.7.2.
 
@@ -350,10 +371,10 @@ class MLXSVCMixin(BackendMixin):
         that: the first release's ``n·d >= 10⁶`` could not tell 16 000 x 64 from
         4 000 x 256.
 
-        C and the kernel parameters move that crossing, through the iteration count:
-        a larger box, or a kernel close to the linear one, takes many iterations per
-        row over rows LIBSVM has cached, and loses at any width
-        (:meth:`_kernel_handoff`). The linear kernel's many cheap iterations are
+        C and the kernel move that crossing, through the iteration count: a larger
+        box, or a kernel whose iteration count the data's structure can multiply,
+        takes many iterations per row over rows LIBSVM has cached, and loses at any
+        width (:meth:`_kernel_handoff`). The linear kernel's many cheap iterations are
         exactly the case where
         per-iteration overhead is the whole cost, and it is excluded at every size;
         so is the sigmoid kernel, which won at C = 0.1 and lost at C = 10 and 100 at
@@ -378,7 +399,7 @@ class MLXSVCMixin(BackendMixin):
         """
         tuning = get_tuning()
 
-        if self.kernel in _NEVER_ON_MLX:
+        if self.kernel in _BELOW_CROSSOVER_KERNELS:
             return True, (
                 f"the {self.kernel} kernel was measured slower on the MLX path at "
                 f"{_NEVER_ON_MLX[self.kernel]}, so it is always handed to scikit-learn"
@@ -409,32 +430,40 @@ class MLXSVCMixin(BackendMixin):
         return False, ""
 
     def _kernel_handoff(self, mean_box: float | None = None) -> tuple[str, str] | None:
-        """Patched mode's handoff by C and the kernel parameters: ``(reason, detail)``.
+        """Patched mode's handoff by kernel, C and ``cache_size``: ``(reason, detail)``.
 
-        ``None`` when the fit may run on MLX. How many SMO iterations a fit takes per
-        row decides it — mlxlearn pays tens of microseconds for each, LIBSVM a few
-        once its cache holds the rows they revisit — and C, the box every dual
-        variable lives in, is what lets them multiply: the larger the box, the more
-        often the solver revisits the same rows. How much more depends on the data's
-        intrinsic dimension, which neither the width nor anything else a fit can
-        cheaply see reflects. On isotropic Gaussian data every binary fit above the
-        size floors won at C = 10 and 100 (tables ``svc``, ``svc-hard``); on data of
-        low intrinsic dimension — a few latent directions plus noise, singular values
-        1/i, features smoothed or heavy-tailed, scikit-learn's digits upsampled to
-        256 and 400 pixels — they lost at C = 10 (table ``svc-structured``). At
-        C <= 1 every one of those fits won, at every ``gamma`` measured. So an rbf or
-        poly fit needs a box of at most ``svc_max_c``: its mean box ``mean_box``,
-        C times the mean class and sample weight over the samples it keeps
-        (:meth:`_mean_box`) — C itself without weights, and with balanced class
-        weights, which average to one. ``None`` means it is not known yet: the
-        weights need the validated targets, and the box waits for them.
+        ``None`` when the fit may run on MLX. Three rules, each read from the
+        parameters, and each simple on purpose.
 
-        A polynomial kernel of low degree, or with a ``coef0`` that mixes in the
-        lower-degree terms, stays close to the linear kernel even at C = 1: degree
-        2 with ``coef0 = 1`` lost at 1 500 x 256 (table ``svc-params``). So poly also
-        needs degree ``svc_poly_min_degree`` or more and ``coef0 = 0``. The linear
-        kernel, whose iterations are the cheapest of all, is excluded at every size
-        (:meth:`_below_crossover`).
+        **Only the rbf kernel goes to MLX.** The linear and sigmoid kernels are
+        handed over at every size already (:meth:`_below_crossover`); patched mode
+        hands poly over too. Even at C <= 1 it lost on data the other grids did not
+        hold — digits upsampled to 256-784 pixels, a few latent directions with
+        random labels — and with ``gamma`` above ``"scale"``, down to 0.46x, where
+        rbf won on the same data (``docs/benchmarks.md``, table ``svc-poly``). Layer 1
+        keeps poly on its size rules, and on the GPU above them.
+
+        **C, through the mean box.** How many SMO iterations a fit takes per row
+        decides it — mlxlearn pays tens of microseconds for each, LIBSVM a few once
+        its cache holds the rows they revisit — and C, the box every dual variable
+        lives in, is what lets them multiply. How much depends on the data's
+        intrinsic dimension, which nothing a fit can cheaply see reflects: on
+        isotropic Gaussian data every binary fit above the size floors won at C = 10
+        and 100 (tables ``svc``, ``svc-hard``); on data of low intrinsic dimension
+        they lost at C = 10 (table ``svc-structured``), and at C <= 1 every rbf fit
+        won, at every ``gamma`` measured. So a fit needs a box of at most
+        ``svc_max_c``: its mean box ``mean_box``, C times the mean class and sample
+        weight over the samples it keeps (:meth:`_mean_box`) — C itself without
+        weights, with balanced class weights, and with sample weights normalized to
+        mean 1. Those average to one only up to rounding, so the comparison allows a
+        relative ``1e-9``. ``None`` means it is not known yet: the weights need the
+        validated targets, and the box waits for them.
+
+        **A cache smaller than scikit-learn's default**, 200 MB, goes to LIBSVM: rows
+        a cache that small cannot hold are evaluated on demand, a device call at a
+        time, where LIBSVM pays only its own row cost (table ``svc-cache``). The size
+        rules were measured at the default, and a larger cache only helps MLX build
+        the whole Gram at once.
 
         Patched mode only (``_select_backend``'s ``handoff``), as the neighbor
         estimators' width rules are: what it measures is LIBSVM winning, and a
@@ -443,12 +472,21 @@ class MLXSVCMixin(BackendMixin):
         Recorded as ``"below-crossover"``.
         """
         tuning = get_tuning()
-        if self.kernel not in ("rbf", "poly"):
-            return None
-        if mean_box is not None and not mean_box <= tuning.svc_max_c:
-            what = f"C={float(self.C):g}" if mean_box == float(self.C) else (
-                f"C={float(self.C):g} times the mean class and sample weight, "
-                f"{mean_box:g},"
+        if self.kernel != "rbf":
+            # Only poly and a kernel that is not a string get here: linear and sigmoid
+            # are handed over by _below_crossover, and the capability check refuses
+            # the rest before either.
+            if self.kernel not in _NEVER_ON_MLX:
+                return None
+            return "below-crossover", (
+                f"the {self.kernel} kernel was measured slower on the MLX path at "
+                f"{_NEVER_ON_MLX[self.kernel]}, so patched dispatch always hands it to "
+                "scikit-learn; only the rbf kernel runs on MLX"
+            )
+        C = float(self.C)
+        if mean_box is not None and not mean_box <= tuning.svc_max_c * (1.0 + _BOX_RTOL):
+            what = f"C={C:g}" if math.isclose(mean_box, C, rel_tol=_BOX_RTOL) else (
+                f"C={C:g} times the mean class and sample weight, {mean_box:g},"
             )
             return "below-crossover", (
                 f"{what} is above the measured SVC crossover for the box constraint "
@@ -456,13 +494,12 @@ class MLXSVCMixin(BackendMixin):
                 "same rows many times over, which LIBSVM does faster once its cache "
                 "holds them"
             )
-        if self.kernel == "poly" and (
-            int(self.degree) < tuning.svc_poly_min_degree or float(self.coef0) != 0.0
-        ):
+        if not float(self.cache_size) >= _DEFAULT_CACHE_SIZE:
             return "below-crossover", (
-                f"the poly kernel of degree {self.degree} with coef0={self.coef0!r} "
-                "is outside the measured SVC crossover for its kernel parameters "
-                f"(degree at least {tuning.svc_poly_min_degree}, coef0=0)"
+                f"cache_size={self.cache_size:g} is below scikit-learn's default of "
+                f"{_DEFAULT_CACHE_SIZE:g} MB, where the SVC crossover was measured: kernel "
+                "rows a smaller cache cannot hold are evaluated on demand, a device call "
+                "at a time, which LIBSVM does faster"
             )
         return None
 
@@ -472,7 +509,8 @@ class MLXSVCMixin(BackendMixin):
         :meth:`_sample_box`'s per-sample bounds, averaged over those above zero —
         the samples LIBSVM and :meth:`_fit_ovo` actually solve for. Weights that
         are all ``w`` make it ``C · w``, exactly the problem with that C; balanced
-        class weights average to one, and leave it ``C``.
+        class weights, and sample weights normalized to mean 1, average to one and
+        leave it ``C`` — up to rounding, which :meth:`_kernel_handoff` allows for.
         """
         box = float(self.C) * self.class_weight_[y_encoded]
         if sample_weight is not None:
@@ -958,6 +996,8 @@ class SVC(MLXSVCMixin, _SkSVC):
     kernel : {"linear", "poly", "rbf", "sigmoid"}, default="rbf"
         ``"precomputed"`` and callable kernels are not implemented on the MLX
         path and raise :class:`~mlxlearn.exceptions.UnsupportedParameterError`.
+        Under ``patch_sklearn()`` only ``"rbf"`` is sent to MLX; the other three
+        were measured slower there and always go to scikit-learn.
     degree : int, default=3
         Degree of the polynomial kernel. Evaluated by repeated squaring, so a
         negative base raised to an odd degree gives a negative value rather than
@@ -1001,6 +1041,10 @@ class SVC(MLXSVCMixin, _SkSVC):
         2.2e-03 and changed the iteration count. Every result is KKT-optimal and
         within the tolerance in ``docs/fp32_policy.md``. Pin ``cache_size``
         explicitly, on either device, if you need bit-reproducible fits.
+
+        Under ``patch_sklearn()`` a ``cache_size`` below the default of 200 hands
+        the fit to scikit-learn: rows a smaller cache cannot hold are evaluated on
+        demand, a device call at a time, and LIBSVM was faster there.
     class_weight : dict or "balanced", default=None
     verbose : bool, default=False
         Accepted and ignored.
@@ -1148,9 +1192,10 @@ class SVC(MLXSVCMixin, _SkSVC):
             "fit",
             shape=_safe_shape(X),
             crossover=lambda n, d: self._crossover_from_raw((n, d), y),
-            # The poly kernel needs no data, and nor does the box without weights,
-            # or with balanced class weights, which average to one; other weights
-            # scale C sample by sample and are read below, once the targets are.
+            # The kernel and cache_size need no data, and nor does the box without
+            # weights, or with balanced class weights, which average to one; other
+            # weights scale C sample by sample and are read below, once the targets
+            # are.
             handoff=lambda n, d: self._kernel_handoff(
                 float(self.C)
                 if sample_weight is None and _is_none_or_balanced(self.class_weight)
