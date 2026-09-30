@@ -809,11 +809,13 @@ def _search_diagnostics(stats: dict) -> tuple[str, dict]:
     """``(detail, extra)`` for a query event from ``NeighborIndex.query``'s ``stats``.
 
     Empty for the ordinary case, where the first float32 pass certified every row.
-    Otherwise the event says how many rows the first pass could not certify, how many
-    of those went to the wider candidate search, and how many to the exact one — some
-    directly, when a sampled count showed the wider search could not certify them
-    either: the answer is the same, but the time is not, and a slow ``kneighbors`` on
-    near-duplicate or tied data is explained by exactly this.
+    Otherwise the event says how many rows the first pass could not certify, and how
+    those were answered: some went straight to the exact search, when a count on a
+    sample of the training rows estimated that the wider candidate search could not
+    certify them either; the rest were searched wider, and some of those needed the
+    exact search after all. The parts add up to the whole. The answer is the same
+    either way, but the time is not, and a slow ``kneighbors`` on near-duplicate or
+    tied data is explained by exactly this.
     """
     widened = int(stats.get("widened_rows", 0))
     skipped = int(stats.get("widen_skipped_rows", 0))
@@ -823,12 +825,19 @@ def _search_diagnostics(stats: dict) -> tuple[str, dict]:
     rows = int(stats.get("rows", 0))
     detail = f"{widened} of {rows} query rows could not be certified by the first float32 pass"
     if skipped:
-        searched = widened - skipped
+        # Skipped rows are searched exactly too, so exact - skipped is what the wider
+        # search could not certify.
+        searched, after = widened - skipped, exact - skipped
         detail += (
-            f"; {exact} of them needed the exact search, {skipped} directly, where a sampled "
-            "count showed that more candidates could not certify them"
-            + (f", and {searched} were first searched again with more candidates" if searched else "")
+            f"; {skipped} of them went straight to the exact search, where a count on a "
+            "sample of the training rows estimated that more candidates could not certify "
+            "them either"
         )
+        if searched:
+            detail += f"; {searched} were searched again with more candidates, " + (
+                f"and {after} of those needed the exact search too" if after
+                else "which certified them"
+            )
     else:
         detail += " and were searched again with more candidates" + (
             f"; {exact} of them needed the exact search" if exact else ""

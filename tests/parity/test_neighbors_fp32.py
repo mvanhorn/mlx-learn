@@ -285,9 +285,78 @@ def test_the_second_pass_is_skipped_only_where_it_cannot_certify(
             _assert_same_bits(index.query(Q, 5), (dist, idx))
 
 
-def test_the_diagnostics_say_which_rows_skipped_the_second_pass(rng):
-    """One event per call, and the skip in it: the time a query took is explained."""
-    X, Q = _far_cluster(rng, 2000)
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_rows_repeating_in_step_with_the_sample_still_get_the_second_pass(backend, rng):
+    """1008 rows tiled 40 times, and queries beside the rows at multiples of 16.
+
+    Each query has the 40 copies of its row in its Gram noise band: too many for the
+    first pass, which carries 14, and few enough for the second, which carries 270
+    and certifies every one. The count before it samples one training row in 16.
+    Every 16th row, which it used to take, held all 40 copies of each of these rows
+    — 1008 is a multiple of 16 — so it counted 640, past twice the second pass's
+    carry, and sent every query straight to the exact search.
+    """
+    base = rng.normal(size=(1008, 16))
+    X = np.tile(base, (40, 1))
+    Q = base[::16][:32] + 1e-6 * rng.normal(size=(32, 16))
+    index = build_index(X, backend=backend)
+
+    stats = {}
+    dist, idx = index.query(Q, 10, stats=stats)
+    assert stats == {"rows": 32, "widened_rows": 32, "widen_skipped_rows": 0, "exact_rows": 0}
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 10)
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+
+#: Far points for clusters of 1e-4 spread, and what the search does with ten queries
+#: in each: 2000 members are past twice the second pass's carry (the count skips it),
+#: 100 within its carry (it certifies them), 400 between (it is tried, and fails).
+_CLUSTER_CENTERS = {
+    2000: np.full(4, 1000.0),
+    100: np.full(4, -1000.0),
+    400: np.array([1000.0, -1000.0, 1000.0, -1000.0]),
+}
+
+
+@pytest.mark.parametrize(
+    ("members", "skipped", "exact", "account"),
+    [
+        (
+            (2000,), 10, 10,
+            "10 of 10 query rows could not be certified by the first float32 pass; 10 of "
+            "them went straight to the exact search, where a count on a sample of the "
+            "training rows estimated that more candidates could not certify them either",
+        ),
+        (
+            (2000, 100), 10, 10,
+            "20 of 20 query rows could not be certified by the first float32 pass; 10 of "
+            "them went straight to the exact search, where a count on a sample of the "
+            "training rows estimated that more candidates could not certify them either; "
+            "10 were searched again with more candidates, which certified them",
+        ),
+        (
+            (2000, 100, 400), 10, 20,
+            "30 of 30 query rows could not be certified by the first float32 pass; 10 of "
+            "them went straight to the exact search, where a count on a sample of the "
+            "training rows estimated that more candidates could not certify them either; "
+            "20 were searched again with more candidates, and 10 of those needed the exact "
+            "search too",
+        ),
+        (
+            (100, 400), 0, 10,
+            "20 of 20 query rows could not be certified by the first float32 pass and were "
+            "searched again with more candidates; 10 of them needed the exact search",
+        ),
+    ],
+)
+def test_the_diagnostics_account_for_every_row_once(members, skipped, exact, account, rng):
+    """One event per call, and in it each row the first pass could not certify, once:
+    skipped to the exact search, certified by the second pass, or searched exactly
+    after it. The time a query took is explained, and the parts add up."""
+    clusters = [_CLUSTER_CENTERS[m] + 1e-4 * rng.normal(size=(m, 4)) for m in members]
+    X = np.vstack([*clusters, 50.0 * rng.normal(size=(3000, 4))])
+    Q = np.vstack([_CLUSTER_CENTERS[m] + 1e-4 * rng.normal(size=(10, 4)) for m in members])
     with tuning_context(force_backend="cpu"):
         model = NearestNeighbors(n_neighbors=5).fit(X)
     clear_backend_diagnostics()
@@ -296,15 +365,11 @@ def test_the_diagnostics_say_which_rows_skipped_the_second_pass(rng):
     assert {key: event.extra[key] for key in ("search", "widened_rows", "widen_skipped_rows",
                                               "exact_rows")} == {
         "search": "certificate-fallback",
-        "widened_rows": 20,
-        "widen_skipped_rows": 20,
-        "exact_rows": 20,
+        "widened_rows": len(Q),
+        "widen_skipped_rows": skipped,
+        "exact_rows": exact,
     }
-    assert event.detail == (
-        "20 of 20 query rows could not be certified by the first float32 pass; 20 of them "
-        "needed the exact search, 20 directly, where a sampled count showed that more "
-        "candidates could not certify them. The neighbors returned are exact either way."
-    )
+    assert event.detail == account + ". The neighbors returned are exact either way."
 
 
 def _assert_same_bits(got, want):

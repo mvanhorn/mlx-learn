@@ -549,6 +549,62 @@ def test_more_rows_than_a_key_can_address_are_refused():
 
 
 # ----------------------------------------------------------------------------------
+# the count before the second pass
+# ----------------------------------------------------------------------------------
+
+
+def _band_rows(n_train, stride):
+    """The rows ``band_count`` samples, as the host computes them."""
+    window = np.arange(distance._band_windows(n_train, stride), dtype=np.uint32)
+    return window * np.uint32(stride) + distance._band_offset(window, np.uint32(stride))
+
+
+@pytest.mark.parametrize(
+    ("n_train", "stride"), [(40_320, 16), (1_000_003, 16), (5_000, 17), (544, 17), (545, 17)]
+)
+def test_the_count_samples_one_row_in_each_window(n_train, stride):
+    """One row in each window of ``stride``, inside it; the last window, when short,
+    keeps its row only where the row falls inside the index."""
+    rows = _band_rows(n_train, stride).astype(np.int64)
+    np.testing.assert_array_equal(rows // stride, np.arange(rows.size))
+    assert rows.max() < n_train
+    last = -(-n_train // stride) - 1
+    offset = int(distance._band_offset(np.array([last], np.uint32), np.uint32(stride))[0])
+    assert rows.size == last + int(last * stride + offset < n_train)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_the_device_samples_the_rows_the_host_says(device):
+    """The hash is ``uint32`` arithmetic, which wraps alike in NumPy and in MLX."""
+    n_train, stride = 100_003, 17
+    fns = distance._kernels(device)
+    with use_device(device):
+        got = fns.band_rows(
+            mx.arange(distance._band_windows(n_train, stride), dtype=mx.uint32),
+            mx.array(stride, dtype=mx.uint32),
+        )
+        got = np.array(got)
+    assert got.dtype == np.uint32
+    np.testing.assert_array_equal(got, _band_rows(n_train, stride))
+
+
+@pytest.mark.parametrize("period", [16, 1008, 1024, 16_384])
+def test_the_count_does_not_line_up_with_rows_that_repeat(period):
+    """Rows repeating every ``period`` rows, a multiple of the stride, 48 times over.
+
+    Every 16th row, which the count used to take, holds all 48 copies of a sixteenth
+    of the rows and none of the others', so the rows at multiples of 16 counted 16
+    times their copies. Sampled at a hashed place in each window, every row has
+    three copies in the sample on average, and none has half the 34 that the call
+    at twice the second pass's carry needs at k=10.
+    """
+    stride, copies = 16, 48
+    per_row = np.bincount(_band_rows(period * copies, stride) % period, minlength=period)
+    assert per_row.mean() == copies / stride
+    assert per_row.max() < 17
+
+
+# ----------------------------------------------------------------------------------
 # two-stage selection
 # ----------------------------------------------------------------------------------
 

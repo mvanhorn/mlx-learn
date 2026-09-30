@@ -19,9 +19,9 @@ the Gram noise exceeds the gaps between neighbors and true neighbors are silentl
 dropped. So every row is **certified**. A rigorous float32 error bound on the
 identity proves that no training row left out of the candidate set can beat the
 k-th refined distance; a row it cannot certify is searched again with a much wider
-candidate set, and if that fails too — or if a sampled count shows that it must —
-exactly, by direct differences against every training row. See
-``docs/fp32_policy.md`` §2.1.
+candidate set, and if that fails too — or if a count on a sample of the training
+rows estimates that it would — exactly, by direct differences against every
+training row. See ``docs/fp32_policy.md`` §2.1.
 
 **A total order.** Results are the first ``k`` training rows under ``(refined
 distance, training index)``, so exact ties break on the smaller index — including
@@ -70,16 +70,22 @@ _WIDEN_EXTRA = 256
 #: reaches this multiple of the second pass's carry: with that many rows in the band,
 #: the second pass has nothing to certify with (see ``_Search.cannot_widen``). On one
 #: unscaled column at 1e6 x 16, where most rows need the exact search anyway, the skip
-#: made a query 9-14% faster; on jittered duplicates, which the second pass does
-#: certify, the count cost 2-3%.
+#: made a query 9-14% faster. Where the second pass does certify the rows — queries
+#: beside training rows jittered or repeated many times over — the count is a device
+#: round trip spent for nothing: after an idle gap, a query of 256 rows took 1.03-1.05x
+#: the time, and one of a single row about 1.25x.
 _SKIP_MARGIN = 2
 
-#: Sampled rows expected in the band at the decision point. The estimate counts every
-#: ``_SKIP_MARGIN * k_wide // _SAMPLE_HITS``-th training row — every 16th at k=10 — so
-#: a true count of ``k_wide``, where the second pass starts to fail, shows about 17
-#: hits and is called at 34 or more, a Poisson tail near 1e-4; the count costs about
-#: a sixteenth of a first pass.
+#: Sampled rows expected in the band at the decision point. The estimate counts one
+#: training row in each ``_SKIP_MARGIN * k_wide // _SAMPLE_HITS`` — one in 16 at k=10 —
+#: so a true count of ``k_wide``, where the second pass starts to fail, shows about 17
+#: hits on average and is called at 34 or more; the count's arithmetic is about a
+#: sixteenth of a first pass.
 _SAMPLE_HITS = 32
+
+#: Seed of the hash that places the count's sampled rows (:func:`_band_offset`): fixed,
+#: so a query takes the same route, and the same time, every time it is asked.
+_SAMPLE_SEED = 0x5EED
 
 #: Segment widths for two-stage selection on the GPU: at least 512, at least four
 #: times the number kept, at most 8192. MLX's GPU ``argpartition`` is effectively a
@@ -110,7 +116,7 @@ _REFINE_WORKSET_FACTOR = 4
 #: reuse MLX's cached buffers. A fixed tile of this width, evaluated one at a time,
 #: cost 245 synchronizations over a million training rows however few rows were
 #: searched. With budget-sized tiles, queries on one unscaled column at 1e6 x 16 ran
-#: 17-21x faster for one row and about 3x for 256; the skip and the 32-bit keys
+#: 12-21x faster for one row and about 3x for 256; the skip and the 32-bit keys
 #: without them, 1.02-1.05x.
 _EXACT_MIN_COLS = 4096
 
@@ -308,6 +314,10 @@ def _kernels(device: str) -> SimpleNamespace:
         diff = ((t - q) + (t_lo - q_lo)) * scale
         return diff * diff
 
+    def band_rows(window, stride):
+        # The row ``_Search.band_count`` counts in each window of ``stride`` rows.
+        return window * stride + _band_offset(window, stride)
+
     fns = {
         "center_scale": center_scale,
         "center_scale_lo": center_scale_lo,
@@ -315,6 +325,7 @@ def _kernels(device: str) -> SimpleNamespace:
         "tile_key": tile_key,
         "pair_sq": pair_sq,
         "pair_sq_lo": pair_sq_lo,
+        "band_rows": band_rows,
     }
     if device == "gpu":
         fns = {name: mx.compile(fn) for name, fn in fns.items()}
@@ -698,7 +709,7 @@ class NeighborIndex:
         stats : dict, optional
             If given, filled with how the rows were answered: ``"rows"``,
             ``"widened_rows"`` (the first pass could not certify them),
-            ``"widen_skipped_rows"`` (of those, the rows a sampled count showed a
+            ``"widen_skipped_rows"`` (of those, the rows a sampled count estimated a
             wider pass could not certify either, so it was skipped) and
             ``"exact_rows"`` (searched exactly: those, and the rows the wider pass
             could not certify). The kernel knows nothing of estimators, so it is the
@@ -1119,7 +1130,7 @@ class _Search:
         return out_idx, out_sq
 
     def cannot_widen(self, qb: _QueryBlock, gmax: np.ndarray, k_wide: int) -> np.ndarray:
-        """Rows of ``qb`` that a wider pass carrying ``k_wide`` would fail to certify.
+        """Rows of ``qb`` a wider pass carrying ``k_wide`` would, by an estimate, fail to certify.
 
         Which search answers a row decides only the time: the exact search computes
         each pair's distance as refinement does and ranks every training row by the
@@ -1128,12 +1139,13 @@ class _Search:
         noise band ``C·‖q‖²``: the wider pass's bound is then at most its largest
         kept Gram value less ``C·‖q‖²`` (the ``f`` branch of
         :func:`_excluded_lower_bound`), which is at most zero, and it has to exceed
-        the k-th distance. The band is counted, on a sample, only for rows whose
-        first-pass ``gmax`` already lies inside it — as it must when ``k_wide`` rows
-        do, the first pass carrying fewer — and a row whose estimate reaches
-        ``_SKIP_MARGIN * k_wide`` skips the wider pass. Not a proof — a sample, and a
-        bound that takes its ``g`` branch when every training norm lies beyond the
-        split — hence the margin; a wrong call costs time, never the answer.
+        the k-th distance. The band is counted, on a sample (:meth:`band_count`),
+        only for rows whose first-pass ``gmax`` already lies inside it — as it must
+        when ``k_wide`` rows do, the first pass carrying fewer — and a row whose
+        estimate reaches ``_SKIP_MARGIN * k_wide`` skips the wider pass. Not a proof —
+        a sample, and a bound that takes its ``g`` branch when every training norm
+        lies beyond the split — hence the margin; a wrong call costs time, never the
+        answer.
         """
         skip = np.zeros(qb.n, dtype=bool)
         need = _SKIP_MARGIN * k_wide
@@ -1150,15 +1162,27 @@ class _Search:
     def band_count(self, qb: _QueryBlock, band: np.ndarray, need: int) -> np.ndarray:
         """Per row of ``qb``, about how many training rows have a Gram value ``<= band``.
 
-        Counted on every ``stride``-th training row, with ``stride`` set so that about
-        ``_SAMPLE_HITS`` sampled rows sit at the decision point ``need``, and scaled
-        back up. The same tile expression as the search.
+        Counted on one training row in each window of ``stride`` consecutive rows,
+        with ``stride`` set so that about ``_SAMPLE_HITS`` sampled rows sit at the
+        decision point ``need``, and scaled back up; the same tile expression as the
+        search. Each window's row sits at an offset hashed from the window's index
+        (:func:`_band_offset`), so every training row is counted with the same
+        chance, ``1 / stride``, however the rows are ordered. Every ``stride``-th row
+        was not: rows that repeat with a period that is a multiple of the stride — a
+        set tiled or stacked on itself — put every copy of one row in the sample and
+        no copy of the next, so a query near such a row counted its copies ``stride``
+        times over, and skipped a second pass that would have certified it. Were the
+        offsets independent of the data, a true count of ``k_wide`` would reach the
+        call at twice that with at most a Poisson tail's chance, of order 1e-4; they
+        are fixed, so that is an estimate, not a bound.
         """
         mx, state = self.mx, self.state
         stride = max(1, need // _SAMPLE_HITS)
-        sel = state.sel[::stride]
-        sel_sq = state.sel_sq[::stride]
-        n_sample = int(sel.shape[0])
+        n_sample = _band_windows(self.index.n_samples, stride)
+        # Built on the device for this call alone, and gathered from tile by tile.
+        sample = self.fns.band_rows(
+            mx.arange(n_sample, dtype=mx.uint32), mx.array(stride, dtype=mx.uint32)
+        )
         plan = resolve_blocks(qb.n, n_sample, backend=self.plan_backend, k_search=1)
         limit = mx.array(band.astype(NUMPY_FLOAT)[:, None])
         counts = []
@@ -1166,9 +1190,10 @@ class _Search:
             r_end = min(r_start + plan.query_rows, qb.n)
             total = None
             for t_start in range(0, n_sample, plan.train_cols):
-                t_end = min(t_start + plan.train_cols, n_sample)
-                gram = qb.sel[r_start:r_end] @ sel[t_start:t_end].T
-                tile = self.fns.tile(qb.sq[r_start:r_end], sel_sq[None, t_start:t_end], gram)
+                rows = sample[t_start : t_start + plan.train_cols]
+                gram = qb.sel[r_start:r_end] @ mx.take(state.sel, rows, axis=0).T
+                t_sq = mx.take(state.sel_sq, rows)[None]
+                tile = self.fns.tile(qb.sq[r_start:r_end], t_sq, gram)
                 hits = mx.sum((tile <= limit[r_start:r_end]).astype(mx.int32), axis=1)
                 total = hits if total is None else total + hits
                 mx.eval(total)
@@ -1195,7 +1220,7 @@ class _Search:
         this block can reach and the largest index fit in 32 bits together
         (:func:`_int_key_bits`), its key is ``distance << bits | index`` in ``uint32``
         instead, which orders the same and moves half the bytes through selection:
-        binary 1e6 x 16 with 256 queries ran 1.66x faster, and no faster without it.
+        binary 1e6 x 16 with 256 queries ran 1.6x faster, and no faster without it.
         """
         mx, state = self.mx, self.state
         fns = self.fns
@@ -1295,6 +1320,32 @@ def _exact_cols(budget: int, rows: int, pair_bytes: int) -> int:
     """
     wide = max(1, budget // max(pair_bytes * rows * _EXACT_MIN_COLS, 1))
     return _EXACT_MIN_COLS << (wide.bit_length() - 1)
+
+
+def _band_offset(window, stride):
+    """Where in its window of ``stride`` rows each window in ``window`` is sampled.
+
+    Wellons's ``lowbias32`` hash of the window's index, seeded with
+    ``_SAMPLE_SEED``, reduced modulo ``stride``. Plain ``uint32`` arithmetic, which
+    wraps alike in NumPy and in MLX on either device, so the host can say where any
+    window's row falls without asking the device.
+    """
+    h = window ^ _SAMPLE_SEED
+    h = (h ^ (h >> 16)) * 0x7FEB352D
+    h = (h ^ (h >> 15)) * 0x846CA68B
+    return (h ^ (h >> 16)) % stride
+
+
+def _band_windows(n_train: int, stride: int) -> int:
+    """How many windows of ``stride`` rows :meth:`_Search.band_count` takes a row from.
+
+    Every window that starts inside the index, less the last when it is short and
+    its row falls past the end. So every row is counted with the same chance.
+    """
+    windows = -(-n_train // stride)
+    last = windows - 1
+    offset = int(_band_offset(np.array([last], dtype=np.uint32), np.uint32(stride))[0])
+    return windows - int(last * stride + offset >= n_train)
 
 
 def _integer_sq_bound(state: _DeviceState, q_min, q_max, shift: int) -> float | None:

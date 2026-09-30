@@ -130,12 +130,15 @@ and then it proves the selection right:
 5. **Fallback.** A query the certificate rejects is searched again with at least 256 more
    candidates and, if that is rejected too, exactly: direct differences against every
    training row, on the device, in budgeted chunks, ranked by a composite
-   `(distance, index)` key. A query whose Gram noise band holds at least twice as many
-   training rows as that wider search carries — counted on a sample of the rows — could
-   not be certified by it, and goes to the exact search at once. Which search answers a
-   query changes only the time: each computes a pair's distance the same way and ranks by
-   the same key. Small-integer data — binary, one-hot, counts — makes the identity exact
-   outright, and takes that exact search directly.
+   `(distance, index)` key. A query goes to the exact search at once when a count on a
+   sample of the training rows — one in each run of about 16 consecutive rows, at a place
+   hashed from the run's position, so that rows repeating with a period do not line up
+   with it — estimates that its Gram noise band holds at least twice as many rows as that
+   wider search carries, too many for the wider search to certify it. The count is an
+   estimate, not a proof, and a wrong call costs only time: whichever search answers a
+   query computes a pair's distance the same way and ranks by the same key. Small-integer
+   data — binary, one-hot, counts — makes the identity exact outright, and takes that
+   exact search directly.
 
 A fixed over-selection margin was not enough, and nothing checked it. Where the Gram noise
 exceeds the gaps between neighbors — tight clusters, near-duplicates, one unscaled column
@@ -161,9 +164,12 @@ indices among equal values; on the CPU it was not. Binary and small-integer data
 *faster*, because it no longer goes through the identity at all. A far-out row is not
 ordinary once it moves the mean itself — a fill value of 1e10 among a few thousand
 unit-scale rows does: every translated norm then carries the shift, the noise band
-outgrows the gaps, and every query takes the exact search. When a call needed the wider
-pass or the exact search, its diagnostics event says for how many rows, and for how many
-the wider pass was skipped.
+outgrows the gaps, and every query takes the exact search. The count that decides whether
+a query can skip the wider pass costs a device round trip of its own, which queries right
+beside many copies of a training row pay for nothing when the wider pass then certifies
+them: at 1 000 000 × 16, after an idle gap, about 1.25× the time for one query row and
+1.03–1.05× for 256. When a call needed the wider pass or the exact search, its
+diagnostics event says for how many rows, and for how many the wider pass was skipped.
 
 Against stock scikit-learn rather than 0.1.0a2, that second pass is what decides: on such
 data MLX lost at every shape the size rules send it, down to 0.17× (grid `knn-data` in

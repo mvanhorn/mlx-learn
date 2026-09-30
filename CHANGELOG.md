@@ -929,19 +929,26 @@ Where patched dispatch now sends each problem is under **Changed**.
   same bit for bit. The exact search takes as many training rows per tile as the memory
   budget holds for the rows it searches, where it took 4 096 with a device round trip
   after each (245 over a million rows); a row that a count on a sample of the training
-  rows shows the second pass cannot certify skips it; and binary and small-integer data
-  key the exact search in 32 bits where the distances and indices fit. Against the
+  rows estimates the second pass cannot certify skips it; and binary and small-integer
+  data key the exact search in 32 bits where the distances and indices fit. Against the
   certified search without these, at 1 000 000 × 16 with one unscaled column and
-  `k=10`: 17–21× faster for 1 query, 4.9–5.8× for 16 and 2.96–3.06× for 256; binary
-  1 000 000 × 16, 256 queries, 1.66×; jittered duplicates, which the second pass does
-  certify, 0.97×, the sampled count's cost. Measured on the GPU of the same M4 Max with
-  MLX 0.32.2, under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, with
-  the prototype's own harness rather than `benchmarks/ab.py`: each call after a garbage
-  collection and a 10 ms idle gap, medians of 7–21 calls. MLX's CPU device and MLX
-  0.31.2 run the same code, and were not timed. Wider tiles hold more of the budget
-  while they run: at a 64 MiB budget, two rows searched exactly against 200 000 × 16
-  peaked at 21 MiB on the GPU and 53 MiB on MLX's CPU, against about 5 MiB before, and
-  at a 16 MiB budget at 5.3 and 13.3 MiB.
+  `k=10`: 12–21× faster for 1 query, 3.9–5.1× for 16 and 3.0–3.2× for 256, depending
+  on the rows queried; binary 1 000 000 × 16, 256 queries, 1.60–1.64×; all
+  significant. The count costs a device round trip of its own, which queries beside
+  training rows repeated or jittered many times over pay for nothing when the second
+  pass then certifies them: 1 000 000 × 16 drawn from 50 000 rows with 1e-5 of jitter,
+  queried beside them, ran 0.81–0.82× as fast for 1 query, 0.89–0.93× for 16 (not
+  significant) and 0.97× for 256, and 16 384 rows tiled 48 times 0.79–0.80×,
+  0.88–0.91× and 0.96×. Exact duplicates queried with fresh rows, which the count does
+  not reach, 0.99–1.02×. Measured on the GPU of the same M4 Max with MLX 0.32.2, under
+  Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, with a harness of
+  its own rather than `benchmarks/ab.py`: the code before and after in processes of
+  their own, each call after a garbage collection and a 10 ms idle gap, 24 calls each
+  in a balanced order; medians, "significant" meaning three standard errors apart.
+  MLX's CPU device and MLX 0.31.2 run the same code, and were not timed. Wider tiles
+  hold more of the budget while they run: at a 64 MiB budget, two rows searched exactly
+  against 200 000 × 16 peaked at 21 MiB on the GPU and 53 MiB on MLX's CPU, against
+  about 5 MiB before, and at a 16 MiB budget at 5.3 and 13.3 MiB.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32
@@ -969,25 +976,29 @@ Where patched dispatch now sends each problem is under **Changed**.
   partial sums, the division by the weight sum and the penalty — which also cut the
   binary gradient's error at 10⁶ rows, against a float64 evaluation, from up to 1.7e-7
   to 1.1e-8 of its scale. The CPU device is unchanged, bit for bit. Measured against the
-  transposed layout rather than 0.1.0a2, on the GPU of the same M4 Max — MLX 0.32.2
-  under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, and MLX 0.31.2
-  under Python 3.10 with NumPy 1.23.5 and scikit-learn 1.7.0 — with the prototype's own
-  harness rather than `benchmarks/ab.py`, each call after a garbage collection and a
-  10 ms idle gap, as patched dispatch meets a fit (medians of 9–25 calls; "significant"
-  means medians three standard errors apart): binary 1 000 000 × 16 fits 1.22–1.37×
-  faster on MLX 0.32.2, significant, and 1.14–1.26× on 0.31.2; binary 200 000 × 16–64
-  fits 0.97–1.11×, mostly not significant; multinomial fits 1.03–1.40× (200 000 × 16
-  with ten classes 1.39–1.40× and significant on 0.32.2, 1.03× and not significant on
-  0.31.2); no case significantly slower. Iteration counts are unchanged on the pinned
-  problems of `tests/unit/test_lbfgs.py` and on every larger fit compared that stops on
-  `tol`, on both MLX versions, and objectives moved by at most 8e-10 relative; where
-  rounding decides the stop, a fit can still move (**Changed**). Both halves ship short
-  of bars set before they were measured. The binary one asked for 15% on both MLX
-  versions, and 0.31.2 gave 1.14× at the low end. The multinomial one asked for a 30%
-  faster evaluation, where one evaluation at 60 000 × 64 with three classes is 11–21%
-  faster; it ships because it slowed nothing down and the maintainer asked for it. No
-  dispatch threshold moves: the row floors were set by fits that fixed costs dominate,
-  which were not re-measured.
+  transposed layout rather than 0.1.0a2, on the GPU of the same M4 Max, each fit after
+  a garbage collection and a 10 ms idle gap, as patched dispatch meets one. On MLX
+  0.32.2, under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, as the
+  neighbor entry above was measured (24 fits each in a balanced order): binary
+  1 000 000 × 16 fits 1.22–1.26× faster, binary 200 000 × 16 1.12–1.13×, multinomial
+  200 000 × 16 with ten classes 1.25–1.26× and 60 000 × 64 with three 1.21–1.22×, all
+  significant. On MLX 0.31.2, under Python 3.10 with NumPy 1.23.5 and scikit-learn
+  1.7.0, only the prototype was timed, with its own harness (medians of 9–25 fits):
+  binary 1 000 000 × 16 1.14–1.26×, and multinomial 200 000 × 16 with ten classes
+  1.03×, which was not significant; it also put binary 200 000 × 32 and × 64 at
+  0.97–1.11×, mostly not significant. No case was significantly slower. Iteration counts
+  are unchanged on the pinned problems of `tests/unit/test_lbfgs.py`, whose objectives
+  moved by at most 8e-10 relative, and on every larger fit compared that stops on
+  `tol`, on both MLX versions. The four fits above kept their iteration counts too, and
+  their objectives moved by at most 7.4e-7 relative, except the 60 000 × 64 three-class
+  one: it is separable, its objective is about 2.5e-4 a row, and it moved by 9.5e-5
+  relative in the same ten iterations. Where rounding decides the stop, a fit can still
+  move (**Changed**). Both halves ship short of bars set before they were measured. The
+  binary one asked for 15% on both MLX versions, and 0.31.2 gave 1.14× at the low end.
+  The multinomial one asked for a 30% faster evaluation, where one evaluation at
+  60 000 × 64 with three classes is 11–21% faster; it ships because it slowed nothing
+  down and the maintainer asked for it. No dispatch threshold moves: the row floors were
+  set by fits that fixed costs dominate, which were not re-measured.
 - `SVC` fits no longer fall off a cliff once a one-vs-one subproblem exceeds the
   kernel-cache Gram cutoff (about 7 240 rows at the default `cache_size=200`): on a cache
   miss, kernel rows are fetched many per GPU round trip, together with the rows closest to

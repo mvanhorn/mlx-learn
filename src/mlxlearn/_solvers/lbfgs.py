@@ -85,8 +85,9 @@ import numpy as np
 
 __all__ = ["GRADIENT_RESOLUTION", "LBFGSConfig", "LBFGSState", "minimize"]
 
-#: ``fun(x) -> (objective, gradient)``: a Python float and an ``mx.array`` shaped
-#: like ``x``.
+#: ``fun(x) -> (objective, gradient)``: a Python float, and an ``mx.array`` or a NumPy
+#: array shaped like ``x``, float32 or float64, which the solver reads through
+#: ``np.asarray``.
 ObjectiveGradient = Callable[[Any], "tuple[float, Any]"]
 
 #: ``max|g|`` below this fraction of its starting value is not resolvable in float32
@@ -441,16 +442,18 @@ def minimize(
     Parameters
     ----------
     fun : callable
-        ``fun(x) -> (objective, gradient)``. ``x`` and ``gradient`` are float32
-        ``mx.array`` of identical shape; ``objective`` is a Python float. ``fun``
-        should evaluate its gradient before returning — one synchronization for the
-        value and the gradient together is the whole per-evaluation cost the solver
-        adds. The pair must be *consistent* — the gradient must be the derivative of
-        the value actually returned. A clipped objective paired with the unclipped
-        analytic gradient makes the line search chase a decrease the derivative does
-        not predict, which is how the ancestor produced
-        ``ABNORMAL_TERMINATION_IN_LNSRCH`` and then reported it as ordinary
-        non-convergence.
+        ``fun(x) -> (objective, gradient)``. ``x`` is a float32 ``mx.array``;
+        ``gradient`` has its shape, and is an ``mx.array`` or a NumPy array, float32
+        or float64 — the solver reads it through ``np.asarray`` in float64, so an
+        objective that finishes on the host can return its float64 gradient as it
+        is; ``objective`` is a Python float. ``fun`` should evaluate its gradient
+        before returning — one synchronization for the value and the gradient
+        together is the whole per-evaluation cost the solver adds. The pair must be
+        *consistent* — the gradient must be the derivative of the value actually
+        returned. A clipped objective paired with the unclipped analytic gradient
+        makes the line search chase a decrease the derivative does not predict, which
+        is how the ancestor produced ``ABNORMAL_TERMINATION_IN_LNSRCH`` and then
+        reported it as ordinary non-convergence.
     x0 : mx.array
         Starting point. Any shape; the solver treats it as a vector space and hands
         ``fun`` the same shape back, so a caller may keep a natural
