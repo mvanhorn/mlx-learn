@@ -809,24 +809,35 @@ def _search_diagnostics(stats: dict) -> tuple[str, dict]:
     """``(detail, extra)`` for a query event from ``NeighborIndex.query``'s ``stats``.
 
     Empty for the ordinary case, where the first float32 pass certified every row.
-    Otherwise the event says how many rows needed the wider candidate search and how
-    many the exact one: the answer is the same, but the time is not, and a slow
-    ``kneighbors`` on near-duplicate or tied data is explained by exactly this.
+    Otherwise the event says how many rows the first pass could not certify, how many
+    of those went to the wider candidate search, and how many to the exact one — some
+    directly, when a sampled count showed the wider search could not certify them
+    either: the answer is the same, but the time is not, and a slow ``kneighbors`` on
+    near-duplicate or tied data is explained by exactly this.
     """
     widened = int(stats.get("widened_rows", 0))
+    skipped = int(stats.get("widen_skipped_rows", 0))
     exact = int(stats.get("exact_rows", 0))
     if not (widened or exact):
         return "", {}
     rows = int(stats.get("rows", 0))
-    detail = (
-        f"{widened} of {rows} query rows could not be certified by the first float32 "
-        "pass and were searched again with more candidates"
-        + (f"; {exact} of them needed the exact search" if exact else "")
-        + ". The neighbors returned are exact either way."
-    )
+    detail = f"{widened} of {rows} query rows could not be certified by the first float32 pass"
+    if skipped:
+        searched = widened - skipped
+        detail += (
+            f"; {exact} of them needed the exact search, {skipped} directly, where a sampled "
+            "count showed that more candidates could not certify them"
+            + (f", and {searched} were first searched again with more candidates" if searched else "")
+        )
+    else:
+        detail += " and were searched again with more candidates" + (
+            f"; {exact} of them needed the exact search" if exact else ""
+        )
+    detail += ". The neighbors returned are exact either way."
     return detail, {
         "search": "certificate-fallback",
         "widened_rows": widened,
+        "widen_skipped_rows": skipped,
         "exact_rows": exact,
     }
 

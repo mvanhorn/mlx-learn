@@ -126,8 +126,12 @@ and then it proves the selection right:
 5. **Fallback.** A query the certificate rejects is searched again with at least 256 more
    candidates and, if that is rejected too, exactly: direct differences against every
    training row, on the device, in budgeted chunks, ranked by a composite
-   `(distance, index)` key. Small-integer data — binary, one-hot, counts — makes the
-   identity exact outright, and takes that exact search directly.
+   `(distance, index)` key. A query whose Gram noise band holds at least twice as many
+   training rows as that wider search carries — counted on a sample of the rows — could
+   not be certified by it, and goes to the exact search at once. Which search answers a
+   query changes only the time: each computes a pair's distance the same way and ranks by
+   the same key. Small-integer data — binary, one-hot, counts — makes the identity exact
+   outright, and takes that exact search directly.
 
 A fixed over-selection margin was not enough, and nothing checked it. Where the Gram noise
 exceeds the gaps between neighbors — tight clusters, near-duplicates, one unscaled column
@@ -154,7 +158,8 @@ indices among equal values; on the CPU it was not. Binary and small-integer data
 ordinary once it moves the mean itself — a fill value of 1e10 among a few thousand
 unit-scale rows does: every translated norm then carries the shift, the noise band
 outgrows the gaps, and every query takes the exact search. When a call needed the wider
-pass or the exact search, its diagnostics event says for how many rows.
+pass or the exact search, its diagnostics event says for how many rows, and for how many
+the wider pass was skipped.
 
 Against stock scikit-learn rather than 0.1.0a2, that second pass is what decides: on such
 data MLX lost at every shape the size rules send it, down to 0.17× (grid `knn-data` in

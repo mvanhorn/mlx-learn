@@ -17,7 +17,9 @@ from sklearn.datasets import make_blobs, make_classification
 from sklearn.neighbors import KNeighborsRegressor as SkKNeighborsRegressor
 from sklearn.neighbors import NearestNeighbors as SkNearestNeighbors
 
+from mlxlearn import clear_backend_diagnostics, get_backend_diagnostics
 from mlxlearn._common.config import tuning_context
+from mlxlearn._kernels import distance
 from mlxlearn._kernels.distance import build_index
 from mlxlearn.exceptions import MLXLearnFallbackWarning, UnsupportedInputError
 from mlxlearn.neighbors import NearestNeighbors
@@ -228,7 +230,186 @@ def test_one_far_training_row_does_not_disable_the_first_pass(backend, rng):
 
     stats = {}
     build_index(X, backend=backend).query(Q, 10, stats=stats)
-    assert stats == {"rows": 200, "widened_rows": 0, "exact_rows": 0}
+    assert stats == {"rows": 200, "widened_rows": 0, "widen_skipped_rows": 0, "exact_rows": 0}
+
+
+def _far_cluster(rng, members, *, d=4):
+    """``members`` rows within 1e-4 of a point 1000 out on every axis, and queries
+    among them.
+
+    Every member sits inside the Gram noise band of a query there, together, so the
+    first pass cannot certify one; a second pass carrying 265 candidates can when
+    the cluster is smaller than that, and cannot when it is larger.
+    """
+    X = np.vstack(
+        [
+            1000.0 + 1e-4 * rng.normal(size=(members, d)),
+            -1000.0 + rng.normal(size=(members, d)),
+            50.0 * rng.normal(size=(3000, d)),
+        ]
+    )
+    return X, 1000.0 + 1e-4 * rng.normal(size=(20, d))
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize(
+    ("members", "skipped", "exact"),
+    [
+        (100, 0, 0),  # the second pass certifies every row
+        (400, 0, 20),  # it cannot, but the count is short of twice its carry: tried
+        (2000, 20, 20),  # a count past twice its carry: straight to the exact search
+    ],
+)
+def test_the_second_pass_is_skipped_only_where_it_cannot_certify(
+    backend, members, skipped, exact, rng, monkeypatch
+):
+    """Which search answers a row changes its time, never its answer: forcing every
+    uncertified row through the second pass, or past it, returns the same bits."""
+    X, Q = _far_cluster(rng, members)
+    index = build_index(X, backend=backend)
+
+    stats = {}
+    dist, idx = index.query(Q, 5, stats=stats)
+    assert stats == {"rows": 20, "widened_rows": 20, "widen_skipped_rows": skipped,
+                     "exact_rows": exact}
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 5)
+    np.testing.assert_array_equal(idx, ref_idx)
+    np.testing.assert_allclose(dist, ref_dist, rtol=1e-6, atol=0)
+
+    for forced in (True, False):
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                distance._Search, "cannot_widen",
+                lambda self, qb, gmax, k_wide, forced=forced: np.full(qb.n, forced),
+            )
+            _assert_same_bits(index.query(Q, 5), (dist, idx))
+
+
+def test_the_diagnostics_say_which_rows_skipped_the_second_pass(rng):
+    """One event per call, and the skip in it: the time a query took is explained."""
+    X, Q = _far_cluster(rng, 2000)
+    with tuning_context(force_backend="cpu"):
+        model = NearestNeighbors(n_neighbors=5).fit(X)
+    clear_backend_diagnostics()
+    model.kneighbors(Q)
+    (event,) = get_backend_diagnostics()
+    assert {key: event.extra[key] for key in ("search", "widened_rows", "widen_skipped_rows",
+                                              "exact_rows")} == {
+        "search": "certificate-fallback",
+        "widened_rows": 20,
+        "widen_skipped_rows": 20,
+        "exact_rows": 20,
+    }
+    assert event.detail == (
+        "20 of 20 query rows could not be certified by the first float32 pass; 20 of them "
+        "needed the exact search, 20 directly, where a sampled count showed that more "
+        "candidates could not certify them. The neighbors returned are exact either way."
+    )
+
+
+def _assert_same_bits(got, want):
+    for a, b in zip(got, want, strict=True):
+        if a is None or b is None:
+            assert a is None and b is None
+            continue
+        assert a.dtype == b.dtype and a.shape == b.shape
+        np.testing.assert_array_equal(a.view(np.uint8), b.view(np.uint8))
+
+
+def _kind(kind, n, d, rng):
+    """Training rows and 24 queries of a kind that reaches every route of the search."""
+    def draw(m):
+        return rng.normal(size=(m, d))
+
+    if kind == "gaussian":
+        return draw(n), draw(24)
+    if kind == "unscaled":
+        X, Q = draw(n), draw(24)
+        X[:, 0] = rng.uniform(0, 1e4, n)
+        Q[:, 0] = rng.uniform(0, 1e4, 24)
+        return X, Q
+    if kind in ("duplicates", "jittered"):
+        base = draw(max(n // 20, 1))
+        jitter = 1e-4 if kind == "jittered" else 0.0
+        X = base[rng.integers(0, len(base), n)] + jitter * draw(n)
+        Q = base[rng.integers(0, len(base), 24)] + 1e-4 * draw(24)
+        return X, Q
+    if kind == "binary":
+        return (rng.random((n, d)) < 0.2).astype(np.float64), (rng.random((24, d)) < 0.2) * 1.0
+    if kind == "counts":
+        return rng.poisson(2.0, (n, d)).astype(np.float64), rng.poisson(2.0, (24, d)) * 1.0
+    raise ValueError(kind)
+
+
+def _every_route(index, Q, k, monkeypatch, **kwargs):
+    """``index.query`` under each way of answering a row, which must agree bit for bit:
+    as it chooses; every uncertified row through the second pass; every one past it;
+    the exact search in the old fixed-width tiles; and 64-bit keys throughout."""
+    answer = index.query(Q, k, **kwargs)
+    forced = [
+        (distance._Search, "cannot_widen", lambda self, qb, gmax, k_wide: np.zeros(qb.n, bool)),
+        (distance._Search, "cannot_widen", lambda self, qb, gmax, k_wide: np.ones(qb.n, bool)),
+        (distance, "_exact_cols", lambda budget, rows, pair_bytes: 4096),
+        (distance, "_int_key_bits", lambda max_sq, n_train: None),
+    ]
+    for owner, name, replacement in forced:
+        with monkeypatch.context() as patch:
+            patch.setattr(owner, name, replacement)
+            _assert_same_bits(index.query(Q, k, **kwargs), answer)
+    return answer
+
+
+_KINDS = ["gaussian", "unscaled", "duplicates", "jittered", "binary", "counts"]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize("kind", _KINDS)
+@pytest.mark.parametrize(("n", "d"), [(3000, 4), (20_000, 16)])
+def test_every_route_returns_the_same_neighbors(backend, dtype, kind, n, d, rng, monkeypatch):
+    """How a row is answered — first pass, second pass, the exact search in any tile
+    width, 32- or 64-bit keys — is a matter of time only; each is the first ``k``
+    under ``(refined distance, index)``, and that is the float64 answer."""
+    X, Q = (a.astype(dtype) for a in _kind(kind, n, d, rng))
+    index = build_index(X, backend=backend)
+
+    dist, idx = _every_route(index, Q, 10, monkeypatch)
+    ref_dist, ref_idx = _exact_neighbors(X, Q, 10)
+    if kind in ("binary", "counts"):
+        np.testing.assert_array_equal(idx, ref_idx)
+        np.testing.assert_array_equal(dist, ref_dist)
+    else:
+        assert_neighbor_parity(dist, idx, ref_dist, ref_idx)
+    if n <= 3000:
+        _every_route(index, index.X, 7, monkeypatch, exclude_self=True)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize("kind", _KINDS)
+@pytest.mark.parametrize(("n", "d"), [(1_000_000, 16), (65_536, 256)])
+def test_every_route_returns_the_same_neighbors_at_scale(
+    backend, dtype, kind, n, d, rng, monkeypatch
+):
+    """At a million rows the unscaled column sends some rows past the second pass on
+    its own, and most of the rest to the exact search after it."""
+    X, Q = (a.astype(dtype) for a in _kind(kind, n, d, rng))
+    dist, idx = _every_route(build_index(X, backend=backend), Q, 10, monkeypatch)
+    ref_dist, ref_idx = _exact_neighbors(X, Q[:4], 10)
+    assert_neighbor_parity(dist[:4], idx[:4], ref_dist, ref_idx)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("kind", ["gaussian", "duplicates", "binary"])
+@pytest.mark.parametrize(("n", "k"), [(300, 300), (400, 100), (600, 100), (1030, 1000)])
+def test_every_route_agrees_for_k_near_the_number_of_rows(backend, kind, n, k, rng, monkeypatch):
+    """With ``k`` near ``n`` the second pass may carry every row, or the first may."""
+    X, Q = _kind(kind, n, 16, rng)
+    index = build_index(X, backend=backend)
+    dist, idx = _every_route(index, Q, k, monkeypatch)
+    assert_neighbor_parity(dist, idx, *_exact_neighbors(X, Q, k))
+    _every_route(index, index.X, k - 1, monkeypatch, exclude_self=True)
 
 
 # ----------------------------------------------------------------------------------
