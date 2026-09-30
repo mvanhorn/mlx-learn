@@ -345,12 +345,14 @@ def test_a_tol_below_the_float32_floor_stops_on_the_floor():
 #: ``(n_classes, C, fit_intercept) -> (n_iter, objective)`` measured on
 #: ``make_classification(5000, 20, n_informative=12, n_redundant=4, random_state=0)``,
 #: on an M4 Max: the same iteration counts on the GPU and CPU devices, objectives up to
-#: 4.2e-9 apart. Re-pinned when the first step became L-BFGS-B's 1/‖d‖₂: the binary
+#: 4.9e-9 apart. Re-pinned when the first step became L-BFGS-B's 1/‖d‖₂: the binary
 #: runs take two or three more iterations than the 16-17 of 0.1.0a2 (scikit-learn: 18-24),
 #: the multinomial ones one fewer or one more than 30-47 (scikit-learn: 29-43), and every
 #: objective is lower than it was — while fits scikit-learn finishes in one iteration
-#: now do too. Changes to the solver's internals may reach the same point in fewer
-#: iterations or at a lower objective, never the reverse.
+#: now do too. The GPU objectives' batched gradient, spelled-out softmax and float64
+#: finish then left every count unchanged, on MLX 0.31.2 and 0.32.2, and moved the GPU
+#: objectives by at most 8e-10 relative, both ways. Changes to the solver's internals may
+#: reach the same point in fewer iterations or at a lower objective, never the reverse.
 _PINNED = {
     (2, 0.01, True): (18, 0.5293678799),
     (2, 1.0, True): (19, 0.5263766441),
