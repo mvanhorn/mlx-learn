@@ -632,6 +632,21 @@ come first under **Changed**.
   scikit-learn.
 - Whether a logistic fit is binary is read from the raw labels in two vectorized passes,
   not a sort, and only when it can change the decision.
+- `LogisticRegression` on the GPU finishes each objective evaluation on the host in
+  float64. The device computes the per-row terms in float32 and reduces them to partial
+  sums — the binary gradient, and the multinomial one at one feature, over row blocks set
+  by the row count alone, so the order of summation does not depend on the machine — and
+  the host adds those, divides by the weight sum and adds the penalty. The design stays
+  row-major, one copy on the device (see **Performance**). MLX's CPU device keeps its
+  float32 finish, so the two devices' objectives differ by more than the order of a long
+  sum ([`docs/fp32_policy.md`](docs/fp32_policy.md) §1, §2.2). Against the GPU form this
+  replaces, iteration counts are unchanged on the pinned problems of
+  `tests/unit/test_lbfgs.py`, on MLX 0.31.2 and 0.32.2, with objectives within 8e-10
+  relative; a stop that rounding decides can still move. Among the test suite's 417
+  logistic solves, five that stop on the float32 floor, where the count is rounding noise
+  (§2.3), and three that stop on `tol` took a different number of iterations — 46 → 50,
+  70 → 69 and 35 → 36, each inside the spread that permuting the same rows gives the old
+  form (46 or 50, 61–74, 35–50).
 - `metric_params={"p": ...}` with `metric="minkowski"` is accepted and resolved as
   scikit-learn resolves it, with its `SyntaxWarning`. Other `metric_params` still raise.
 - The neighbor estimators validate `X` and queries as float64 or float32, keeping float64
@@ -768,9 +783,11 @@ come first under **Changed**.
     `LogisticRegression`'s carry `extra["compute"] = "numpy-float64"`, since it predicts
     with scikit-learn's float64 code on every backend;
   - a neighbor query that needed the certificate's second pass or its exact search
-    reports how many rows did in its event's `extra` (`search="certificate-fallback"`,
-    `widened_rows` — the rows the first pass could not certify — `widen_skipped_rows`,
-    those of them sent past the second pass, and `exact_rows`).
+    reports how many rows did in its event's `extra`: `search="certificate-fallback"`;
+    `widened_rows`, the rows the first pass could not certify; `widen_skipped_rows`,
+    those of them a sampled count sent straight to the exact search, past the second
+    pass; and `exact_rows`, those of them searched exactly in the end — the skipped rows
+    and the rows the second pass could not certify either.
 - Private tuning knobs `knn_min_features`, `knn_wide_features`,
   `knn_narrow_min_samples`, `knn_wide_min_samples`, `knn_max_neighbors`,
   `knn_probe_rows`, `knn_probe_max_uncertified`, `logreg_multinomial_min_features`,
@@ -915,13 +932,16 @@ Where patched dispatch now sends each problem is under **Changed**.
   rows shows the second pass cannot certify skips it; and binary and small-integer data
   key the exact search in 32 bits where the distances and indices fit. Against the
   certified search without these, at 1 000 000 × 16 with one unscaled column and
-  `k=10`: 17–21× faster for 1 query, 4.9–5.8× for 16 and 3.0× for 256; binary
+  `k=10`: 17–21× faster for 1 query, 4.9–5.8× for 16 and 2.96–3.06× for 256; binary
   1 000 000 × 16, 256 queries, 1.66×; jittered duplicates, which the second pass does
-  certify, 0.97×, the sampled count's cost. Measured with the prototype's own harness,
-  not `benchmarks/ab.py`: each call after a garbage collection and 10 ms idle, medians
-  of 7–21, scikit-learn 1.9.0 and 1.7.2. Wider tiles hold more of the budget while they
-  run: at a 64 MiB budget, two rows searched exactly peaked at 21 MiB on the GPU and
-  53 MiB on MLX's CPU, against 5 MiB before.
+  certify, 0.97×, the sampled count's cost. Measured on the GPU of the same M4 Max with
+  MLX 0.32.2, under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, with
+  the prototype's own harness rather than `benchmarks/ab.py`: each call after a garbage
+  collection and a 10 ms idle gap, medians of 7–21 calls. MLX's CPU device and MLX
+  0.31.2 run the same code, and were not timed. Wider tiles hold more of the budget
+  while they run: at a 64 MiB budget, two rows searched exactly against 200 000 × 16
+  peaked at 21 MiB on the GPU and 53 MiB on MLX's CPU, against about 5 MiB before, and
+  at a 16 MiB budget at 5.3 and 13.3 MiB.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32
@@ -949,20 +969,25 @@ Where patched dispatch now sends each problem is under **Changed**.
   partial sums, the division by the weight sum and the penalty — which also cut the
   binary gradient's error at 10⁶ rows, against a float64 evaluation, from up to 1.7e-7
   to 1.1e-8 of its scale. The CPU device is unchanged, bit for bit. Measured against the
-  transposed layout rather than 0.1.0a2, each call after a garbage collection and a
-  10 ms idle gap, as patched dispatch meets a fit (medians of at least 7 calls;
-  "significant" means medians three standard errors apart): binary 1 000 000 × 16 fits
-  1.22–1.37× faster on MLX 0.32.2, significant, and 1.14–1.26× on 0.31.2; binary
-  200 000 × 16–64 fits 0.97–1.11×, mostly not significant; multinomial fits 1.03–1.40×
-  (200 000 × 16 with ten classes 1.39–1.40× and significant on 0.32.2, 1.03× and not
-  significant on 0.31.2); no case significantly slower. Iteration counts are unchanged
-  on the pinned problems of `tests/unit/test_lbfgs.py` and on every compared fit that
-  stops on `tol`, on both MLX versions, and objectives moved by at most 8e-10 relative.
-  The multinomial half ships short of the bar set for it before it was measured — a 30%
+  transposed layout rather than 0.1.0a2, on the GPU of the same M4 Max — MLX 0.32.2
+  under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, and MLX 0.31.2
+  under Python 3.10 with NumPy 1.23.5 and scikit-learn 1.7.0 — with the prototype's own
+  harness rather than `benchmarks/ab.py`, each call after a garbage collection and a
+  10 ms idle gap, as patched dispatch meets a fit (medians of 9–25 calls; "significant"
+  means medians three standard errors apart): binary 1 000 000 × 16 fits 1.22–1.37×
+  faster on MLX 0.32.2, significant, and 1.14–1.26× on 0.31.2; binary 200 000 × 16–64
+  fits 0.97–1.11×, mostly not significant; multinomial fits 1.03–1.40× (200 000 × 16
+  with ten classes 1.39–1.40× and significant on 0.32.2, 1.03× and not significant on
+  0.31.2); no case significantly slower. Iteration counts are unchanged on the pinned
+  problems of `tests/unit/test_lbfgs.py` and on every larger fit compared that stops on
+  `tol`, on both MLX versions, and objectives moved by at most 8e-10 relative; where
+  rounding decides the stop, a fit can still move (**Changed**). Both halves ship short
+  of bars set before they were measured. The binary one asked for 15% on both MLX
+  versions, and 0.31.2 gave 1.14× at the low end. The multinomial one asked for a 30%
   faster evaluation, where one evaluation at 60 000 × 64 with three classes is 11–21%
-  faster — because it slowed nothing down and the maintainer asked for it. No dispatch
-  threshold moves: the row floors were set by fits that fixed costs dominate, which were
-  not re-measured.
+  faster; it ships because it slowed nothing down and the maintainer asked for it. No
+  dispatch threshold moves: the row floors were set by fits that fixed costs dominate,
+  which were not re-measured.
 - `SVC` fits no longer fall off a cliff once a one-vs-one subproblem exceeds the
   kernel-cache Gram cutoff (about 7 240 rows at the default `cache_size=200`): on a cache
   miss, kernel rows are fetched many per GPU round trip, together with the rows closest to

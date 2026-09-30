@@ -13,7 +13,7 @@ that "we xfail that one" is a policy and not a reaction to a red test.
 |---|---|
 | Input `X`, `y` | anything scikit-learn accepts; float64/int/bool are converted |
 | Computation on the MLX device, GPU or CPU | **float32**, always |
-| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the SMO dual variables and gradients, the contraction of SVC decision values, the rbf entries SVC recomputes directly (§2.4), neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_` |
+| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the finish of `LogisticRegression`'s objective on the GPU — the device's partial sums added, normalized and penalized (§2.2) — the SMO dual variables and gradients, the contraction of SVC decision values, the rbf entries SVC recomputes directly (§2.4), neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_` |
 | Returned distances, probabilities, decision values | **float64** |
 | Fitted attributes (`coef_`, `intercept_`, `dual_coef_`, `support_vectors_`) | **float64** |
 | Returned indices, labels | `int64` / the input label dtype, matching scikit-learn |
@@ -70,7 +70,11 @@ back. A frame with only some sparse columns is dense input, as it is to scikit-l
 MLX's CPU backend. Both run the same float32 code, so `device="cpu"` is not a route to
 float64 — the float64 answer is stock scikit-learn's (§3.4). The two devices can round a
 long sum in a different order, so results can differ in their last bits; for the neighbor
-estimators that is visible only where a near-tie is decided (§3.1). A
+estimators that is visible only where a near-tie is decided (§3.1). `LogisticRegression`
+differs by a little more: the GPU finishes its objective on the host in float64, where
+MLX's CPU finishes it on the device in float32 (§2.2), so a fit whose stop rounding
+decides can take a different number of iterations on each. On the pinned problems of
+`tests/unit/test_lbfgs.py` both take the same, with objectives up to 4.9e-9 apart. A
 model is served on the device it was fitted on, with one exception that re-decides
 nothing: a GPU-fitted model loaded in a process with no usable GPU runs the same code on
 MLX's CPU under `device="auto"` or `"cpu"`, recorded in diagnostics as
@@ -203,13 +207,26 @@ A `float32` sum over `n` terms carries relative error growing like `n · eps`. F
 n = 10⁶ that is ~0.1 at the worst case and much smaller in practice, but it is why
 mlxlearn does not claim `rtol=1e-7` parity on large reductions.
 
+`LogisticRegression` keeps its sums over rows short where that costs nothing. On both
+devices the loss is summed on the device into at most 1 024 partial sums, which the host
+adds in float64. On the GPU the binary gradient is summed the same way — one float32
+partial per block of rows, 16 to 256 blocks set by the row count alone, not by the
+machine — and the host adds the partials, divides by the weight sum and adds the penalty
+in float64. At 10⁶ rows that cut the gradient's error, against a float64 evaluation,
+from up to 1.7e-7 to 1.1e-8 of its scale. The multinomial gradient on the GPU is one
+float32 matrix product, blocked like the binary one only at one feature, and finished
+on the host the same way. MLX's CPU device finishes both gradients on the device in
+float32.
+
 ### 2.3 Iterative solvers
 
 A float32-accumulated objective cannot resolve gradients much below `1e-6 · max|g₀|` — a
 millionth of the largest gradient component at the starting point. `LogisticRegression`'s
-L-BFGS evaluates the objective and its gradient in float32 on the device, and makes every
-decision about steps and stopping in float64 on the host, so a rounding wobble in one inner
-product cannot pass for convergence. Near the floor it does two things:
+L-BFGS evaluates the objective and its gradient from float32 terms on the device — on
+the GPU finished in float64 on the host (§2.2); the terms stay float32, and so does that
+floor — and makes every decision about steps and stopping in float64 on the host, so a
+rounding wobble in one inner product cannot pass for convergence. Near the floor it does
+two things:
 
 - **Approximate Wolfe acceptance** (Hager & Zhang, 2005). When a step's decrease is smaller
   than the objective's own resolution (`1e-7` relative), the value cannot certify it, but
