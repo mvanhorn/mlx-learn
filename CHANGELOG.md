@@ -769,7 +769,8 @@ come first under **Changed**.
     with scikit-learn's float64 code on every backend;
   - a neighbor query that needed the certificate's second pass or its exact search
     reports how many rows did in its event's `extra` (`search="certificate-fallback"`,
-    `widened_rows`, `exact_rows`).
+    `widened_rows` — the rows the first pass could not certify — `widen_skipped_rows`,
+    those of them sent past the second pass, and `exact_rows`).
 - Private tuning knobs `knn_min_features`, `knn_wide_features`,
   `knn_narrow_min_samples`, `knn_wide_min_samples`, `knn_max_neighbors`,
   `knn_probe_rows`, `knn_probe_max_uncertified`, `logreg_multinomial_min_features`,
@@ -907,6 +908,20 @@ Where patched dispatch now sends each problem is under **Changed**.
   1.6–3.0× the old query time at 4–32 features, and 5.3× for two clusters at 64
   features, where every query takes the exact search. No second pass on ordinary data:
   Gaussian 50 000 × 16 went from 85 to 37 ms.
+- Rows the certificate sends to the exact search cost less there, with every answer the
+  same bit for bit. The exact search takes as many training rows per tile as the memory
+  budget holds for the rows it searches, where it took 4 096 with a device round trip
+  after each (245 over a million rows); a row that a count on a sample of the training
+  rows shows the second pass cannot certify skips it; and binary and small-integer data
+  key the exact search in 32 bits where the distances and indices fit. Against the
+  certified search without these, at 1 000 000 × 16 with one unscaled column and
+  `k=10`: 17–21× faster for 1 query, 4.9–5.8× for 16 and 3.0× for 256; binary
+  1 000 000 × 16, 256 queries, 1.66×; jittered duplicates, which the second pass does
+  certify, 0.97×, the sampled count's cost. Measured with the prototype's own harness,
+  not `benchmarks/ab.py`: each call after a garbage collection and 10 ms idle, medians
+  of 7–21, scikit-learn 1.9.0 and 1.7.2. Wider tiles hold more of the budget while they
+  run: at a 64 MiB budget, two rows searched exactly peaked at 21 MiB on the GPU and
+  53 MiB on MLX's CPU, against 5 MiB before.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32

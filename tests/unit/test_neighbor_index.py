@@ -8,6 +8,8 @@ aliasing rather than as a wrong distance.
 from __future__ import annotations
 
 import copy
+import copyreg
+import dataclasses
 import pickle
 import sys
 import threading
@@ -18,7 +20,7 @@ import numpy as np
 import pytest
 
 from mlxlearn._common.config import tuning_context
-from mlxlearn._common.device import gpu_available
+from mlxlearn._common.device import gpu_available, use_device
 from mlxlearn._kernels import distance
 from mlxlearn._kernels.distance import NeighborIndex, build_index, resolve_blocks
 from mlxlearn.exceptions import UnsupportedInputError
@@ -26,6 +28,54 @@ from mlxlearn.neighbors import KNeighborsRegressor, NearestNeighbors
 from tests._helpers import join_or_fail
 
 MiB = 1024 * 1024
+
+DEVICES = ["gpu", "cpu"] if gpu_available() else ["cpu"]
+
+
+def _search(index, Q, k, *, device, train_block_size=None):
+    """A query's search machinery over ``index`` and its one block of rows ``Q``.
+
+    For driving one stage of the search directly; ``query`` builds the same pair.
+    """
+    search = distance._Search(
+        index=index,
+        state=index._ensure_device(device),
+        mx=mx,
+        k_search=k,
+        k_carry=distance._first_pass_carry(k, index.n_features, index.n_samples),
+        segmented=device == "gpu",
+        fns=distance._kernels(device),
+        plan_backend="mlx" if device == "gpu" else "cpu",
+        train_block_size=train_block_size,
+        counts={"rows": len(Q), "widened_rows": 0, "widen_skipped_rows": 0, "exact_rows": 0},
+    )
+    with use_device(device):
+        block = search.query_block(Q, 0, len(Q), self_query=False)
+    return search, block
+
+
+def _exact(search, block, *, integer=False):
+    with use_device("gpu" if search.segmented else "cpu"):
+        return search.exact(block, integer=integer)
+
+
+def _spy(monkeypatch, owner, name):
+    """Record each call of ``owner.name``, which still runs."""
+    calls = []
+    real = getattr(owner, name)
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(owner, name, spy)
+    return calls
+
+
+def _bits_equal(got, want):
+    for a, b in zip(got, want, strict=True):
+        assert a.dtype == b.dtype
+        np.testing.assert_array_equal(a.view(np.uint8), b.view(np.uint8))
 
 
 # ----------------------------------------------------------------------------------
@@ -168,6 +218,97 @@ def test_query_peak_memory_stays_near_the_budget(backend, rng):
 
 
 # ----------------------------------------------------------------------------------
+# the exact search's tiles
+# ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rows", [1, 3, 21, 256, 1024])
+@pytest.mark.parametrize("pair_bytes", [248, 3128])
+def test_exact_tiles_are_as_wide_as_the_budget_allows(rows, pair_bytes):
+    """Power-of-two multiples of the old fixed width, and never narrower than it."""
+    budget = 256 * MiB
+    cols = distance._exact_cols(budget, rows, pair_bytes)
+    multiple = cols // distance._EXACT_MIN_COLS
+    assert cols % distance._EXACT_MIN_COLS == 0 and multiple & (multiple - 1) == 0
+    assert budget < 2 * rows * cols * pair_bytes, "a tile twice as wide still fits"
+    if cols > distance._EXACT_MIN_COLS:
+        assert rows * cols * pair_bytes <= budget
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_the_exact_search_takes_few_rows_in_one_tile(device, rng, monkeypatch):
+    """A handful of rows the certificate sent to the exact search, over 100 000 rows.
+
+    With a fixed 4096-row tile, evaluated one at a time, that was 25 tiles and 25
+    round trips to the device, however few rows there were. The budget holds all of
+    it; and the tile's width changes no bit of the answer.
+    """
+    X = rng.normal(size=(100_000, 8)).astype(np.float32)
+    Q = rng.normal(size=(3, 8)).astype(np.float32)
+    index = build_index(X, backend="mlx" if device == "gpu" else "cpu", device=device)
+
+    tiles = _spy(monkeypatch, distance, "_select_smallest")
+    search, block = _search(index, Q, 10, device=device)
+    wide = _exact(search, block)
+    assert len(tiles) == 1
+
+    del tiles[:]
+    narrow_search, block = _search(index, Q, 10, device=device, train_block_size=4096)
+    _bits_equal(_exact(narrow_search, block), wide)
+    assert len(tiles) == 25
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_narrow_exact_tiles_are_evaluated_together(device, rng, monkeypatch):
+    """Tiles are evaluated once one more would take those in flight past the budget,
+    rather than one at a time."""
+    X = rng.normal(size=(50_000, 8)).astype(np.float32)
+    Q = rng.normal(size=(3, 8)).astype(np.float32)
+    budget = 8 * MiB
+    with tuning_context(
+        distance_block_bytes=budget, distance_block_bytes_max=budget, cpu_distance_block_bytes=budget
+    ):
+        index = build_index(X, backend="mlx" if device == "gpu" else "cpu", device=device)
+        search, block = _search(index, Q, 10, device=device, train_block_size=1000)
+        evaluations = _spy(monkeypatch, mx, "eval")
+        _exact(search, block)
+    # 50 tiles of 3 x 1000 pairs at 152 bytes: evaluated after the 18th and the 36th,
+    # and the last 14 when the result is read. One at a time, that was 50.
+    assert len(evaluations) == 2
+
+
+@pytest.mark.parametrize("backend", ["mlx", "cpu"])
+@pytest.mark.parametrize("n_query", [2, 64])
+def test_exact_search_peak_memory_stays_near_the_budget(backend, n_query, rng):
+    """Rows the certificate cannot help, all searched exactly, against 200 000 rows.
+
+    Two rows get tiles eight times the old fixed width here, 64 rows the old width.
+    A tile as wide as the training set would be ``n_query`` x 200 000 differences of
+    16 floats: 26 MB for two rows and 820 MB for 64, three times that unfused on the
+    CPU.
+    """
+    budget = 16 * MiB
+    X = np.vstack([1000.0 + 1e-4 * rng.normal(size=(2000, 16)), rng.normal(size=(198_000, 16))])
+    Q = 1000.0 + 1e-4 * rng.normal(size=(n_query, 16))
+    with tuning_context(
+        distance_block_bytes=budget,
+        distance_block_bytes_max=budget,
+        cpu_distance_block_bytes=budget,
+    ):
+        index = build_index(X, backend=backend)
+        index.query(Q, 5)
+        mx.eval(mx.zeros(1))
+        mx.clear_cache()
+        base = mx.get_active_memory()
+        mx.reset_peak_memory()
+        stats: dict = {}
+        index.query(Q, 5, stats=stats)
+        peak = mx.get_peak_memory() - base
+    assert stats["exact_rows"] == n_query, "precondition: every row took the exact search"
+    assert peak <= 2 * budget, f"peak {peak / MiB:.0f} MiB against a {budget / MiB:.0f} MiB budget"
+
+
+# ----------------------------------------------------------------------------------
 # devices
 # ----------------------------------------------------------------------------------
 
@@ -278,6 +419,48 @@ def test_a_pickle_from_before_the_residual_still_loads(rng):
         np.testing.assert_array_equal(got, want)
 
 
+class _PickledBeforeTheColumnExtremes:
+    """Pickles to the stream a ``NeighborIndex`` made before the index kept its training
+    columns' extremes: the same reduction, and the state dict it had then. (The
+    pickler checks that ``__newobj__``'s class is the object's own.)"""
+
+    __class__ = property(lambda self: NeighborIndex)  # type: ignore[assignment]
+
+    def __init__(self, state):
+        self.state = state
+
+    def __reduce__(self):
+        return copyreg.__newobj__, (NeighborIndex,), self.state
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_an_index_pickled_before_the_column_extremes_answers_the_same(device, rng, monkeypatch):
+    """The extremes decide whether the integer path's keys fit in 32 bits. They are
+    derived state, so an old pickle rebuilds them on its first query; and a state
+    without them — which nothing builds now — keys in 64 bits, to the same answer."""
+    backend = "mlx" if device == "gpu" else "cpu"
+    X = rng.integers(0, 4, size=(3000, 6)).astype(np.float64)
+    Q = rng.integers(0, 4, size=(40, 6)).astype(np.float64)
+    index = build_index(X, backend=backend, device=device)
+    want = index.query(Q, 7, device=device)
+    assert set(index.__getstate__()) == {"X", "center", "backend"}, "the pickle changed shape"
+
+    old = pickle.loads(pickle.dumps(_PickledBeforeTheColumnExtremes(
+        {"X": np.array(index.X), "center": index.center, "backend": backend}
+    )))
+    assert isinstance(old, NeighborIndex) and old._state is None
+    wide_keys = _spy(monkeypatch, distance, "_composite_keys")
+    _bits_equal(old.query(Q, 7, device=device), want)
+    assert wide_keys == [], "the rebuilt index keys in 32 bits"
+
+    stripped = pickle.loads(pickle.dumps(index))
+    stripped._state = dataclasses.replace(
+        stripped._ensure_device(device), col_min=None, col_max=None
+    )
+    _bits_equal(stripped.query(Q, 7, device=device), want)
+    assert wide_keys, "without the extremes the keys fall back to 64 bits"
+
+
 # ----------------------------------------------------------------------------------
 # row limits
 # ----------------------------------------------------------------------------------
@@ -295,6 +478,64 @@ def test_exact_search_keys_address_rows_past_int32():
         np.testing.assert_array_equal(keys & 0xFFFFFFFF, [t_start + np.arange(3)])
         values = (keys >> np.uint64(32)).astype(np.uint32).view(np.float32)
         np.testing.assert_array_equal(values, [[1.0, 0.5, 2.0]])
+
+
+@pytest.mark.parametrize(
+    ("max_sq", "n_train", "index_bits"),
+    [
+        (2**15 - 1, 2**17, 17),  # 15 + 17 bits: exactly 32
+        (2**15, 2**17, None),  # 16 + 17: 33
+        (2**15 - 1, 2**17 + 1, None),  # 15 + 18: 33
+        (2**24, 2**7, 7),  # the largest distance the integer path reaches, 25 bits
+        (0, 2**31, 31),
+        (0, 2**31 + 1, None),  # an index of 32 bits leaves nothing to shift by
+        (5, 1, 0),
+        (None, 10, None),  # no column extremes to bound the distances with
+    ],
+)
+def test_integer_keys_are_32_bits_exactly_when_both_parts_fit(max_sq, n_train, index_bits):
+    assert distance._int_key_bits(max_sq, n_train) == index_bits
+
+
+def _lexsorted_neighbors(X, Q, k):
+    """The first ``k`` under ``(distance, index)``, in float64: exact for small integers."""
+    d2 = ((Q[:, None, :] - X[None, :, :]) ** 2).sum(axis=2)
+    order = np.arange(X.shape[0])
+    idx = np.array([np.lexsort((order, row))[:k] for row in d2])
+    return np.sqrt(np.take_along_axis(d2, idx, axis=1)), idx
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_integer_keys_at_the_32_bit_boundary(device, rng, monkeypatch):
+    """4097 training rows need 13 bits of index. Queries whose farthest possible
+    training row is 512² + 511² away (19 bits) are keyed in 32 bits; one more query
+    with a zero in the second column makes it 2·512² = 2**19 (20 bits), and 64.
+
+    Heavy ties — 81 distinct points among 4097 rows — so the key has to order the
+    index exactly: both widths must return the exact ``(distance, index)`` order.
+    """
+    X = (rng.integers(0, 9, size=(4097, 2)) * 64).astype(np.float64)
+    X[:2] = [[0, 0], [512, 512]]  # the columns' extremes
+    Q32 = np.column_stack([rng.integers(0, 513, 30), rng.integers(1, 512, 30)]).astype(np.float64)
+    Q32[0] = [0, 1]  # 512 from the farthest training row in the first column, 511 in the second
+    Q64 = Q32.copy()
+    Q64[0, 1] = 0
+    index = build_index(X, backend="mlx" if device == "gpu" else "cpu", device=device)
+    wide_keys = _spy(monkeypatch, distance, "_composite_keys")
+
+    answers = []
+    for Q, bound, width in ((Q32, 512**2 + 511**2, 32), (Q64, 2**19, 64)):
+        del wide_keys[:]
+        dist, idx = index.query(Q, 10, device=device)
+        assert bool(wide_keys) == (width == 64)
+        _, block = _search(index, Q, 10, device=device)
+        assert (block.int_shift, block.int_max_sq) == (0, bound)
+
+        want_dist, want_idx = _lexsorted_neighbors(X, Q, 10)
+        np.testing.assert_array_equal(idx, want_idx)
+        np.testing.assert_array_equal(dist, want_dist)
+        answers.append((dist[1:], idx[1:]))
+    _bits_equal(*answers)  # the rows both blocks share
 
 
 def test_more_rows_than_a_key_can_address_are_refused():

@@ -19,8 +19,9 @@ the Gram noise exceeds the gaps between neighbors and true neighbors are silentl
 dropped. So every row is **certified**. A rigorous float32 error bound on the
 identity proves that no training row left out of the candidate set can beat the
 k-th refined distance; a row it cannot certify is searched again with a much wider
-candidate set, and if that fails too, exactly, by direct differences against every
-training row. See ``docs/fp32_policy.md`` §2.1.
+candidate set, and if that fails too — or if a sampled count shows that it must —
+exactly, by direct differences against every training row. See
+``docs/fp32_policy.md`` §2.1.
 
 **A total order.** Results are the first ``k`` training rows under ``(refined
 distance, training index)``, so exact ties break on the smaller index — including
@@ -64,6 +65,22 @@ _OVERSELECT = 4
 #: ``make_blobs`` at ``cluster_std=0.01`` puts ~250 points in each.
 _WIDEN_EXTRA = 256
 
+#: A row the first pass could not certify skips the second pass, and is searched
+#: exactly at once, when an estimate of the training rows inside its Gram noise band
+#: reaches this multiple of the second pass's carry: with that many rows in the band,
+#: the second pass has nothing to certify with (see ``_Search.cannot_widen``). On one
+#: unscaled column at 1e6 x 16, where most rows need the exact search anyway, the skip
+#: made a query 9-14% faster; on jittered duplicates, which the second pass does
+#: certify, the count cost 2-3%.
+_SKIP_MARGIN = 2
+
+#: Sampled rows expected in the band at the decision point. The estimate counts every
+#: ``_SKIP_MARGIN * k_wide // _SAMPLE_HITS``-th training row — every 16th at k=10 — so
+#: a true count of ``k_wide``, where the second pass starts to fail, shows about 17
+#: hits and is called at 34 or more, a Poisson tail near 1e-4; the count costs about
+#: a sixteenth of a first pass.
+_SAMPLE_HITS = 32
+
 #: Segment widths for two-stage selection on the GPU: at least 512, at least four
 #: times the number kept, at most 8192. MLX's GPU ``argpartition`` is effectively a
 #: full sort of the row, which made selection cost several times the Gram matmul on
@@ -86,6 +103,21 @@ _TILE_WORKSET_FACTOR = 7
 #: gather: the gathered rows, the fused difference, and — for float64 input — the
 #: gathered residuals. Unbudgeted, ``k=1000`` at 768 features reached 7.4 GB.
 _REFINE_WORKSET_FACTOR = 4
+
+#: The direct-difference exact search takes at least this many training rows per
+#: tile, and more when fewer query rows leave the budget room: as many as it allows,
+#: in power-of-two multiples of this, so that calls whose row counts differ a little
+#: reuse MLX's cached buffers. A fixed tile of this width, evaluated one at a time,
+#: cost 245 synchronizations over a million training rows however few rows were
+#: searched. With budget-sized tiles, queries on one unscaled column at 1e6 x 16 ran
+#: 17-21x faster for one row and about 3x for 256; the skip and the 32-bit keys
+#: without them, 1.02-1.05x.
+_EXACT_MIN_COLS = 4096
+
+#: Device memory per (query row, training row) pair that the exact search's key and
+#: selection add to its ``3 * d * 4``-byte difference: the uint64 key and the
+#: partition's temporaries, counted generously as ``_TILE_WORKSET_FACTOR`` of them.
+_KEY_WORKSET_BYTES = _TILE_WORKSET_FACTOR * 8
 
 #: Queries on small-integer training data stay on the exact integer path when they
 #: are multiples of ``2**-_DYADIC_SHIFTS`` — half-integers, quarters — because
@@ -262,6 +294,12 @@ def _kernels(device: str) -> SimpleNamespace:
         # The clamp only ever moves a value toward the truth: distances are >= 0.
         return mx.maximum((q_sq + t_sq) - 2.0 * gram, 0.0)
 
+    def tile_key(q_sq, t_sq, gram, index, shift):
+        # The integer path's tile packed as ``distance << shift | index``. Every value
+        # there is an integer below 2**24, so each step, the cast included, is exact
+        # fused or not.
+        return mx.left_shift(tile(q_sq, t_sq, gram).astype(mx.uint32), shift) | index
+
     def pair_sq(t, q, scale):
         diff = (t - q) * scale
         return diff * diff
@@ -274,6 +312,7 @@ def _kernels(device: str) -> SimpleNamespace:
         "center_scale": center_scale,
         "center_scale_lo": center_scale_lo,
         "tile": tile,
+        "tile_key": tile_key,
         "pair_sq": pair_sq,
         "pair_sq_lo": pair_sq_lo,
     }
@@ -301,6 +340,11 @@ def _gamma(n: int) -> float:
     """Higham's γₙ = n·u / (1 − n·u): the relative error bound of an n-term float32 sum."""
     nu = n * _U
     return nu / (1.0 - nu) if nu < 0.5 else math.inf
+
+
+def _gram_err(n_features: int) -> float:
+    """``C``: the Gram tile's float32 error is at most ``C·(‖q‖² + ‖t‖²)``."""
+    return 2.0 * (2.0 * _gamma(n_features + 2) + 8.0 * _U)
 
 
 def _scaled_limit(n_features: int) -> float:
@@ -372,6 +416,8 @@ class _DeviceState:
     int_max: float  # largest |x| in the training rows, integer path only
     raw_t: Any  # raw.T, integer path only
     raw_sq: Any  # (n,) exact squared norms of raw, integer path only
+    col_min: np.ndarray | None  # (d,) float64 column minima, integer path only
+    col_max: np.ndarray | None  # (d,) float64 column maxima, integer path only
     index_dtype: Any
 
 
@@ -385,6 +431,9 @@ class _QueryBlock:
     sq: Any  # (B, 1) squared norms of sel
     raw_norm: np.ndarray | None  # (B,) ||q||, only when a residual is in play
     int_shift: int | None  # 2**shift makes both sides small integers; None if not
+    # With int_shift: no squared distance from these rows to a training row, both
+    # lifted by 2**int_shift, exceeds this. None when the index has no column extremes.
+    int_max_sq: float | None = None
 
     @property
     def n(self) -> int:
@@ -403,6 +452,7 @@ class _QueryBlock:
             sq=pick(self.sq),
             raw_norm=None if self.raw_norm is None else self.raw_norm[rows],
             int_shift=self.int_shift,
+            int_max_sq=self.int_max_sq,  # still a bound for a subset of the rows
         )
 
 
@@ -599,7 +649,8 @@ class NeighborIndex:
             fns=_kernels(device),
             plan_backend=plan_backend,
             train_block_size=None,
-            counts={"rows": int(rows.size), "widened_rows": 0, "exact_rows": 0},
+            counts={"rows": int(rows.size), "widened_rows": 0, "widen_skipped_rows": 0,
+                    "exact_rows": 0},
         )
         uncertified = 0
         with use_device(device):
@@ -646,9 +697,12 @@ class NeighborIndex:
             queries with the device-resident training rows directly.
         stats : dict, optional
             If given, filled with how the rows were answered: ``"rows"``,
-            ``"widened_rows"`` (the first pass could not certify them) and
-            ``"exact_rows"`` (nor could a wider one, so they were searched exactly).
-            The kernel knows nothing of estimators, so it is the caller's to record.
+            ``"widened_rows"`` (the first pass could not certify them),
+            ``"widen_skipped_rows"`` (of those, the rows a sampled count showed a
+            wider pass could not certify either, so it was skipped) and
+            ``"exact_rows"`` (searched exactly: those, and the rows the wider pass
+            could not certify). The kernel knows nothing of estimators, so it is the
+            caller's to record.
         device : {"gpu", "cpu"}, optional
             The MLX device to search on, as the caller resolved it; by default the
             one the index was built for (``backend``).
@@ -727,7 +781,7 @@ class NeighborIndex:
             fns=_kernels(device),
             plan_backend=plan_backend,
             train_block_size=train_block_size,
-            counts={"rows": n_query, "widened_rows": 0, "exact_rows": 0},
+            counts={"rows": n_query, "widened_rows": 0, "widen_skipped_rows": 0, "exact_rows": 0},
         )
         with use_device(device):
             for start in range(0, n_query, plan.query_rows):
@@ -777,13 +831,17 @@ class _Search:
             if lo is not None:
                 host = np.asarray(self.index.X[start:end], dtype=np.float64)
                 raw_norm = np.sqrt(np.einsum("ij,ij->i", host, host))
+            integer = state.int_limit > 0
             return _QueryBlock(
                 hi=state.raw[start:end],
                 lo=lo,
                 sel=state.sel[start:end],
                 sq=state.sel_sq[start:end, None],
                 raw_norm=raw_norm,
-                int_shift=0 if state.int_limit > 0 else None,
+                int_shift=0 if integer else None,
+                int_max_sq=(
+                    _integer_sq_bound(state, state.col_min, state.col_max, 0) if integer else None
+                ),
             )
 
         rows = Q[start:end]
@@ -819,10 +877,17 @@ class _Search:
         if lo is not None or state.raw_lo is not None:
             raw_norm = np.sqrt(np.einsum("ij,ij->i", rows64, rows64))
 
-        int_shift = None
+        int_shift = int_max_sq = None
         if state.int_limit > 0 and lo_np is None:
             int_shift = _dyadic_shift(hi_np, state.int_max, state.int_limit)
-        return _QueryBlock(hi=hi, lo=lo, sel=sel, sq=sq, raw_norm=raw_norm, int_shift=int_shift)
+            if int_shift is not None:
+                int_max_sq = _integer_sq_bound(
+                    state, hi_np.min(axis=0), hi_np.max(axis=0), int_shift
+                )
+        return _QueryBlock(
+            hi=hi, lo=lo, sel=sel, sq=sq, raw_norm=raw_norm, int_shift=int_shift,
+            int_max_sq=int_max_sq,
+        )
 
     # ------------------------------------------------------------------ search
 
@@ -848,10 +913,11 @@ class _Search:
         idx, sq = idx[:, : self.k_search], sq[:, : self.k_search]
 
         if self.k_carry < n_train:
-            ok = self.certified(qb, np.asarray(gmax), sq[:, -1])
+            gmax = np.asarray(gmax)
+            ok = self.certified(qb, gmax, sq[:, -1])
             if not ok.all():
                 bad = np.flatnonzero(~ok)
-                idx[bad], sq[bad] = self.resolve(qb.take(mx, bad))
+                idx[bad], sq[bad] = self.resolve(qb.take(mx, bad), gmax[bad])
 
         if state.exponent > 0:
             self.require_resolved(qb, idx, sq)
@@ -986,7 +1052,7 @@ class _Search:
             q_sq,
             gmax.astype(np.float64),
             state.norms_sorted,
-            gram_err=2.0 * (2.0 * _gamma(d + 2) + 8.0 * _U),
+            gram_err=_gram_err(d),
             norm_err=2.0 * _gamma(d + 2),
         )
         lower = bound * (1.0 - 2.0 * _gamma(d + 4))
@@ -1002,8 +1068,13 @@ class _Search:
 
     # --------------------------------------------------------------- fallback
 
-    def resolve(self, qb: _QueryBlock) -> tuple[np.ndarray, np.ndarray]:
-        """Search rows the first pass could not certify: wider, then exactly."""
+    def resolve(self, qb: _QueryBlock, gmax: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Search rows the first pass could not certify: wider, then exactly.
+
+        ``gmax`` is each row's largest Gram value kept by the first pass. The rows
+        :meth:`cannot_widen` picks out skip the wider pass and are searched exactly at
+        once.
+        """
         mx = self.mx
         n_train = self.index.n_samples
         k_search = self.k_search
@@ -1014,27 +1085,31 @@ class _Search:
 
         k_wide = min(n_train, max(4 * self.k_carry, self.k_carry + _WIDEN_EXTRA))
         if k_wide < n_train:
+            skip = self.cannot_widen(qb, gmax, k_wide)
+            self.counts["widen_skipped_rows"] += int(np.count_nonzero(skip))
+            wide = np.flatnonzero(~skip)
+            still = [np.flatnonzero(skip)]
             plan = resolve_blocks(
-                qb.n,
+                wide.size,
                 n_train,
                 backend=self.plan_backend,
                 k_search=k_wide,
                 train_block_size=self.train_block_size,
             )
-            still = []
-            for start in range(0, qb.n, plan.query_rows):
-                rows = np.arange(start, min(start + plan.query_rows, qb.n))
+            # An empty plan, of zero rows, when every row skips.
+            for start in range(0, wide.size, plan.query_rows or 1):
+                rows = wide[start : start + plan.query_rows]
                 sub = qb.take(mx, rows)
-                cand, gmax = self.candidates(sub, k_wide, plan.train_cols)
+                cand, gmax_wide = self.candidates(sub, k_wide, plan.train_cols)
                 refined = self.refine(sub, cand)
-                mx.eval(cand, refined, gmax, sub.sq)
+                mx.eval(cand, refined, gmax_wide, sub.sq)
                 idx, sq = _sort_candidates(np.asarray(cand), np.asarray(refined))
                 idx, sq = idx[:, :k_search], sq[:, :k_search]
-                ok = self.certified(sub, np.asarray(gmax), sq[:, -1])
+                ok = self.certified(sub, np.asarray(gmax_wide), sq[:, -1])
                 out_idx[rows[ok]] = idx[ok]
                 out_sq[rows[ok]] = sq[ok]
                 still.append(rows[~ok])
-            pending = np.concatenate(still)
+            pending = np.sort(np.concatenate(still))
 
         if pending.size:
             self.counts["exact_rows"] += int(pending.size)
@@ -1042,6 +1117,63 @@ class _Search:
             out_idx[pending] = idx
             out_sq[pending] = sq
         return out_idx, out_sq
+
+    def cannot_widen(self, qb: _QueryBlock, gmax: np.ndarray, k_wide: int) -> np.ndarray:
+        """Rows of ``qb`` that a wider pass carrying ``k_wide`` would fail to certify.
+
+        Which search answers a row decides only the time: the exact search computes
+        each pair's distance as refinement does and ranks every training row by the
+        same ``(distance, index)``, so it returns what a certified wider pass would.
+        A row goes there directly when ``k_wide`` training rows lie inside its Gram
+        noise band ``C·‖q‖²``: the wider pass's bound is then at most its largest
+        kept Gram value less ``C·‖q‖²`` (the ``f`` branch of
+        :func:`_excluded_lower_bound`), which is at most zero, and it has to exceed
+        the k-th distance. The band is counted, on a sample, only for rows whose
+        first-pass ``gmax`` already lies inside it — as it must when ``k_wide`` rows
+        do, the first pass carrying fewer — and a row whose estimate reaches
+        ``_SKIP_MARGIN * k_wide`` skips the wider pass. Not a proof — a sample, and a
+        bound that takes its ``g`` branch when every training norm lies beyond the
+        split — hence the margin; a wrong call costs time, never the answer.
+        """
+        skip = np.zeros(qb.n, dtype=bool)
+        need = _SKIP_MARGIN * k_wide
+        if need > self.index.n_samples:
+            return skip
+        q_sq = np.asarray(qb.sq, dtype=np.float64).reshape(-1)
+        band = _gram_err(self.index.n_features) * q_sq
+        suspects = np.flatnonzero(gmax.astype(np.float64) <= band)
+        if suspects.size:
+            sub = qb if suspects.size == qb.n else qb.take(self.mx, suspects)
+            skip[suspects] = self.band_count(sub, band[suspects], need) >= need
+        return skip
+
+    def band_count(self, qb: _QueryBlock, band: np.ndarray, need: int) -> np.ndarray:
+        """Per row of ``qb``, about how many training rows have a Gram value ``<= band``.
+
+        Counted on every ``stride``-th training row, with ``stride`` set so that about
+        ``_SAMPLE_HITS`` sampled rows sit at the decision point ``need``, and scaled
+        back up. The same tile expression as the search.
+        """
+        mx, state = self.mx, self.state
+        stride = max(1, need // _SAMPLE_HITS)
+        sel = state.sel[::stride]
+        sel_sq = state.sel_sq[::stride]
+        n_sample = int(sel.shape[0])
+        plan = resolve_blocks(qb.n, n_sample, backend=self.plan_backend, k_search=1)
+        limit = mx.array(band.astype(NUMPY_FLOAT)[:, None])
+        counts = []
+        for r_start in range(0, qb.n, plan.query_rows):
+            r_end = min(r_start + plan.query_rows, qb.n)
+            total = None
+            for t_start in range(0, n_sample, plan.train_cols):
+                t_end = min(t_start + plan.train_cols, n_sample)
+                gram = qb.sel[r_start:r_end] @ sel[t_start:t_end].T
+                tile = self.fns.tile(qb.sq[r_start:r_end], sel_sq[None, t_start:t_end], gram)
+                hits = mx.sum((tile <= limit[r_start:r_end]).astype(mx.int32), axis=1)
+                total = hits if total is None else total + hits
+                mx.eval(total)
+            counts.append(np.array(total))
+        return np.concatenate(counts).astype(np.int64) * stride
 
     def exact(self, qb: _QueryBlock, *, integer: bool) -> tuple[np.ndarray, np.ndarray]:
         """Exact first ``k_search`` against every training row, by composite key.
@@ -1058,6 +1190,12 @@ class _Search:
         computes them, so an exact answer and a certified one never disagree about
         a distance. Returns host indices and float32 squared distances — scaled like
         :meth:`refine`'s, or by ``4**int_shift`` when ``integer``.
+
+        The integer path's distances are integers below ``2**24``. When the largest
+        this block can reach and the largest index fit in 32 bits together
+        (:func:`_int_key_bits`), its key is ``distance << bits | index`` in ``uint32``
+        instead, which orders the same and moves half the bytes through selection:
+        binary 1e6 x 16 with 256 queries ran 1.66x faster, and no faster without it.
         """
         mx, state = self.mx, self.state
         fns = self.fns
@@ -1065,6 +1203,7 @@ class _Search:
         d = self.index.n_features
         k_search = self.k_search
         budget = _distance_budget_bytes(self.plan_backend)
+        index_bits = None
 
         if integer:
             plan = resolve_blocks(
@@ -1072,20 +1211,27 @@ class _Search:
                 train_block_size=self.train_block_size,
             )
             rows, cols = plan.query_rows, plan.train_cols
+            pair_bytes = 4 * _TILE_WORKSET_FACTOR  # the tile as resolve_blocks budgets it
             lift = float(2**qb.int_shift)
             q_int = qb.hi * lift if qb.int_shift else qb.hi
             q_sq = mx.sum(q_int * q_int, axis=1, keepdims=True)
+            index_bits = _int_key_bits(qb.int_max_sq, n_train)
+            if index_bits is not None:
+                shift = mx.array(index_bits, dtype=mx.uint32)
         else:
-            # A (rows, cols, d) difference per tile; cols wide enough to keep the
-            # number of launches down, rows as many as the budget then allows.
-            cols = self.train_block_size or 4096
+            # A (rows, cols, d) difference per tile: cols as wide as the budget
+            # allows for this many rows, rows as many as it then allows.
+            diff_bytes = 3 * d * 4
+            pair_bytes = diff_bytes + _KEY_WORKSET_BYTES
+            cols = self.train_block_size or _exact_cols(budget, qb.n, pair_bytes)
             cols = max(min(k_search, n_train), min(int(cols), n_train))
-            rows = max(1, min(qb.n, budget // max(3 * cols * d * 4, 1)))
+            rows = max(1, min(qb.n, budget // max(diff_bytes * cols, 1)))
 
         keys = []
         for r_start in range(0, qb.n, rows):
             r_end = min(r_start + rows, qb.n)
             best = None
+            in_flight = 0
             for t_start in range(0, n_train, cols):
                 t_end = min(t_start + cols, n_train)
                 if integer:
@@ -1096,7 +1242,14 @@ class _Search:
                         # integers below 2**24, so this is still exact.
                         gram = gram * lift
                         t_sq = t_sq * (lift * lift)
-                    vals = fns.tile(q_sq[r_start:r_end], t_sq, gram)
+                    if index_bits is None:
+                        vals = fns.tile(q_sq[r_start:r_end], t_sq, gram)
+                        key = _composite_keys(mx, vals, t_start)
+                    else:
+                        index = mx.arange(t_end - t_start, dtype=mx.uint32) + mx.array(
+                            t_start, dtype=mx.uint32
+                        )
+                        key = fns.tile_key(q_sq[r_start:r_end], t_sq, gram, index[None], shift)
                 else:
                     t = state.raw[None, t_start:t_end]
                     q = qb.hi[r_start:r_end, None, :]
@@ -1109,9 +1262,8 @@ class _Search:
                         )
                         q_lo = state.zero if qb.lo is None else qb.lo[r_start:r_end, None, :]
                         sq = fns.pair_sq_lo(t, t_lo, q, q_lo, state.scale)
-                    vals = mx.sum(sq, axis=2)
+                    key = _composite_keys(mx, mx.sum(sq, axis=2), t_start)
 
-                key = _composite_keys(mx, vals, t_start)
                 take = min(k_search, t_end - t_start)
                 _, part = _select_smallest(mx, key, take, segmented=self.segmented)
                 if best is None:
@@ -1121,14 +1273,68 @@ class _Search:
                     keep = min(k_search, merged.shape[1])
                     sel = mx.argpartition(merged, kth=keep - 1, axis=1)[:, :keep]
                     best = mx.take_along_axis(merged, sel, axis=1)
-                # One budget-sized tile in flight at a time; see ``refine``.
-                mx.eval(best)
+                # Evaluated once one more tile would take the working set in flight
+                # past the budget: a budget-sized tile on its own, narrow ones several
+                # at a time. Left lazy, every tile would be alive at once; see
+                # ``refine``.
+                tile_bytes = (r_end - r_start) * (t_end - t_start) * pair_bytes
+                in_flight += tile_bytes
+                if in_flight + tile_bytes > budget:
+                    mx.eval(best)
+                    in_flight = 0
             keys.append(np.array(best))
 
-        packed = np.sort(np.concatenate(keys, axis=0), axis=1)
+        return _unpack_keys(np.sort(np.concatenate(keys, axis=0), axis=1), index_bits)
+
+
+def _exact_cols(budget: int, rows: int, pair_bytes: int) -> int:
+    """Training rows per exact-search tile for ``rows`` query rows.
+
+    As many as ``budget`` holds at ``pair_bytes`` a pair, rounded down to a
+    power-of-two multiple of ``_EXACT_MIN_COLS``, and never fewer than that.
+    """
+    wide = max(1, budget // max(pair_bytes * rows * _EXACT_MIN_COLS, 1))
+    return _EXACT_MIN_COLS << (wide.bit_length() - 1)
+
+
+def _integer_sq_bound(state: _DeviceState, q_min, q_max, shift: int) -> float | None:
+    """The largest squared distance from a row inside ``[q_min, q_max]`` to a training row.
+
+    Column by column, the farthest apart the two can be given the training columns'
+    extremes, lifted by ``2**shift`` like both sides of the integer path; every
+    coordinate there is a small integer, so the sum is exact. ``None`` for a state
+    without the extremes, whose exact search then keys in 64 bits.
+    """
+    if state.col_min is None or state.col_max is None:
+        return None
+    q_min = np.asarray(q_min, dtype=np.float64)
+    q_max = np.asarray(q_max, dtype=np.float64)
+    span = np.maximum(q_max - state.col_min, state.col_max - q_min)
+    return math.ldexp(float(np.dot(span, span)), 2 * shift)
+
+
+def _int_key_bits(max_sq: float | None, n_train: int) -> int | None:
+    """Index bits for a ``uint32`` ``distance << bits | index`` key, or ``None``.
+
+    ``None`` when the key needs 64 bits — the largest index, ``n_train - 1``, and the
+    largest distance, ``max_sq``, take more than 32 between them — or when
+    ``max_sq`` is unknown.
+    """
+    if max_sq is None:
+        return None
+    index_bits = max(n_train - 1, 0).bit_length()
+    if index_bits >= 32 or index_bits + int(max_sq).bit_length() > 32:
+        return None
+    return index_bits
+
+
+def _unpack_keys(packed: np.ndarray, index_bits: int | None) -> tuple[np.ndarray, np.ndarray]:
+    """Indices and float32 values from keys: ``uint64`` ones when ``index_bits`` is None."""
+    if index_bits is None:
         idx = (packed & np.uint64(0xFFFFFFFF)).astype(INDEX_DTYPE)
-        sq = (packed >> np.uint64(32)).astype(np.uint32).view(NUMPY_FLOAT)
-        return idx, sq
+        return idx, (packed >> np.uint64(32)).astype(np.uint32).view(NUMPY_FLOAT)
+    idx = (packed & np.uint32((1 << index_bits) - 1)).astype(INDEX_DTYPE)
+    return idx, (packed >> np.uint32(index_bits)).astype(NUMPY_FLOAT)
 
 
 def _composite_keys(mx, vals, t_start: int):
@@ -1421,6 +1627,10 @@ def _build_state(X: np.ndarray, X_lo: np.ndarray | None, center: np.ndarray, dev
         int_max=max_abs,
         raw_t=raw_t,
         raw_sq=raw_sq,
+        # What the integer path's exact search bounds its distances by, to key them
+        # in 32 bits when they fit (_integer_sq_bound).
+        col_min=lo_col if int_limit > 0 else None,
+        col_max=hi_col if int_limit > 0 else None,
         index_dtype=mx.int32 if n < 2**31 else mx.int64,
     )
     x_view = _readonly_view(raw)
