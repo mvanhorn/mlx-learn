@@ -278,22 +278,28 @@ def test_the_preconditioner_leaves_ordinary_scales_alone():
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
 @pytest.mark.parametrize("weighted", [False, True])
 @pytest.mark.parametrize("fit_intercept", [True, False])
-def test_binary_objective_matches_float64_in_both_layouts(fit_intercept, weighted, device):
+def test_binary_objective_matches_float64_in_both_forms(fit_intercept, weighted, device):
     """The value and gradient the solver sees, against a float64 NumPy computation.
 
-    On the GPU the binary design is stored transposed, because MLX's
-    ``(n,) @ (n, d)`` product took a path up to 38x slower than the forward pass;
-    both layouts must describe the same function.
+    The GPU's form sums the gradient as a batched product over row blocks and
+    finishes on the host, because MLX's ``(n,) @ (n, d)`` product took a path up
+    to 38x slower than the forward pass; both forms must describe the same function
+    on either device, the rows past the last whole block included.
     """
     import mlx.core as mx
 
     from mlxlearn._common.device import use_device
-    from mlxlearn._solvers.logistic import _binary_objective
+    from mlxlearn._solvers.logistic import (
+        _binary_objective_cpu,
+        _binary_objective_gpu,
+        _row_blocks,
+    )
 
     if device == "gpu" and not gpu_available():
         pytest.skip("no usable MLX GPU")
     rng = np.random.default_rng(1)
     n, d = 3000, 12
+    assert _row_blocks(n)[2] > 0, "precondition: rows past the last whole block"
     X = rng.normal(size=(n, d)).astype(np.float32)
     y = (rng.uniform(size=n) < 0.4).astype(np.float32)
     sw = rng.uniform(0.5, 2.0, size=n).astype(np.float32) if weighted else None
@@ -313,40 +319,145 @@ def test_binary_objective_matches_float64_in_both_layouts(fit_intercept, weighte
     grad = np.concatenate(grad)
 
     with use_device(device):
-        Xm = mx.array(X)
-        for transposed in (False, True):
-            design = mx.contiguous(Xm.T) if transposed else Xm
-            fun = _binary_objective(
-                mx, design, mx.array(y), None if sw is None else mx.array(sw),
-                sw_sum, l2, fit_intercept, d, transposed=transposed,
+        for objective in (_binary_objective_cpu, _binary_objective_gpu):
+            fun = objective(
+                mx, mx.array(X), mx.array(y), None if sw is None else mx.array(sw),
+                sw_sum, l2, fit_intercept, d,
             )
             got_value, got_grad = fun(mx.array(theta))
             assert got_value == pytest.approx(value, rel=1e-6)
+            assert np.shape(got_grad) == theta.shape
             np.testing.assert_allclose(np.asarray(got_grad)[0], grad, rtol=1e-4, atol=1e-6)
 
 
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("n_features", [1, 6])
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("fit_intercept", [True, False])
+def test_multinomial_objective_matches_float64_in_both_forms(
+    fit_intercept, weighted, n_features, device
+):
+    """The same for the softmax: MLX's ``logsumexp`` in one form, the GPU's
+    spelled-out one in the other, and at one feature the GPU's batched gradient.
+
+    Logits in the hundreds too, where most probabilities underflow and only the
+    shifted identity keeps the loss exact. There the gradient is held to float32's
+    resolution of it (``docs/fp32_policy.md`` §2.3), since rounding a logit of 300
+    alone moves a probability by about 2e-5 of itself.
+    """
+    import mlx.core as mx
+
+    from mlxlearn._common.device import use_device
+    from mlxlearn._solvers.lbfgs import GRADIENT_RESOLUTION
+    from mlxlearn._solvers.logistic import (
+        _multinomial_objective_cpu,
+        _multinomial_objective_gpu,
+        _row_blocks,
+    )
+
+    if device == "gpu" and not gpu_available():
+        pytest.skip("no usable MLX GPU")
+    rng = np.random.default_rng(2)
+    n, d, K = 3000, n_features, 4
+    assert _row_blocks(n)[2] > 0, "precondition: rows past the last whole block"
+    codes = rng.integers(0, K, size=n)
+    X = (rng.normal(size=(K, d))[codes] + rng.normal(size=(n, d))).astype(np.float32)
+    sw = rng.uniform(0.5, 2.0, size=n).astype(np.float32) if weighted else None
+    l2 = 1e-3
+    sw_sum = float(n if sw is None else sw.astype(np.float64).sum())
+    Xd = X.astype(np.float64)
+    w64 = np.ones(n) if sw is None else sw.astype(np.float64)
+    onehot = np.eye(K)[codes]
+
+    for scale in (0.3, 100.0):
+        theta = rng.normal(scale=scale, size=(K, d + fit_intercept)).astype(np.float32)
+        th = theta.astype(np.float64)
+        raw = Xd @ th[:, :d].T + (th[:, d] if fit_intercept else 0.0)
+        shift = raw.max(axis=1, keepdims=True)
+        log_norm = shift[:, 0] + np.log(np.exp(raw - shift).sum(axis=1))
+        residual = w64[:, None] * (np.exp(raw - log_norm[:, None]) - onehot)
+        value = (w64 * (log_norm - raw[np.arange(n), codes])).sum() / sw_sum
+        value += 0.5 * l2 * (th[:, :d] ** 2).sum()
+        grad = residual.T @ Xd / sw_sum + l2 * th[:, :d]
+        if fit_intercept:
+            grad = np.concatenate([grad, residual.sum(axis=0)[:, None] / sw_sum], axis=1)
+
+        with use_device(device):
+            for objective in (_multinomial_objective_cpu, _multinomial_objective_gpu):
+                fun = objective(
+                    mx, mx.array(X), mx.array(codes.reshape(-1, 1).astype(np.int32)),
+                    mx.array(onehot.astype(np.float32)), None if sw is None else mx.array(sw),
+                    sw_sum, l2, fit_intercept, d,
+                )
+                got_value, got_grad = fun(mx.array(theta))
+                assert got_value == pytest.approx(value, rel=1e-6)
+                assert np.shape(got_grad) == theta.shape
+                atol = 1e-6 if scale < 1 else GRADIENT_RESOLUTION * np.abs(grad).max()
+                np.testing.assert_allclose(np.asarray(got_grad), grad, rtol=1e-4, atol=atol)
+
+
+@pytest.mark.parametrize(
+    "n, expected",
+    [
+        (0, (1, 0, 0)),
+        (31, (1, 31, 0)),
+        (32, (16, 2, 0)),
+        (3000, (16, 187, 8)),
+        (65_536, (16, 4096, 0)),
+        (65_537, (16, 4096, 1)),
+        (1_000_000, (244, 4098, 88)),
+        (10**7 + 3, (256, 39_062, 131)),
+    ],
+)
+def test_row_blocks_cover_every_row_once(n, expected):
+    """The batched gradient's ``(blocks, rows, tail)``: every row in exactly one product.
+
+    Pinned, because they fix the order the GPU gradient is summed in, and with it
+    every bit of the result: a function of the row count alone, the same on every
+    machine.
+    """
+    from mlxlearn._solvers.logistic import _row_blocks
+
+    blocks, rows, tail = _row_blocks(n)
+    assert (blocks, rows, tail) == expected
+    assert blocks * rows + tail == n and 0 <= tail < blocks
+
+
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_a_gpu_binary_fit_runs_on_the_transposed_design(backend, monkeypatch):
-    """The layout is chosen from the device the fit actually runs on.
+def test_a_gpu_fit_runs_the_gpu_objectives_on_the_row_major_design(backend, monkeypatch):
+    """The objective is chosen from the device the fit actually runs on.
 
     The gate compared what ``use_device`` yields with the string ``"gpu"``; once it
     yielded an ``mx.Stream`` that never matched, and every GPU binary fit silently
     took the slow ``(n,) @ (n, d)`` gradient, 2.5-2.9x slower on tall, narrow data.
+    Both devices get the design row-major, as it is: the GPU's batched gradient
+    reads blocks of it in place, where a transposed copy used to be built.
     """
     from mlxlearn._solvers import logistic
 
     seen = []
-    original = logistic._binary_objective
 
-    def spy(mx, X, *args, transposed=False, **kwargs):
-        seen.append((transposed, tuple(X.shape)))
-        return original(mx, X, *args, transposed=transposed, **kwargs)
+    def spy(name):
+        original = getattr(logistic, name)
 
-    monkeypatch.setattr(logistic, "_binary_objective", spy)
-    X, y = _data(n_samples=400, n_features=8)
-    _fit(backend, LogisticRegression(), X, y)
-    on_gpu = backend == "mlx"
-    assert seen == [(on_gpu, (8, 400) if on_gpu else (400, 8))]
+        def build(mx, X, *args):
+            seen.append((name, tuple(X.shape)))
+            return original(mx, X, *args)
+
+        return build
+
+    for form in ("binary", "multinomial"):
+        for device in ("cpu", "gpu"):
+            name = f"_{form}_objective_{device}"
+            monkeypatch.setattr(logistic, name, spy(name))
+    for n_classes in (2, 3):
+        X, y = _data(n_classes=n_classes, n_samples=400, n_features=8)
+        _fit(backend, LogisticRegression(), X, y)
+    device = "gpu" if backend == "mlx" else "cpu"
+    assert seen == [
+        (f"_binary_objective_{device}", (400, 8)),
+        (f"_multinomial_objective_{device}", (400, 8)),
+    ]
 
 
 # ------------------------------------------------------------- hard numerics

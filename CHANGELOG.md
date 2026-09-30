@@ -932,9 +932,37 @@ Where patched dispatch now sends each problem is under **Changed**.
 - `LogisticRegression`'s L-BFGS bookkeeping (two-loop recursion, inner products,
   curvature test, `max|g|`) runs in NumPy float64 on the host, so each objective
   evaluation costs one device synchronization instead of 12–33 blocking round trips per
-  iteration, and the binary gradient on the GPU uses a contiguous `Xᵀ`. Fits forced onto
-  the GPU are 1.9–4.2× faster with iteration counts unchanged: 20 000 × 16 20.0 → 4.8 ms,
-  60 000 × 128 46.7 → 16.1 ms, 20 000 × 1 024 71.5 → 38.6 ms, 2 000 000 × 16 362 → 110 ms.
+  iteration, and the binary gradient on the GPU no longer goes through MLX's slow
+  `(n,) @ (n, d)` product (measured here with a contiguous `Xᵀ`, since replaced by the
+  batched product below). Fits forced onto the GPU are 1.9–4.2× faster with iteration
+  counts unchanged: 20 000 × 16 20.0 → 4.8 ms, 60 000 × 128 46.7 → 16.1 ms,
+  20 000 × 1 024 71.5 → 38.6 ms, 2 000 000 × 16 362 → 110 ms.
+- `LogisticRegression`'s objective on the GPU costs less per evaluation, with MLX's own
+  operations and no custom kernel. The binary gradient `residualᵀX` is one batched
+  product over row blocks, `(B, 1, m) @ (B, m, d)` with `B` set by the row count alone,
+  instead of a product against a transposed copy of `X`: the design stays row-major, so
+  the copy, the synchronization that built it and the moment the device held two copies
+  of `X` are gone. The multinomial loss spells `logsumexp` out as max, `exp`, sum and
+  `log`: MLX's `logsumexp` gives every row a threadgroup, which a few classes leave
+  mostly idle, where its plain reductions pack many rows into one. Its one-feature
+  gradient is batched like the binary one. Both finish on the host in float64 — the
+  partial sums, the division by the weight sum and the penalty — which also cut the
+  binary gradient's error at 10⁶ rows, against a float64 evaluation, from up to 1.7e-7
+  to 1.1e-8 of its scale. The CPU device is unchanged, bit for bit. Measured against the
+  transposed layout rather than 0.1.0a2, each call after a garbage collection and a
+  10 ms idle gap, as patched dispatch meets a fit (medians of at least 7 calls;
+  "significant" means medians three standard errors apart): binary 1 000 000 × 16 fits
+  1.22–1.37× faster on MLX 0.32.2, significant, and 1.14–1.26× on 0.31.2; binary
+  200 000 × 16–64 fits 0.97–1.11×, mostly not significant; multinomial fits 1.03–1.40×
+  (200 000 × 16 with ten classes 1.39–1.40× and significant on 0.32.2, 1.03× and not
+  significant on 0.31.2); no case significantly slower. Iteration counts are unchanged
+  on the pinned problems of `tests/unit/test_lbfgs.py` and on every compared fit that
+  stops on `tol`, on both MLX versions, and objectives moved by at most 8e-10 relative.
+  The multinomial half ships short of the bar set for it before it was measured — a 30%
+  faster evaluation, where one evaluation at 60 000 × 64 with three classes is 11–21%
+  faster — because it slowed nothing down and the maintainer asked for it. No dispatch
+  threshold moves: the row floors were set by fits that fixed costs dominate, which were
+  not re-measured.
 - `SVC` fits no longer fall off a cliff once a one-vs-one subproblem exceeds the
   kernel-cache Gram cutoff (about 7 240 rows at the default `cache_size=200`): on a cache
   miss, kernel rows are fetched many per GPU round trip, together with the rows closest to

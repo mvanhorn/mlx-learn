@@ -37,7 +37,10 @@ which is what produced line-search failures reported as ordinary non-convergence
 
 Here the value and the gradient are derived from the same expression, and
 ``p − y`` is obtained from ``mx.sigmoid`` / ``exp(raw − logsumexp(raw))``, both of
-which are the exact derivatives of the stable loss forms.
+which are the exact derivatives of the stable loss forms. On the GPU the multinomial
+``logsumexp`` is spelled out — ``max``, ``exp(raw − max)``, ``sum``, ``log`` — the
+same shifted identity, with the value and ``p`` taken from the same exponentials;
+:func:`_multinomial_objective_gpu` says why.
 
 Layout
 ------
@@ -48,14 +51,23 @@ ancestor's warm-start vectors silently meaningless. ``n_targets`` is 1 for binar
 — scikit-learn fits a single weight vector for the positive class ``classes_[1]``,
 not a two-row softmax — and ``n_classes`` otherwise.
 
-On the GPU the binary design is stored transposed. MLX's vector-matrix product
-``(n,) @ (n, d)`` — the binary gradient ``residualᵀX`` — takes a path that costs
-up to 38x the forward ``X @ w`` on tall, narrow data, while a matrix-vector product
-against a contiguous ``Xᵀ`` costs the same as the forward pass. So the design is
-transposed once on the device, the untransposed copy is dropped, and both products
-run as ``Xᵀ``-matvecs. On the CPU device the transpose itself costs more than it
-saves, and the multinomial gradient is already a matrix-matrix product, so neither
-changes.
+The design is row-major on both devices. On the GPU, MLX's vector-matrix product
+``(n,) @ (n, d)`` — the binary gradient ``residualᵀX`` — costs up to 38x the
+forward ``X @ w`` on tall, narrow data: its kernel gives each threadgroup a slice
+of the ``d`` output columns and has it walk all ``n`` rows, so at 16 features a
+handful of threadgroups do the whole reduction while the rest of the GPU waits.
+So the rows are split into ``B`` blocks of ``m`` (:func:`_row_blocks`, a function
+of ``n`` alone) and the gradient is one *batched* product,
+``(B, 1, m) @ (B, m, d)``: the same kernel with ``B`` times the threadgroups, each
+walking ``m`` rows, whose ``B`` partial gradients the host adds in float64. Both
+operands are views of the row-major arrays, so nothing is copied — the contiguous
+``Xᵀ`` this replaces had to be built on the device, with a synchronization at setup
+and, briefly, two copies of the design. The rows past ``B·m``, fewer than ``B``,
+are one small product of their own. The multinomial gradient is a matrix-matrix
+product already, except at one feature, where it is batched the same way. On the
+CPU device a transposed design cost more than it saved, and these forms were
+measured on the GPU only, so the CPU keeps the plain products and the float32
+finish: :func:`_binary_objective_cpu`, :func:`_multinomial_objective_cpu`.
 
 Exact rescalings
 ----------------
@@ -148,7 +160,8 @@ class LogisticSolution:
     n_iter : int
         Accepted L-BFGS steps.
     objective : float
-        Penalized objective at the solution, as computed in float32.
+        Penalized objective at the solution, as the solver evaluated it from
+        float32 terms.
     grad_max_abs : float
         ``max|gradient|`` at the solution — the quantity ``tol`` bounds.
     converged : bool
@@ -228,31 +241,78 @@ def _total(parts, penalty, sw_sum: float) -> float:
     return value if penalty is None else value + float(penalty)
 
 
-def _binary_objective(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features, *, transposed=False):
-    """``fun(theta) -> (value, grad)`` for the two-class log-loss.
+#: The batched GPU gradient's row blocks: one per ``_BLOCK_ROWS`` rows, and never
+#: fewer than ``_MIN_BLOCKS`` or more than ``_MAX_BLOCKS`` of them.
+_BLOCK_ROWS = 4096
+_MIN_BLOCKS = 16
+_MAX_BLOCKS = 256
 
-    ``theta`` is ``(1, n_features + fit_intercept)``. With ``transposed=True``, ``X``
-    is the contiguous ``(n_features, n_samples)`` transpose and both products are
-    matrix-vector products against it; see the module docstring for why.
-    ``sw_sum`` is the normalizer of the data term — the sum of the weights as they
-    are passed here.
+
+def _row_blocks(n: int) -> tuple[int, int, int]:
+    """``(blocks, rows, tail)``: ``blocks`` blocks of ``rows`` rows, then ``tail`` more.
+
+    ``tail < blocks``, and those rows get a product of their own. A function of
+    ``n`` alone, so the order the gradient is summed in — and with it every bit of
+    the result — never depends on the machine. Below two rows per minimum block it
+    is one block: the unbatched product, which is fast at that size.
+    """
+    if n < 2 * _MIN_BLOCKS:
+        return 1, n, 0
+    blocks = min(max(n // _BLOCK_ROWS, _MIN_BLOCKS), _MAX_BLOCKS)
+    rows = n // blocks
+    return blocks, rows, n - blocks * rows
+
+
+def _host_finish(theta, grad_w, loss_parts, grad_b, sw_sum: float, l2: float, n_features: int):
+    """``(value, grad)`` in float64 from the device's evaluated partial sums.
+
+    ``grad_w`` is ``Σ swᵢ·rᵢ·xᵢ``, ``(n_targets, n_features)``, and ``grad_b`` is
+    ``Σ swᵢ·rᵢ`` per target or ``None``, both already float64 on the host. The
+    penalty and its gradient are taken from ``theta`` itself, which is float32 and
+    so exact in float64. ``grad`` is a NumPy array shaped like ``theta``, which
+    :func:`~mlxlearn._solvers.lbfgs.minimize` reads as it reads an MLX one.
+    """
+    W = np.asarray(theta, dtype=np.float32).astype(np.float64)[:, :n_features]
+    value = _total(loss_parts, None, sw_sum)
+    grad_w = grad_w / sw_sum
+    if l2:
+        value += 0.5 * l2 * float(np.sum(W * W))
+        grad_w = grad_w + l2 * W
+    if grad_b is None:
+        return value, grad_w
+    return value, np.concatenate([grad_w, (grad_b / sw_sum)[:, None]], axis=1)
+
+
+def _binary_terms(mx, X, y, sw, theta, fit_intercept, n_features, zero):
+    """``(w, loss, residual)``: the per-sample terms both binary forms reduce."""
+    w = theta[0, :n_features]
+    raw = X @ w
+    if fit_intercept:
+        raw = raw + theta[0, n_features]
+
+    # log(1 + exp(raw)) − y·raw, evaluated without ever forming exp(raw).
+    loss = mx.logaddexp(zero, raw) - y * raw
+    residual = mx.sigmoid(raw) - y
+    if sw is not None:
+        loss = loss * sw
+        residual = residual * sw
+    return w, loss, residual
+
+
+def _binary_objective_cpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
+    """``fun(theta) -> (value, grad)`` for the two-class log-loss, as the CPU runs it.
+
+    ``theta`` is ``(1, n_features + fit_intercept)`` and ``X`` the row-major
+    design. ``sw_sum`` is the normalizer of the data term — the sum of the weights
+    as they are passed here. The gradient is one ``residual @ X``, finished on the
+    device in float32.
     """
     zero = mx.zeros((1,), dtype=X.dtype)
 
     def fun(theta):
-        w = theta[0, :n_features]
-        raw = w @ X if transposed else X @ w
-        if fit_intercept:
-            raw = raw + theta[0, n_features]
+        w, loss, residual = _binary_terms(mx, X, y, sw, theta, fit_intercept, n_features, zero)
 
-        # log(1 + exp(raw)) − y·raw, evaluated without ever forming exp(raw).
-        loss = mx.logaddexp(zero, raw) - y * raw
-        residual = mx.sigmoid(raw) - y
-        if sw is not None:
-            loss = loss * sw
-            residual = residual * sw
-
-        grad_w = ((X @ residual) if transposed else (residual @ X)) / sw_sum
+        grad_w = (residual @ X) / sw_sum
         if l2:
             grad_w = grad_w + l2 * w
         if fit_intercept:
@@ -274,11 +334,59 @@ def _binary_objective(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features, *, tr
     return fun
 
 
-def _multinomial_objective(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features):
-    """``fun(theta) -> (value, grad)`` for the softmax cross-entropy.
+def _binary_objective_gpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
+    """The function :func:`_binary_objective_cpu` computes, in the form the GPU runs fast.
+
+    The gradient is the batched product of the module docstring over the blocks of
+    :func:`_row_blocks`. Everything after the device's reductions is the host's, in
+    float64 and in a fixed order: the gradient partials, the ``_SUM_BLOCKS`` loss
+    and residual partials (the residual's are the intercept's gradient), the
+    division by ``sw_sum``, the penalty and ``l2·w``. That is more accurate than a
+    float32 finish, and it replaces about six small dispatches per evaluation with
+    arithmetic on ``n_features`` numbers. Either device can run it.
+    """
+    n = X.shape[0]
+    blocks, rows, tail = _row_blocks(n)
+    head = blocks * rows
+    # Views of the row-major design, not copies.
+    X_blocks = mx.reshape(X if head == n else X[:head], (blocks, rows, n_features))
+    X_tail = X[head:] if tail else None
+    zero = mx.zeros((1,), dtype=X.dtype)
+
+    def fun(theta):
+        _, loss, residual = _binary_terms(mx, X, y, sw, theta, fit_intercept, n_features, zero)
+
+        # (B, 1, m) @ (B, m, d): one partial gradient per block.
+        head_residual = residual if head == n else residual[:head]
+        partials = mx.reshape(head_residual, (blocks, 1, rows)) @ X_blocks
+        outputs = [partials]
+        if tail:
+            tail_partial = residual[head:] @ X_tail
+            outputs.append(tail_partial)
+        loss_parts = _blocked_sum(mx, loss)
+        outputs.append(loss_parts)
+        if fit_intercept:
+            residual_parts = _blocked_sum(mx, residual)
+            outputs.append(residual_parts)
+        # One synchronization for everything the host finishes.
+        mx.eval(*outputs)
+
+        grad_w = np.asarray(partials).astype(np.float64).reshape(blocks, n_features).sum(axis=0)
+        if tail:
+            grad_w = grad_w + np.asarray(tail_partial).astype(np.float64)
+        grad_b = None
+        if fit_intercept:
+            grad_b = np.asarray(residual_parts).astype(np.float64).sum(keepdims=True)
+        return _host_finish(theta, grad_w[None, :], loss_parts, grad_b, sw_sum, l2, n_features)
+
+    return fun
+
+
+def _multinomial_objective_cpu(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features):
+    """``fun(theta) -> (value, grad)`` for the softmax cross-entropy, as the CPU runs it.
 
     ``theta`` is ``(n_classes, n_features + fit_intercept)``; ``sw_sum`` as for
-    :func:`_binary_objective`.
+    :func:`_binary_objective_cpu`.
     """
 
     def fun(theta):
@@ -314,6 +422,78 @@ def _multinomial_objective(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_interce
         else:
             mx.eval(parts, penalty, grad)
         return _total(parts, penalty, sw_sum), grad
+
+    return fun
+
+
+def _multinomial_objective_gpu(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features):
+    """The function :func:`_multinomial_objective_cpu` computes, in the form the GPU runs fast.
+
+    ``mx.logsumexp`` gives every row a threadgroup of its own, which a handful of
+    classes leaves mostly idle, and takes its exponentials with ``fast::exp`` while
+    the residual needs precise ones. Spelled out as ``max``, ``exp(raw − max)``,
+    ``sum`` and ``log``, the reductions pack many short rows into a threadgroup, and
+    the value and the probabilities come from the same exponentials. At one feature
+    ``residualᵀX`` is the slow product of the module docstring again — the design
+    against the ``(n, K)`` residuals, all ``n`` rows walked by one threadgroup — so
+    it is batched over :func:`_row_blocks` as the binary gradient is; wider, it is a
+    matrix-matrix product already. The finish is the host's, in float64, as in
+    :func:`_binary_objective_gpu`. Either device can run it.
+    """
+    n = X.shape[0]
+    batched = n_features == 1
+    if batched:
+        blocks, rows, tail = _row_blocks(n)
+        head = blocks * rows
+        # The design is the vector here: (B, 1, m) @ (B, m, K), views again.
+        X_blocks = mx.reshape(X if head == n else X[:head], (blocks, 1, rows))
+        X_tail = X[head:] if tail else None
+
+    def fun(theta):
+        n_classes = theta.shape[0]
+        W = theta[:, :n_features]
+        raw = X @ W.T
+        if fit_intercept:
+            raw = raw + theta[:, n_features]
+
+        # logsumexp(raw) − raw[y] by the same shifted identity: exp(raw − max) is at
+        # most 1, so the loss stays exact for logits of any magnitude.
+        shift = mx.max(raw, axis=1, keepdims=True)
+        shifted_exp = mx.exp(raw - shift)
+        norm = mx.sum(shifted_exp, axis=1, keepdims=True)
+        correct = mx.take_along_axis(raw, y_index, axis=1)
+        loss = ((mx.log(norm) + shift) - correct)[:, 0]
+        residual = shifted_exp / norm - y_onehot
+        if sw is not None:
+            loss = loss * sw
+            residual = residual * mx.reshape(sw, (-1, 1))
+
+        if batched:
+            head_residual = residual if head == n else residual[:head]
+            partials = X_blocks @ mx.reshape(head_residual, (blocks, rows, n_classes))
+            outputs = [partials]
+            if tail:
+                tail_partial = residual[head:].T @ X_tail
+                outputs.append(tail_partial)
+        else:
+            partials = residual.T @ X
+            outputs = [partials]
+        loss_parts = _blocked_sum(mx, loss)
+        outputs.append(loss_parts)
+        if fit_intercept:
+            residual_sum = mx.sum(residual, axis=0)
+            outputs.append(residual_sum)
+        mx.eval(*outputs)
+
+        grad_W = np.asarray(partials).astype(np.float64)
+        if batched:
+            grad_W = grad_W.reshape(blocks, n_classes).sum(axis=0).reshape(n_classes, 1)
+            if tail:
+                grad_W = grad_W + np.asarray(tail_partial).astype(np.float64)
+        grad_b = None
+        if fit_intercept:
+            grad_b = np.asarray(residual_sum).astype(np.float64)
+        return _host_finish(theta, grad_W, loss_parts, grad_b, sw_sum, l2, n_features)
 
     return fun
 
@@ -552,18 +732,14 @@ def solve_logistic(
             callback(*unpack(theta))
 
     with use_device(config.device) as stream:
+        # use_device yields the block's stream, not the device's name.
+        on_gpu = stream.device == mx.gpu
         Xm = mx.array(X_host, dtype=mx.float32)
         swm = None if weights is None else mx.array(weights.astype(NUMPY_FLOAT))
 
         if n_targets == 1:
-            # use_device yields the block's stream, not the device's name.
-            transposed = stream.device == mx.gpu
-            if transposed:
-                # Transpose once on the device and keep only the transpose, so the
-                # resident footprint is unchanged; see the module docstring.
-                Xm = mx.contiguous(Xm.T)
-                mx.eval(Xm)
-            fun = _binary_objective(
+            objective = _binary_objective_gpu if on_gpu else _binary_objective_cpu
+            fun = objective(
                 mx,
                 Xm,
                 mx.array(y_host.astype(NUMPY_FLOAT), dtype=mx.float32),
@@ -572,11 +748,11 @@ def solve_logistic(
                 l2,
                 config.fit_intercept,
                 n_features,
-                transposed=transposed,
             )
         else:
             codes = y_host.astype(np.int32)
-            fun = _multinomial_objective(
+            objective = _multinomial_objective_gpu if on_gpu else _multinomial_objective_cpu
+            fun = objective(
                 mx,
                 Xm,
                 mx.array(codes.reshape(-1, 1), dtype=mx.int32),
