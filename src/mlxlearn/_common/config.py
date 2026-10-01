@@ -497,8 +497,16 @@ class Tuning:
     #: this is read from the process-wide default only (MLXLEARN_DIAGNOSTICS_CAPACITY,
     #: at import and on reset_config); tuning_context cannot resize it.
     diagnostics_capacity: int = 512
+    #: mlxlearn's own Metal kernels (``_kernels/_metal.py``): today the neighbor search's
+    #: fused distance-and-selection kernel. Off, the same work runs on MLX's built-in
+    #: operations, which give the same answers bit for bit on the MLX versions the
+    #: kernels are validated on. For tests and bisection only: MLXLEARN_METAL_KERNELS=0.
+    metal_kernels: bool = True
 
     def __post_init__(self) -> None:
+        # Normalized like Config's booleans: a NumPy bool is the value meant, and an int
+        # or a string is a mistake to name, not a truth value to guess.
+        object.__setattr__(self, "metal_kernels", _as_bool("metal_kernels", self.metal_kernels))
         for f in fields(self):
             value = getattr(self, f.name)
             if isinstance(value, int) and not isinstance(value, bool) and value < 0:
@@ -564,6 +572,8 @@ def _tuning_from_env(base: Tuning) -> Tuning:
                 overrides[f.name] = int(raw)
             elif f.type is float or f.type == "float":
                 overrides[f.name] = float(raw)
+            elif f.type is bool or f.type == "bool":
+                overrides[f.name] = _parse_bool(raw)
             else:
                 overrides[f.name] = raw
         except ValueError as exc:
@@ -579,6 +589,16 @@ def _tuning_from_env(base: Tuning) -> Tuning:
 
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
+
+
+def _parse_bool(raw: str) -> bool:
+    """An environment variable's boolean, or ``ValueError`` for anything else."""
+    text = raw.strip().lower()
+    if text in _TRUE:
+        return True
+    if text in _FALSE:
+        return False
+    raise ValueError(f"{raw!r} is not a boolean (use 1/0, true/false)")
 
 
 def _config_from_env() -> Config:

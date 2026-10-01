@@ -32,6 +32,12 @@ example); the GPU and the CPU may round a long sum differently.
 
 **Blocking invariance.** Any combination of query- and train-block sizes yields
 identical output. The tests sweep this.
+
+On the GPU, a first pass over enough (query row, training row) pairs forms its tile and
+selects its candidates in one Metal kernel (:mod:`._topk`) instead of MLX's tile
+expression and ``argpartition``. It keeps the same candidates, and the same largest kept
+value, bit for bit, so every certificate, every second pass and every count is what the
+built-in selection gives; see :func:`_first_pass_blocks` for what that takes.
 """
 
 from __future__ import annotations
@@ -49,6 +55,7 @@ from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .._common.config import get_tuning
 from .._common.device import physical_memory_bytes, use_device
 from ..exceptions import UnsupportedInputError
+from . import _topk
 
 __all__ = ["NeighborIndex", "build_index", "resolve_blocks"]
 
@@ -104,6 +111,24 @@ _SELECT_SEGMENT_MAX = 8192
 #: CPU evaluates the tile expression unfused, a tile or two more, which the GPU's
 #: argpartition share covers there.
 _TILE_WORKSET_FACTOR = 7
+
+#: The same, for a first pass that selects with the fused kernel (:mod:`._topk`): the
+#: matmul output, and room for the kernel's per-chunk lists and MLX's temporaries. No
+#: second tile and no sort exists, so a block holds 3.5 times the rows — 114 query rows
+#: against 38 at 1 000 000 × 64 — and the kernel's chunks fill the GPU from fewer
+#: queries. Peak device memory for 4 096 queries, against a 1 GiB budget: 326 → 436 MiB
+#: at 1 000 000 × 64, 298 → 596 MiB at 128 000 × 768.
+_TILE_WORKSET_FUSED = 2
+
+#: A query's first pass selects with the fused kernel only from this many (query row,
+#: training row) pairs; below, MLX's tile expression and ``argpartition`` keep it.
+#: Engaged on small work the kernel measured slower — 4 096 × 2 048 at 8-16 queries,
+#: some 65 000 pairs — and engaged from this many pairs on, no query of its prototype's
+#: benchmark grid (1 224 cells over two scikit-learn versions) was significantly slower.
+#: Provisional: no grid has calibrated the crossover itself. It is not a dispatch
+#: threshold — both sides are MLX, and their answers agree bit for bit — and no
+#: dispatch threshold moved with it.
+_FUSED_MIN_PAIRS = 1 << 22
 
 #: Peak device memory per byte of the ``(rows, k_carry, n_features)`` refinement
 #: gather: the gathered rows, the fused difference, and — for float64 input — the
@@ -215,6 +240,7 @@ def resolve_blocks(
     k_search: int,
     query_block_size: int | None = None,
     train_block_size: int | None = None,
+    workset_factor: int = _TILE_WORKSET_FACTOR,
 ) -> BlockPlan:
     """Choose tile sizes so the distance tile's working set fits the budget.
 
@@ -227,13 +253,16 @@ def resolve_blocks(
     The refinement gather, which grows with ``k * n_features`` rather than with the
     training set, is budgeted separately, by row chunks inside a block, so that a
     large ``k`` does not also shrink the matmul.
+
+    ``workset_factor`` is the working set in tiles: ``_TILE_WORKSET_FACTOR`` for MLX's
+    built-in selection, ``_TILE_WORKSET_FUSED`` for the fused kernel's.
     """
     if n_query <= 0 or n_train <= 0:
         return BlockPlan(query_rows=0, train_cols=0)
 
     tuning = get_tuning()
     budget = _distance_budget_bytes(backend)
-    tile_budget = max(budget // _TILE_WORKSET_FACTOR, 1)
+    tile_budget = max(budget // workset_factor, 1)
     itemsize = 4
 
     if query_block_size is not None:
@@ -400,6 +429,88 @@ def _first_pass_carry(k_search: int, n_features: int, n_train: int) -> int:
     band = math.ceil(4.0 * n_features * n_features * _U * k_search)
     margin = max(_OVERSELECT, min(k_search, band))
     return min(n_train, k_search + margin)
+
+
+@dataclass(frozen=True, slots=True)
+class _FirstPass:
+    """How a query's first pass runs: its blocks of query rows, its tiles, its selection."""
+
+    bounds: list  # [(start, end)] of query rows, in order
+    train_cols: int
+    fused: _topk.Selection | None  # the fused kernel's selection, or None: MLX's own
+    group_rows: int  # rows the built-in path's blocks hold; 0 when that is what runs
+
+
+def _first_pass_blocks(
+    n_query: int,
+    n_train: int,
+    k_carry: int,
+    plan: BlockPlan,
+    *,
+    device: str,
+    plan_backend: str,
+    query_block_size: int | None = None,
+    train_block_size: int | None = None,
+) -> _FirstPass:
+    """The blocks a first pass searches, and whether it selects with the fused kernel.
+
+    ``plan`` is the built-in path's (``resolve_blocks`` at ``_TILE_WORKSET_FACTOR``).
+    The fused kernel takes the first pass when the gate allows it for ``device``
+    (:func:`._topk.selection`, which compiles the kernel on its first use, so this is
+    called inside the query's device block) and the query has ``_FUSED_MIN_PAIRS``
+    pairs. Its blocks are then budgeted at ``_TILE_WORKSET_FUSED``, and a block's rows
+    still get the built-in path's bits: a row's Gram values do not depend on how many
+    rows its product has — MLX's matmul gives a row the same bits at any count from two,
+    and at any number of columns — except that a one-row product is a matrix-vector
+    kernel that rounds differently. So a fused block is a union of whole built-in
+    blocks, the built-in path's one-row last block, when it has one, stays a block of
+    its own, and a query whose built-in blocks are single rows keeps the built-in path.
+    The rows a block cannot certify are resolved in the groups the built-in blocks put
+    them in (``group_rows``), since the second pass's products depend on the grouping
+    the same way.
+    """
+    base_rows = plan.query_rows
+    base = [(s, min(s + base_rows, n_query)) for s in range(0, n_query, base_rows)]
+    builtin = _FirstPass(bounds=base, train_cols=plan.train_cols, fused=None, group_rows=0)
+    if (
+        n_query * n_train < _FUSED_MIN_PAIRS
+        or (base_rows < 2 and n_query > 1)
+        or n_train >= 2**31  # the kernel's columns are 32-bit
+    ):
+        return builtin
+    fused = _topk.selection(device, k_carry)
+    if fused is None:
+        return builtin
+    wide = resolve_blocks(
+        n_query,
+        n_train,
+        backend=plan_backend,
+        k_search=k_carry,
+        query_block_size=query_block_size,
+        train_block_size=train_block_size,
+        workset_factor=_TILE_WORKSET_FUSED,
+    )
+    return _FirstPass(
+        bounds=_fused_bounds(n_query, base_rows, wide.query_rows),
+        train_cols=wide.train_cols,
+        fused=fused,
+        group_rows=base_rows,
+    )
+
+
+def _fused_bounds(n_query: int, base_rows: int, fused_rows: int) -> list[tuple[int, int]]:
+    """Fused blocks: as many whole built-in blocks of ``base_rows`` as ``fused_rows`` holds.
+
+    A built-in last block of one row stays a block of its own; see
+    :func:`_first_pass_blocks`.
+    """
+    group = max(1, fused_rows // base_rows) * base_rows
+    single = base_rows >= 2 and n_query > 1 and n_query % base_rows == 1
+    limit = n_query - 1 if single else n_query
+    bounds = [(s, min(s + group, limit)) for s in range(0, limit, group)]
+    if single:
+        bounds.append((n_query - 1, n_query))
+    return bounds
 
 
 @dataclass(frozen=True, slots=True)
@@ -650,25 +761,31 @@ class NeighborIndex:
             probe = probe.astype(np.float64) + self.X_lo[rows]
         plan_backend = "mlx" if device == "gpu" else "cpu"
         plan = resolve_blocks(rows.size, n_train, backend=plan_backend, k_search=k_carry)
-        search = _Search(
-            index=self,
-            state=state,
-            mx=mx,
-            k_search=k_search,
-            k_carry=k_carry,
-            segmented=device == "gpu",
-            fns=_kernels(device),
-            plan_backend=plan_backend,
-            train_block_size=None,
-            counts={"rows": int(rows.size), "widened_rows": 0, "widen_skipped_rows": 0,
-                    "exact_rows": 0},
-        )
         uncertified = 0
         with use_device(device):
-            for start in range(0, rows.size, plan.query_rows):
-                end = min(start + plan.query_rows, rows.size)
+            # The probe is a query like any other: from _FUSED_MIN_PAIRS pairs it selects
+            # with the fused kernel, compiling it if this is the process's first.
+            first = _first_pass_blocks(
+                rows.size, n_train, k_carry, plan, device=device, plan_backend=plan_backend
+            )
+            search = _Search(
+                index=self,
+                state=state,
+                mx=mx,
+                k_search=k_search,
+                k_carry=k_carry,
+                segmented=device == "gpu",
+                fns=_kernels(device),
+                plan_backend=plan_backend,
+                train_block_size=None,
+                counts={"rows": int(rows.size), "widened_rows": 0, "widen_skipped_rows": 0,
+                        "exact_rows": 0},
+                fused=first.fused,
+                group_rows=first.group_rows,
+            )
+            for start, end in first.bounds:
                 block = search.query_block(probe, start, end, self_query=False)
-                cand, gmax = search.candidates(block, k_carry, plan.train_cols)
+                cand, gmax = search.first_pass(block, first.train_cols)
                 refined = search.refine(block, cand)
                 mx.eval(cand, refined, gmax, block.sq)
                 _, sq = _sort_candidates(np.asarray(cand), np.asarray(refined))
@@ -782,23 +899,35 @@ class NeighborIndex:
         out_idx = np.empty((n_query, k), dtype=INDEX_DTYPE)
         out_dist = np.empty((n_query, k), dtype=np.float64) if return_distance else None
 
-        search = _Search(
-            index=self,
-            state=state,
-            mx=mx,
-            k_search=k_search,
-            k_carry=k_carry,
-            segmented=device == "gpu",
-            fns=_kernels(device),
-            plan_backend=plan_backend,
-            train_block_size=train_block_size,
-            counts={"rows": n_query, "widened_rows": 0, "widen_skipped_rows": 0, "exact_rows": 0},
-        )
         with use_device(device):
-            for start in range(0, n_query, plan.query_rows):
-                end = min(start + plan.query_rows, n_query)
+            first = _first_pass_blocks(
+                n_query,
+                n_train,
+                k_carry,
+                plan,
+                device=device,
+                plan_backend=plan_backend,
+                query_block_size=query_block_size,
+                train_block_size=train_block_size,
+            )
+            search = _Search(
+                index=self,
+                state=state,
+                mx=mx,
+                k_search=k_search,
+                k_carry=k_carry,
+                segmented=device == "gpu",
+                fns=_kernels(device),
+                plan_backend=plan_backend,
+                train_block_size=train_block_size,
+                counts={"rows": n_query, "widened_rows": 0, "widen_skipped_rows": 0,
+                        "exact_rows": 0},
+                fused=first.fused,
+                group_rows=first.group_rows,
+            )
+            for start, end in first.bounds:
                 block = search.query_block(Q, start, end, self_query=self_query)
-                idx_np, sq_np = search.block(block, plan.train_cols)
+                idx_np, sq_np = search.block(block, first.train_cols)
 
                 if exclude_self:
                     idx_np, sq_np = _drop_self(idx_np, sq_np, offset=start)
@@ -826,6 +955,13 @@ class _Search:
     plan_backend: str  # "mlx" or "cpu": whose memory budget the blocks follow
     train_block_size: int | None
     counts: dict
+    # The fused kernel's selection of k_carry candidates, when it takes the first pass
+    # (_first_pass_blocks); None runs MLX's tile expression and argpartition.
+    fused: _topk.Selection | None = None
+    # Rows the built-in path's query blocks hold. A fused block is a union of them, and
+    # the rows it cannot certify are resolved in those groups; 0 resolves a block's
+    # rows together, as the built-in path, which runs its own blocks, does.
+    group_rows: int = 0
 
     # ------------------------------------------------------------- query rows
 
@@ -917,7 +1053,7 @@ class _Search:
             idx, sq = self.exact(qb, integer=True)
             return idx, np.ldexp(sq.astype(np.float64), -2 * qb.int_shift)
 
-        cand, gmax = self.candidates(qb, self.k_carry, train_cols)
+        cand, gmax = self.first_pass(qb, train_cols)
         refined = self.refine(qb, cand)
         mx.eval(cand, refined, gmax, qb.sq)
         idx, sq = _sort_candidates(np.asarray(cand), np.asarray(refined))
@@ -928,7 +1064,11 @@ class _Search:
             ok = self.certified(qb, gmax, sq[:, -1])
             if not ok.all():
                 bad = np.flatnonzero(~ok)
-                idx[bad], sq[bad] = self.resolve(qb.take(mx, bad), gmax[bad])
+                groups = [bad] if not self.group_rows else np.split(
+                    bad, np.flatnonzero(np.diff(bad // self.group_rows)) + 1
+                )
+                for rows in groups:
+                    idx[rows], sq[rows] = self.resolve(qb.take(mx, rows), gmax[rows])
 
         if state.exponent > 0:
             self.require_resolved(qb, idx, sq)
@@ -961,6 +1101,68 @@ class _Search:
                 "these neighbors with scikit-learn.",
                 reason="float32-overflow",
             )
+
+    def first_pass(self, qb: _QueryBlock, train_cols: int):
+        """The first pass's ``k_carry`` candidates and largest kept Gram value per row.
+
+        By the fused kernel when it takes the pass, else by :meth:`candidates`; the two
+        agree bit for bit (:mod:`._topk`).
+        """
+        if self.fused is None:
+            return self.candidates(qb, self.k_carry, train_cols)
+        return self._fused_candidates(qb, train_cols)
+
+    def _fused_candidates(self, qb: _QueryBlock, train_cols: int):
+        """:meth:`candidates` for ``k_carry``, by the fused kernel: the same set and value.
+
+        One kernel per train tile forms the tile from the matmul output, selects, and
+        merges with the tiles before. The list comes back ascending by ``(value,
+        index)``, so its last value is the largest kept. A row whose register lists may
+        have dropped a candidate (possible only above 32 candidates, and flagged, never
+        guessed) is searched again by :meth:`candidates`.
+        """
+        mx, state = self.mx, self.state
+        n_train = self.index.n_samples
+        k_carry = self.k_carry
+        best = flags = None
+        for t_start in range(0, n_train, train_cols):
+            t_end = min(t_start + train_cols, n_train)
+            gram = qb.sel @ state.sel_t[:, t_start:t_end]
+            # sel_sq is an array of its own, so the slice starts t_start elements into
+            # its buffer: what the kernel's four-wide loads need to know.
+            vals, idx, flagged = self.fused.smallest(
+                mx, gram, qb.sq, state.sel_sq[t_start:t_end], col0=t_start, t_offset=t_start,
+                prev=best,
+            )
+            best = (vals, idx)
+            if flagged is not None:
+                flags = flagged if flags is None else mx.maximum(flags, flagged)
+        vals, idx = best
+        gmax = vals[:, k_carry - 1]
+        if flags is None:
+            return idx, gmax
+        bad = np.flatnonzero(np.asarray(flags))
+        if bad.size == 0:
+            return idx, gmax
+        rows = bad
+        if bad.size == 1 and qb.n > 1:
+            # Searched alone, the row would be a one-row product, a matrix-vector kernel
+            # that rounds differently: a second row, discarded, keeps the block's bits.
+            rows = np.array([bad[0], 1 if bad[0] == 0 else 0])
+        sub = qb.take(mx, rows)
+        cols = resolve_blocks(
+            sub.n, n_train, backend=self.plan_backend, k_search=k_carry,
+            query_block_size=sub.n, train_block_size=self.train_block_size,
+        ).train_cols
+        sub_idx, sub_gmax = self.candidates(sub, k_carry, cols)
+        redo = np.zeros(qb.n, dtype=bool)
+        redo[bad] = True
+        at = np.zeros(qb.n, dtype=np.int32)
+        at[bad] = np.arange(bad.size, dtype=np.int32)
+        redo_dev, at_dev = mx.array(redo), mx.array(at)
+        idx = mx.where(redo_dev[:, None], mx.take(sub_idx, at_dev, axis=0), idx)
+        gmax = mx.where(redo_dev, mx.take(sub_gmax, at_dev, axis=0), gmax)
+        return idx, gmax
 
     def candidates(self, qb: _QueryBlock, k_carry: int, train_cols: int):
         """Running top-``k_carry`` by Gram value over train tiles, entirely on device.

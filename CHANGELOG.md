@@ -682,6 +682,12 @@ come first under **Changed**.
   full copy of its training rows that doubled the file when it was saved again.
 - The fitted `SVC` keeps its support vectors mapped into the compute frame and resident on
   the device, built lazily on the first prediction and dropped from pickles.
+- A neighbor query whose first pass runs the fused selection kernel (**Added**) budgets its
+  tiles as two tiles of working set rather than seven — it writes no second tile and
+  sorts nothing — so its blocks hold up to 3.5 times the query rows. Its peak device
+  memory is higher, and still inside the same budget: for 4 096 queries, 326 → 436 MiB at
+  1 000 000 × 64 and × 128, 228 → 423 MiB at 100 000 × 256, and 298 → 596 MiB at
+  128 000 × 768, against a 1 GiB budget on a 128 GB machine.
 
 #### Packaging, CI and benchmarks
 
@@ -860,6 +866,19 @@ come first under **Changed**.
 - README notes on fork safety, MLX's buffer cache, and pickles of patched models needing
   mlxlearn to load.
 - A `Documentation` project URL.
+- mlxlearn's first Metal kernel of its own. On the GPU, a neighbor query's first pass over
+  at least 2²² (query row, training row) pairs forms its distance tile and selects its
+  candidates in one kernel — per-lane register lists with threshold rejection and a
+  SIMD-wide merge, after Johnson, Douze and Jégou, "Billion-scale similarity search with
+  GPUs" (arXiv:1702.08734) — instead of MLX's tile expression and `argpartition`. Indices,
+  distances and diagnostics counts are bit for bit those of MLX's selection
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1). It runs on MLX 0.32, the release
+  that identity was checked on; MLX's CPU device, MLX 0.31 and later releases not yet
+  checked keep MLX's selection. It compiles on the first query of a process that takes
+  it, once per list length, and is checked there against an answer the host computes.
+  Private switch: `MLXLEARN_METAL_KERNELS=0`. The rules every such kernel follows —
+  the gate, `fp contract(off)`, padded inputs, caching, when it compiles — are in
+  [`docs/development.md`](docs/development.md).
 
 ### Removed
 
@@ -949,6 +968,37 @@ Where patched dispatch now sends each problem is under **Changed**.
   hold more of the budget while they run: at a 64 MiB budget, two rows searched exactly
   against 200 000 × 16 peaked at 21 MiB on the GPU and 53 MiB on MLX's CPU, against
   about 5 MiB before, and at a 16 MiB budget at 5.3 and 13.3 MiB.
+- Neighbor queries on the GPU select their first pass's candidates with mlxlearn's fused
+  kernel (**Added**) from 2²² (query row, training row) pairs, every answer and every
+  count the same bit for bit. Against MLX's own selection, after an idle gap:
+  1.69–7.29× at 1 000 000 × 64 for 16–4 096 queries, every case; and as medians over
+  data and k, 2.6–4.7× at 1 000 000 × 128 for 256–4 096 queries, 1.2–2.2× at
+  30 000–100 000 × 256 and 1.2–1.4× at 128 000 × 768 from the pair threshold up; ties
+  at 8 192 × 1 024 and 4 096 × 2 048, and below the threshold, where MLX's selection
+  still runs. On tall, narrow data the selection had been three quarters of the first
+  pass. Measured
+  on the prototype this kernel was ported from, whose answers match it bit for bit, on
+  the GPU of the same M4 Max with MLX 0.32.2, under Python 3.13 with scikit-learn 1.9.0
+  and Python 3.10 with 1.7.2: k = 10 and 50, Gaussian, clustered and low-rank float64
+  data, forced onto MLX, 12 calls each after a garbage collection and a 10 ms idle gap
+  — which understates what a small batch pays after a longer idle — and no query of the
+  1 224 measured significantly slower. A spot check of this release at k = 10 on
+  Gaussian data gave 1.8× (16 queries), 5.0× (256) and 6.2× (4 096) at
+  1 000 000 × 64, 1.5× at 30 000 × 256 with 256 queries and 1.1× at 8 192 × 1 024.
+  The kernel compiles on the first query of a process that takes it — under
+  `patch_sklearn()`, usually the fit's own probe, which is a first pass over 256 rows —
+  and a library never compiled on the machine costs that query about 85–95 ms, once per
+  machine, MLX release and kernel version: a first-ever patched fit took 156–159 ms
+  against 71–74 ms with MLX's selection at 30 000 × 256, and 312–326 ms against
+  250–264 ms at 1 000 000 × 64 (fresh processes, Python 3.13, five each). Once the
+  operating system's shader cache holds the library it took 67–72 and 218–227 ms. An
+  earlier design compiled on a background thread from the index build and hid the cost
+  at 1 000 000 × 64, but a library build stalls every other MLX GPU call in the process,
+  and at 30 000 × 256 it had only 8 ms of host work to hide behind (+70 ms there). A
+  query below the threshold after such a fit compiles MLX's tile expression, which the
+  fused probe no longer does: 4.1–4.5 ms against 2.1–3.3 ms for its first 16 queries at
+  30 000 × 256, once a process. No dispatch threshold moved: patched mode sends the same
+  problems to MLX as before.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32

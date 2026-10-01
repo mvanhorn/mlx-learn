@@ -239,6 +239,57 @@ outcome available.
 library it imported. Use explicit keys through `_common/rng.py`. The `layering` gate rejects
 any `*.random.seed` — MLX's, NumPy's or the standard library's — anywhere in the package.
 
+## mlxlearn's own Metal kernels
+
+`mx.fast.metal_kernel` compiles a Metal source string at run time, so the wheel stays
+pure Python. One kernel ships: the neighbor search's fused tile and selection
+(`_kernels/_topk.py`). Every kernel goes through `_kernels/_metal.py`, which holds these
+rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shipped.
+
+- **The gate is the resolved device, and MLX 0.32.** `_metal.kernels_enabled(device)` takes
+  the `"gpu"` or `"cpu"` the caller resolved and passes its built-in path — never MLX's
+  default device: on 0.32 a kernel launched without `stream=` ran on the GPU inside
+  `use_device("cpu")`, silently. Every launch names `mx.gpu` (`_metal.launch`). MLX 0.31
+  keeps compiled libraries in an unlocked map keyed by name alone — one kernel fed inputs
+  of two sizes from two threads crashed the process — so the gate is closed there, and
+  MLX's CPU device and 0.31 run MLX's own operations, as they always did. So does
+  `MLXLEARN_METAL_KERNELS=0` (`Tuning.metal_kernels`), for tests and bisection.
+- **A kernel that must match MLX bit for bit lists the MLX releases it was checked on.**
+  The fused selection reproduces MLX's `argpartition` and matmul bits through behaviors
+  MLX does not promise (`docs/fp32_policy.md` §2.1), so `_topk.VALIDATED_MLX` names the
+  releases on which every identity test passed, and any other keeps MLX's own selection
+  until someone runs them there and adds it. A run-time self-test does not replace the
+  list: the behaviors depend on the shapes, which a test small enough for a first query
+  does not reach.
+- **`#pragma METAL fp contract(off)` first** (`_metal.PRELUDE`, prepended by
+  `_metal.metal_kernel`). Metal's default mode fuses `a*b + c` written as one expression
+  into an fma, which rounds once where MLX rounds twice; `math_mode` is pinned to
+  `"safe"`, since the relaxed and fast modes fuse across statements too. Spell out
+  `metal::precise::` for `exp`, `log`, `sqrt` and `rsqrt`: on 0.32 the bare names are the
+  fast approximations. Use no float atomics, merge in a fixed order, and call
+  `simd_min`/`simd_max` on 32-bit values only — Apple GPUs reduce a 64-bit one through
+  float32.
+- **Inputs of at least eight elements** (`_metal.pad_min8`); sizes travel in one int32
+  array of eight (`_metal.int_params`), never as template values. MLX declares a shorter
+  input `constant`, which compiles a second variant of the source. Sources are ASCII and
+  names fixed: the operating system's Metal shader cache serves a library to later
+  processes only while both stay the same, and a source change bumps the name's version.
+- **Kernel objects come from an `lru_cache` factory keyed by static parameters only** —
+  the variant, never data — and kernels stay out of `mx.compile`d functions.
+- **Compile on first use, in the query that needs it, not ahead of it.** MLX holds a lock
+  that stalls every other GPU call in the process while it builds a library, so a
+  background build would stall the user's GPU work to save a first fit tens of
+  milliseconds, once per machine — and one started at the index build overlapped only
+  that build's host work, 8 ms of it at 30 000 × 256. A first use runs the kernel on a
+  fixed input whose answer the host computes, under a lock, so concurrent first queries
+  compile once; a kernel that does not build (MLX raises `RuntimeError`) or answers
+  wrongly is not used in that process. That narrow `except` is a capability probe on
+  fixed data, like `gpu_available()`, never a guard around a query's own work.
+- **Tests prove which path ran**, by spying on the kernel's launches, and compare its
+  answers with the switch off bit for bit — indices, distance bits and diagnostics counts
+  (`tests/unit/test_fused_selection.py`). On MLX 0.31, the minimum-versions job's, a test
+  checks that no kernel object is ever built.
+
 ## Compliance
 
 ```bash

@@ -140,6 +140,42 @@ and then it proves the selection right:
    data — binary, one-hot, counts — makes the identity exact outright, and takes that
    exact search directly.
 
+**How the candidates are selected.** Step 2 keeps each query row's first `k + margin`
+training rows under `(Gram value, index)`. MLX's own operations do it in three passes over
+each tile: the tile expression, which writes a second tile, then `argpartition`, which
+MLX's GPU runs as a sort. On the GPU, from 2²² (query row, training row) pairs, a Metal
+kernel of mlxlearn's own does it in one (`_kernels/_topk.py`): per-lane register lists
+with threshold rejection and a SIMD-wide merge, the k-selection of Johnson, Douze and
+Jégou ("Billion-scale similarity search with GPUs", 2019, arXiv:1702.08734). It computes
+every tile value with the identity's float32 operations in MLX's order, fused
+multiply-adds disabled, and keeps the same rows and the same largest kept value as MLX's
+selection, bit for bit, so steps 3–5 see the same input: the certificate, the wider pass
+and the exact search are unchanged, and so is every answer and every count in
+diagnostics.
+
+Exactness does not rest on that agreement. The certificate needs only that every training
+row left out has a Gram value at least the largest kept one, which the kernel's ordered
+lists guarantee by construction — and a row whose 32-long register lists might have
+dropped a candidate (only above 32 candidates) is flagged and selected again by MLX.
+What the bitwise agreement rests on is two behaviors of MLX 0.32 that MLX does not
+promise: its GPU `argpartition` keeps the lowest index among equal values, as a stable
+sort does, and its matmul gives a row the same bits whatever the number of rows (two or
+more) and columns in the product. A one-row product is a matrix-vector kernel that rounds
+differently, so the kernel's blocks of query rows are unions of whole blocks of MLX's
+path, a one-row block stays a block of its own, and the rows a block cannot certify go
+to the wider pass in the groups MLX's blocks put them in. On another MLX release either
+behavior could change, and with it which of the rows tied at the last carried Gram value
+is carried and which query rows take a wider pass: the time a query takes and its
+diagnostics counts, not its answer, which the certificate and the `(distance, index)`
+order fix. So the kernel runs only on the MLX releases on which that identity was checked
+— 0.32 — and only for work resolved to the GPU. MLX's CPU device, MLX 0.31, and
+`MLXLEARN_METAL_KERNELS=0` select with MLX's own operations, as before. A run-time
+self-test could not take the release list's place: both behaviors depend on the shapes,
+and a test small enough to run on a first query exercises only its own. What a first use
+does check, once per process, is the kernel itself — it runs on a fixed input whose
+answer the host computes, and a kernel that does not build or does not match is not used —
+because Apple GPUs other than the M4 Max it was measured on are untested.
+
 A fixed over-selection margin was not enough, and nothing checked it. Where the Gram noise
 exceeds the gaps between neighbors — tight clusters, near-duplicates, one unscaled column
 among unit-scale ones — it returned wrong neighbor sets without a word: 290 of 300 queries on
@@ -421,7 +457,8 @@ for being better, so those assertions are `j_mlxlearn ≤ j_sklearn · (1 + rtol
 mlxlearn returns the first `k` training rows under `(distance, training index)` — a total
 order over the *whole* training set, not merely an ordering of whichever rows it returns.
 Rows tied at the k-th distance are decided by index too, so `kneighbors(k)` is always a
-prefix of `kneighbors(k + m)`, and no answer depends on block sizes. That includes
+prefix of `kneighbors(k + m)`, and no answer depends on block sizes, or on whether MLX
+or mlxlearn's own kernel selected the candidates (§2.1). That includes
 `kneighbors()` with no query, which is the same order with each row itself left out: a
 row with more than `k` exact duplicates before it gets the first `k` of them. "Distance" is the
 refined float32 value of §2.1. Where that value is exact — integer, binary and one-hot
