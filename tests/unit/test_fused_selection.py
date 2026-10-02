@@ -26,17 +26,19 @@ from tests._helpers import join_or_fail
 
 MiB = 1024 * 1024
 
-#: Whether the kernel can run here: the GPU, MLX 0.32, Metal.
+#: Whether the kernel can run here: the GPU, an MLX release it was validated on, Metal.
 FUSED = (
     gpu_available()
     and _metal.mlx_version()[:2] >= _metal.MIN_MLX
-    and _metal.mlx_version()[:2] in _topk.VALIDATED_MLX
+    and _metal.mlx_version() in _topk.VALIDATED_MLX
 )
 
 
 def needs_kernel(test):
     """A test that runs the kernel: the GPU, and an MLX release the kernel serves."""
-    skip = pytest.mark.skipif(not FUSED, reason="the fused kernel needs the GPU and MLX 0.32")
+    skip = pytest.mark.skipif(
+        not FUSED, reason="the fused kernel needs the GPU and an MLX release it was validated on"
+    )
     return pytest.mark.gpu(skip(test))
 
 
@@ -59,6 +61,7 @@ def launches(monkeypatch):
 def any_size(monkeypatch):
     """Let the kernel take a first pass of any size, so small data reaches it."""
     monkeypatch.setattr(distance, "_FUSED_MIN_PAIRS", 0)
+    monkeypatch.setattr(distance, "_FUSED_MIN_TRAIN_ROWS", 0)
 
 
 @pytest.fixture
@@ -168,9 +171,12 @@ def test_no_kernel_runs_for_the_cpu_device():
     assert _topk.selection("cpu", 14) is None
 
 
-@pytest.mark.parametrize("version", [(0, 31, 2), (0, 33, 0), (1, 0, 0)])
+@pytest.mark.parametrize(
+    "version", [(0, 31, 2), (0, 32, 0), (0, 32, 1), (0, 32, 3), (0, 33, 0), (1, 0, 0)]
+)
 def test_mlx_releases_the_kernel_was_not_validated_on_keep_the_builtin_path(version):
-    """0.31 for its unlocked library map; 0.33 and later until they have been checked."""
+    """0.31 for its unlocked library map; any other release, a patch release of 0.32
+    included, until it has been checked: which GEMM kernel MLX picks can change in one."""
     real = _metal.mlx_version
     _metal.mlx_version = lambda: version
     _metal._runtime_ready.cache_clear()
@@ -361,6 +367,7 @@ def _search(index, k, *, fused, device="gpu"):
         train_block_size=None,
         counts={"rows": 0, "widened_rows": 0, "widen_skipped_rows": 0, "exact_rows": 0},
         fused=_selection(k_carry) if fused else None,
+        group_cols=index.n_samples,  # where a flagged row is selected again
     )
 
 
@@ -411,11 +418,13 @@ def test_an_overflowed_row_is_searched_again_by_the_builtin_selection(
     assert redone, "no row overflowed: the test lost its premise"
 
 
+@pytest.mark.parametrize("d", [16, 256])
 @pytest.mark.usefixtures("any_size")
 @needs_kernel
-def test_one_overflowed_row_of_a_block_is_redone_beside_another(rng, monkeypatch, launches):
-    """Alone it would be a one-row product, which rounds differently; a partner keeps the bits."""
-    X = _data("blobs", 20_000, 16, rng)
+def test_one_overflowed_row_of_a_block_is_redone_beside_another(d, rng, monkeypatch, launches):
+    """Alone it would be a one-row product, which rounds differently; a partner keeps the
+    bits, and so do the built-in path's tiles, at 256 features too."""
+    X = _data("blobs", 20_000, d, rng)
     Q = _queries(X, 40, rng)
     index = build_index(X, backend="mlx")
     _selection(14)  # its first-use check, before the flags are forged
@@ -488,27 +497,147 @@ def test_hard_data_resolves_the_same_rows_the_same_way(kind, rng, launches, any_
         assert seen["widen_skipped_rows"] > 0, "the count skipped nothing"
 
 
-@pytest.mark.parametrize("n_query", [1, 2, 3, 5, 6, 7, 11, 12, 13, 18, 19, 31, 36, 37])
+@pytest.mark.parametrize("k", [5, 10])
 @needs_kernel
-def test_query_row_counts_around_the_blocks(n_query, rng, launches, any_size):
-    """One row, two, and either side of whole built-in blocks (6 rows here), including a
-    one-row last block, which stays a block of its own."""
-    X = _data("dup20", 50_000, 16, rng)
-    Q = _queries(X, n_query, rng)
-    budget = 9 * MiB
+def test_a_fused_block_makes_each_builtin_blocks_choices(k, rng, launches, any_size):
+    """Integer training rows, queries on them, one row off the integer grid: the built-in
+    path searches that row's block on the float path and every other block exactly. A
+    fused block of several built-in blocks must not move them all to the float path,
+    where ties on integer data fail the certificate and the counts grow."""
+    X = rng.integers(0, 4, size=(50_000, 16)).astype(np.float64)
+    Q = X[rng.integers(0, len(X), 90)].copy()
+    Q[7, 0] += 0.3
+    budget = 9 * MiB  # built-in blocks of 6 rows, fused ones of 18
     with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
         index = build_index(X, backend="mlx")
-        assert distance.resolve_blocks(37, 50_000, backend="mlx", k_search=14).query_rows == 6
+        stats = _same_as_builtin(index, Q, k, launches)
+    assert stats["widened_rows"] > 0, "the float path's block was certified: no premise"
+
+
+@needs_kernel
+def test_query_blocks_split_where_the_builtin_blocks_choose_differently(rng):
+    """Runs of whole built-in blocks that choose alike; an integer-path block alone."""
+    X = rng.integers(0, 4, size=(2_000, 16)).astype(np.float64)
+    index = build_index(X, backend="mlx")
+    search = _search(index, 5, fused=True)
+    search.group_rows = 6
+    Q = X[:30].copy()
+    Q[7, 0] += 0.3  # a float64 residual in the second block
+    Q[13, 1] += 0.25  # a quarter, no residual: the integer path, shifted by 2
+    Q[19, 2] += 1 / 3  # in the fourth block
+    with use_device("gpu"):
+        runs = search.query_blocks(Q, 0, 30, self_query=False)
+        whole = search.query_blocks(Q, 0, 6, self_query=False)
+    shape = [(a, b, blk.lo is not None, blk.int_shift) for a, b, blk in runs]
+    assert shape == [
+        (0, 6, False, 0), (6, 12, True, None), (12, 18, False, 2), (18, 24, True, None),
+        (24, 30, False, 0),
+    ]
+    assert len(whole) == 1
+    Y = rng.standard_normal((2_000, 16))
+    gauss = _search(build_index(Y, backend="mlx"), 5, fused=True)
+    gauss.group_rows = 6
+    with use_device("gpu"):
+        assert len(gauss.query_blocks(Y[:30] + 0.1, 0, 30, self_query=False)) == 1
+
+
+@needs_kernel
+def test_a_query_whose_rows_overflow_gives_the_kernel_up(rng, launches, monkeypatch, any_size):
+    """A set stacked 40 times with a period of 128 rows: every query row's copies reach
+    one lane, so the 64 bucket flags every row of the first block, and the rest of the
+    query takes the built-in path."""
+    monkeypatch.setattr(_topk, "_CHUNK_MIN", 131072)  # one chunk per row: one lane
+    X = np.tile(rng.standard_normal((128, 16)), (40, 1))
+    Q = X[rng.integers(0, 128, 600)]
+    budget = 9 * MiB  # built-in blocks of 65 rows, fused ones of 195
+    with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
+        index = build_index(X, backend="mlx")
+        _selection(64)  # its first-use check, at the real chunk widths
+        before = launches["scan"]
+        _same_as_builtin(index, Q, 30, launches)
+    assert launches["scan"] - before == 1, "the kernel ran past the first block"
+
+
+@pytest.mark.parametrize("d", [16, 256])
+@pytest.mark.parametrize("n_query", [1, 2, 3, 5, 6, 7, 11, 12, 13, 18, 19, 31, 36, 37])
+@needs_kernel
+def test_query_row_counts_around_the_blocks(n_query, d, rng, launches, any_size):
+    """One row, two, and either side of whole built-in blocks (6 rows here), including a
+    one-row last block, which stays a block of its own — and at 256 features, where MLX
+    multiplies a product no wider than deep with a kernel whose bits depend on its rows."""
+    n_train = 50_000 if d == 16 else 3_200
+    X = _data("dup20", n_train, d, rng)
+    Q = _queries(X, n_query, rng)
+    budget = 9 * MiB if d == 16 else int(9 * MiB * 3_200 / 50_000)
+    with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
+        index = build_index(X, backend="mlx")
+        k_carry = distance._first_pass_carry(10, d, n_train)
+        assert distance.resolve_blocks(37, n_train, backend="mlx", k_search=k_carry).query_rows == 6
         _same_as_builtin(index, Q, 10, launches)
-        _same_as_builtin(index, Q, 10, launches, train_block_size=12_345)
+        # Tiles of 1 000 columns: the last, 50 or 200 wide, is no wider than deep at 256
+        # features, and every query keeps the built-in path.
+        _same_as_builtin(index, Q, 10, launches, fused=d == 16, train_block_size=1_000)
+        _same_as_builtin(index, Q, 10, launches, train_block_size=1_200)
 
 
 def test_the_bounds_keep_whole_blocks_and_a_last_single_row_apart():
-    assert distance._fused_bounds(37, 6, 20) == [(0, 18), (18, 36), (36, 37)]
-    assert distance._fused_bounds(36, 6, 20) == [(0, 18), (18, 36)]
-    assert distance._fused_bounds(5, 6, 20) == [(0, 5)]
+    assert distance._fused_bounds(37, 6, 18) == [(0, 18), (18, 36), (36, 37)]
+    assert distance._fused_bounds(36, 6, 18) == [(0, 18), (18, 36)]
+    assert distance._fused_bounds(5, 6, 18) == [(0, 5)]
     assert distance._fused_bounds(7, 6, 6) == [(0, 6), (6, 7)]
     assert distance._fused_bounds(1, 1, 20) == [(0, 1)]
+
+
+@pytest.mark.parametrize(
+    "budget, n_train, n_query",
+    [
+        # Too long for the built-in path to search a block in one tile, short enough
+        # that the fused budget holds a few full-width rows: 4 * n_train in
+        # (budget / 7, budget / 2]. The fused plan held 2-3 rows, and its blocks of a
+        # built-in block's rows took the whole training set as one tile.
+        (2 * MiB, 100_000, 300),
+        (9 * MiB, 400_000, 2_048),
+        (256 * MiB, 10_000_000, 4_096),
+        (1024 * MiB, 40_000_000, 4_096),
+        # And where the fused budget holds several built-in blocks.
+        (9 * MiB, 50_000, 90),
+        (1024 * MiB, 1_000_000, 4_096),
+    ],
+)
+def test_a_fused_block_is_tiled_for_the_rows_it_holds(budget, n_train, n_query, monkeypatch):
+    """Every fused tile within the fused budget, at least one whole built-in block."""
+    monkeypatch.setattr(_topk, "selection", lambda device, k_carry: object())
+    k_carry = 14
+    with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
+        plan = distance.resolve_blocks(n_query, n_train, backend="mlx", k_search=k_carry)
+        first = distance._first_pass_blocks(
+            n_query, n_train, 2, k_carry, plan, device="gpu", plan_backend="mlx"
+        )
+    assert first.fused is not None
+    assert (first.group_rows, first.group_cols) == (plan.query_rows, plan.train_cols)
+    rows = max(end - start for start, end in first.bounds)
+    assert rows % plan.query_rows == 0 or rows == n_query
+    assert rows * first.train_cols * 4 <= budget // distance._TILE_WORKSET_FUSED
+    assert rows * first.train_cols < 2**31
+
+
+def test_a_tile_no_wider_than_deep_keeps_the_builtin_path(monkeypatch):
+    """From 128 features MLX multiplies such a product with a kernel whose bits depend
+    on its row count, so neither path's tiles, the ragged last one included, may be one."""
+    monkeypatch.setattr(_topk, "selection", lambda device, k_carry: object())
+
+    def fused(n_train, d, **kwargs):
+        plan = distance.resolve_blocks(4_096, n_train, backend="mlx", k_search=14, **kwargs)
+        return distance._first_pass_blocks(
+            4_096, n_train, d, 14, plan, device="gpu", plan_backend="mlx", **kwargs
+        ).fused is not None
+
+    assert fused(1_025, 1_024) and not fused(1_024, 1_024) and not fused(1_500, 2_048)
+    assert not fused(10_100, 256, train_block_size=1_000)  # a last tile of 100 columns
+    assert fused(10_300, 256, train_block_size=1_000)
+    assert distance._tiles_wider(10_300, 1_000, 256)
+    assert not distance._tiles_wider(10_300, 1_000, 300)
+    assert distance._tiles_wider(500, 10_000, 499) and not distance._tiles_wider(500, 10_000, 500)
 
 
 @needs_kernel
@@ -547,6 +676,23 @@ def test_self_queries_answer_as_the_builtin_ones(kind, rng, launches, any_size):
             dist_off, idx_off = model.kneighbors()
     _bits_equal(idx, idx_off)
     _bits_equal(dist, dist_off)
+
+
+@pytest.mark.slow
+@needs_kernel
+def test_a_long_training_set_is_searched_in_tiles_its_budget_holds(rng, launches):
+    """10 million rows at a 256 MiB budget, an 8 GB Mac's: the fused budget holds three
+    full-width rows, a built-in block 256. Its block once took the whole training set
+    as one tile, 2.56e9 elements, and MLX refused the reshape."""
+    X = rng.standard_normal((10_000_000, 2)).astype(np.float32)
+    Q = rng.standard_normal((256, 2)).astype(np.float32)
+    budget = 256 * MiB
+    with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
+        index = build_index(X, backend="mlx")
+        _same_as_builtin(index, Q, 5, launches)
+        found = index.probe(5, rows=256)
+        with tuning_context(metal_kernels=False):
+            assert index.probe(5, rows=256) == found
 
 
 @needs_kernel
@@ -597,7 +743,7 @@ def test_the_probe_answers_as_the_builtin_one(kind, rng, launches, any_size):
 
 @needs_kernel
 def test_a_patched_fit_probes_through_the_kernel(rng, launches):
-    """256 probe rows against 30 000 training rows is past the pair threshold."""
+    """512 probe rows against 30 000 training rows are past the pair threshold."""
     from mlxlearn.patching import _estimators as patched
 
     X = _data("gauss", 30_000, 256, rng)

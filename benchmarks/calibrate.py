@@ -118,6 +118,12 @@ class Point:
     # before every call — the first such query — and "mlx" the query on MLX (a forced
     # fit, whose queries stay there).
     path: str = ""
+    # knn: another draw of the same law — its rows, and the centres or basis they share
+    # with the queries. 0 is the draw every other grid measures.
+    data_seed: int = 0
+    # knn: also record what a fit-time probe of this many rows finds, beside the one of
+    # Tuning.knn_probe_rows rows that dispatch reads (0: none).
+    probe_also: int = 0
 
     def __post_init__(self) -> None:
         if not self.data:
@@ -135,6 +141,8 @@ class Point:
                 base = f"{base}/{self.dtype}"
             if self.path:
                 base = f"{base}/{self.path}"
+            if self.data_seed:
+                base = f"{base}/seed={self.data_seed}"
             ops = (["fit"] if self.fit else []) + [f"q{q}" for q in self.queries]
             return [f"{base}/{op}" for op in ops]
         if self.estimator == "svc":
@@ -167,7 +175,7 @@ class Point:
 
     @property
     def seed(self) -> int:
-        return self.n * 131 + self.d * 7 + self.n_classes
+        return self.n * 131 + self.d * 7 + self.n_classes + 7_919 * self.data_seed
 
 
 @dataclass(frozen=True)
@@ -204,6 +212,13 @@ _DENSE_FEATURES = (16, 24, 32, 48, 64, 96, 128, 256)
 #: Batch sizes of the `knn-batches` grid: every few queries from 8 to 64, where a
 #: 2 048-4 096-feature batch crosses 256 KiB of float32 rows.
 _HUMP_QUERIES = (8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 40, 48, 64)
+
+#: Draws of the `knn-probe` grid: of the clustered law it calibrates, and of each control.
+_PROBE_DRAWS = 64
+_PROBE_CONTROLS = 8
+
+#: Batch sizes of the `knn-probe` grid: those a few uncertified rows in a hundred lose.
+_PROBE_QUERIES = (16, 32, 64, 128, 256)
 
 #: Batch sizes of the `knn-query-k` grid, and those it times the first large-k query at.
 _QUERY_K_BATCHES = (1, 16, 64, 256, 1_024)
@@ -645,6 +660,26 @@ GRIDS: dict[str, Grid] = {
         layout="svc-structured",
         iterations=5,
     ),
+    "knn-probe": Grid(
+        "Neighbor queries on MLX against stock brute force on many draws of one law: 100 "
+        "clusters of std 0.5, at the two shapes nearest the size floor that `knn-structured` "
+        "measures it at, where about one query row in a hundred cannot be certified — few "
+        "enough that a probe of 256 rows sometimes certifies every one — and Gaussian, "
+        "low-rank and std-1 cluster draws beside them, there and at 8 192 × 1 024, batches "
+        "of 16-256 queries. Each draw records what a probe of `knn_probe_rows` rows found "
+        "and what one of 256 found: the `knn_probe_rows` rule.",
+        tuple(
+            Point("knn", n, d, _PROBE_QUERIES, data=data, data_seed=seed, probe_also=256)
+            for data, draws, shapes in (
+                ("blobs0.5", _PROBE_DRAWS, ((24_000, 256), (30_000, 256))),
+                *((law, _PROBE_CONTROLS, ((24_000, 256), (30_000, 256), (8_192, 1_024)))
+                  for law in ("gauss", "lowrank", "blobs")),
+            )
+            for n, d in shapes
+            for seed in range(draws)
+        ),
+        layout="knn-probe",
+    ),
     "knn-batches": Grid(
         "Neighbor queries on MLX against stock brute force at every batch size from 8 to "
         "64 on short, wide training sets, 4 096-8 192 rows at 2 048-4 096 features, k = 10 "
@@ -972,6 +1007,9 @@ def _measure_knn(point: Point, iterations: int, todo: set[str]):
         "probe_uncertified": found["uncertified"],
         "integer_path": found["integer"],
     }
+    if point.probe_also:
+        also = model._index_.probe(point.k, rows=point.probe_also)
+        extra |= {"probe_also_rows": also["rows"], "probe_also_uncertified": also["uncertified"]}
     keys = point.keys()
     if point.fit:
         key = keys.pop(0)
@@ -1179,7 +1217,7 @@ def run(name: str, output: Path, *, iterations: int | None = None, limit: int | 
                 "coef0": point.coef0, "tol": point.tol, "max_iter": point.max_iter,
                 "class_weight": point.class_weight, "cache_size": point.cache_size,
                 "query_k": point.query_k, "dtype": point.dtype, "path": point.path,
-                **versions, "time": time.time(), **record,
+                "data_seed": point.data_seed, **versions, "time": time.time(), **record,
             }
             with output.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record) + "\n")
@@ -1469,6 +1507,8 @@ def render(name: str, records: list[dict]) -> str:
         key=lambda v: tuple(int(p) if p.isdigit() else -1 for p in v.split(".")),
         reverse=True,
     )
+    if grid.layout == "knn-probe":
+        return _render_draws(name, records, versions)
     row_of, column_of, first = _LAYOUTS[grid.layout]
     table: dict = {}
     rows: dict = {}
@@ -1517,6 +1557,58 @@ def render(name: str, records: list[dict]) -> str:
         else:
             route = "MLX at " + ", ".join(columns[c] for c in order if routes.get(c) == "MLX")
         lines.append(f"| {rows[row_key]} | " + " | ".join(cells) + f" | {route} |")
+    return "\n".join(lines) + "\n"
+
+
+def _render_draws(name: str, records: list[dict], versions: list[str]) -> str:
+    """The `knn-probe` table: one row per shape and law, summarizing its draws.
+
+    For the draws a probe passed — every probed row certified — under the rule as
+    configured now (``dispatch``) and with a probe of the other size the records hold,
+    how many there were and the worst batch among them on each version: the lowest
+    ratio, **bold** where a batch lost by the gate's test. Every batch of every draw is
+    a measurement of the MLX path; the probe decides only whether patched dispatch runs
+    it.
+    """
+    groups: dict = {}
+    for r in records:
+        groups.setdefault((r["d"], r["n"], _KNN_DATA_ORDER.get(r["data"], 99), r["data"]),
+                          []).append(r)
+    also = {r["probe_also_rows"] for r in records if "probe_also_rows" in r}
+    rows = {r["probe_rows"] for r in records}
+    configured = " / ".join(str(n) for n in sorted(rows))
+    other = " / ".join(str(n) for n in sorted(also))
+
+    def worst(draw_records) -> str:
+        cells = []
+        for version in versions:
+            mine = [r for r in draw_records if r["sklearn"] == version]
+            if not mine:
+                cells.append("—")
+                continue
+            cells.append(_cell(min(mine, key=lambda r: (not is_loss(r), r["speedup"]))))
+        return " / ".join(cells)
+
+    lines = [
+        f"<!-- python -m benchmarks.calibrate table {name}: scikit-learn "
+        f"{' / '.join(versions)} -->",
+        f"| rows × features, data | draws | passed by {other} rows | worst batch of those | "
+        f"passed by {configured} rows | worst batch of those | dispatch |",
+        "|---" * 7 + "|",
+    ]
+    for (d, n, _, data), group in sorted(groups.items()):
+        draws = sorted({r["data_seed"] for r in group})
+        passed_also = [s for s in draws if all(
+            r.get("probe_also_uncertified", 1) == 0 for r in group if r["data_seed"] == s)]
+        routed = [s for s in draws if all(
+            dispatch(r) == "MLX" for r in group if r["data_seed"] == s)]
+        lines.append(
+            f"| {_shape(n, d)}, {data} | {len(draws)} | {len(passed_also)} | "
+            f"{worst([r for r in group if r['data_seed'] in passed_also]) if passed_also else '—'}"
+            f" | {len(routed)} | "
+            f"{worst([r for r in group if r['data_seed'] in routed]) if routed else '—'}"
+            f" | MLX for {len(routed)} of {len(draws)} |"
+        )
     return "\n".join(lines) + "\n"
 
 

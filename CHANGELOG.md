@@ -380,6 +380,13 @@ come first under **Changed**.
   `LogisticRegression.predict` runs at 0.94×–1.02× of stock (see **Performance** for what
   it measures). Each is corrected, with the rule, grid and table under **Changed** and
   **Added**, and what each new rule gives up is stated beside it.
+- A third re-measurement found that the fit-time probe of 256 rows still let through a
+  few draws in a hundred of data with about one uncertified row in a hundred — 2 of 64
+  draws of clusters of std 0.5 at 30 000 × 256 and 4 of 32 at 24 000 × 256 certified
+  every probed row — and those lost batches of 64–128 queries after an idle gap
+  (0.88×–0.91×), with MLX's selection as with the fused kernel. Grid `knn-probe` measured
+  64 draws at each shape: 256 rows passed 9 of 128, 8 of which lost batches of 16–64
+  queries (down to 0.56×); 512 rows, now the probe's size, passed none (see **Changed**).
 - 0.1.0a1 listed cold-start measurements among the benchmark outputs. The harness never
   implemented them; see **Removed**.
 - The README's links were relative and 404ed on the PyPI page; they are absolute now. It
@@ -497,25 +504,30 @@ come first under **Changed**.
     it cannot certify is searched again, and its whole batch waits for it. On rows
     repeated about 20 times, tight clusters, or one column in raw units beside
     standardized ones, it certified almost none, and queries at shapes the rules send to
-    MLX ran as slow as 0.17× of stock brute force (table `knn-data`); on rows repeated
+    MLX ran as slow as 0.22× of stock brute force (table `knn-data`); on rows repeated
     about twice, one column on 100 times the scale of the rest or clusters of std
     0.4–0.5, a few rows in a hundred went uncertified, enough to put one in most batches
-    of 16–64 queries, and some batch lost at 30 of the 40 shapes and laws measured on
+    of 16–64 queries, and some batch lost at 32 of the 40 shapes and laws measured on
     and near the size floors, down to 0.36× (table `knn-structured`). A patched fit now
-    searches 256 of its own rows with the first pass alone and hands the fit to
-    scikit-learn if any of them could not be certified — as few as 2 of 256 lost — or
+    searches 512 of its own rows with the first pass alone and hands the fit to
+    scikit-learn if any of them could not be certified — as few as 3 of 512 lost — or
     when the data are integer-valued below 256 features, whose exact path lost batches
-    of 256 and 1 024 queries at a million rows (`knn_probe_rows`,
+    of 16–1 024 queries at a million rows (`knn_probe_rows`,
     `knn_probe_max_uncertified`; `MLXLEARN_KNN_PROBE_ROWS`,
     `MLXLEARN_KNN_PROBE_MAX_UNCERTIFIED`; diagnostics reason `"data-probe"`, with the
-    probe's count on the fit's event). Gaussian and uniform data left none uncertified at
-    every shape measured below 2 048 features. The probe costs a patched fit one
-    256-query first pass: timed alone, at k = 5, 2.1–6.8 ms back to back and 3.8–9.7 ms
-    right after the GPU has idled at 8 192–65 536 rows and 256–4 096 features, and
-    43–62 ms at a million rows and more (medians of 9, both versions). A directly imported
-    class does not probe and searches on MLX regardless.
-    This gives up those laws' wins where a second search was affordable (7 of the 40
-    won or tied every batch, up to 4.9×).
+    probe's count on the fit's event). Where about one row in a hundred is uncertified, a
+    probe of 256 rows still passed 9 of 128 draws of clusters of std 0.5 at 24 000 and
+    30 000 × 256, and 8 of them lost batches of 16–64 queries, down to 0.56×; 512 rows
+    passed none, and gave up 5 of 72 draws of Gaussian, low-rank and std-1 cluster data
+    beside them that 256 passed, all of which had won or tied (table `knn-probe`).
+    Gaussian and uniform data left none uncertified at every shape of `knn-data` and
+    `knn-structured`. The probe costs a patched fit one 512-query first pass: timed
+    alone, at k = 5, 4.0–14.1 ms back to back and 5.1–17.1 ms right after the GPU has
+    idled at 8 192–65 536 rows and 256–4 096 features, and 16–28 ms at a million rows
+    and more (medians of 9, both versions).
+    A directly imported class does not probe and searches on MLX regardless.
+    This gives up those laws' wins where a second search was affordable (5 of the 40
+    won or tied every batch at shapes the size rules route, up to 7.9×).
   - `LogisticRegression` needs at least 60 000 rows (was 20 000 rows and 2·10⁷
     element-ops), a multinomial fit also at least two features
     (`logreg_multinomial_min_features`), and a binary fit at least 200 000 rows and at
@@ -684,7 +696,9 @@ come first under **Changed**.
   the device, built lazily on the first prediction and dropped from pickles.
 - A neighbor query whose first pass runs the fused selection kernel (**Added**) budgets its
   tiles as two tiles of working set rather than seven — it writes no second tile and
-  sorts nothing — so its blocks hold up to 3.5 times the query rows. Its peak device
+  sorts nothing — so its blocks hold up to 3.5 times the query rows, a whole number of
+  the built-in path's blocks, and its tiles are sized for the rows a block holds. Its
+  peak device
   memory is higher, and still inside the same budget: for 4 096 queries, 326 → 436 MiB at
   1 000 000 × 64 and × 128, 228 → 423 MiB at 100 000 × 256, and 298 → 596 MiB at
   128 000 × 768, against a 1 GiB budget on a 128 GB machine.
@@ -856,7 +870,9 @@ come first under **Changed**.
   (`logreg-separable`), the kernel on data unlike the Gaussian grids (`svc-poly`),
   `cache_size` (`svc-cache`), `tol` and `max_iter` (`logreg-params`), and the k a query
   asks for, in float64 and float32, with the first such query timed apart
-  (`knn-query-k`). Grids whose ratios sit near 1 (`logreg-params`, `knn-query-k`) take
+  (`knn-query-k`), and many draws of one law, each probed at two sizes (`knn-probe`,
+  rendered as how many draws each probe passed and their worst batch). Grids whose
+  ratios sit near 1 (`logreg-params`, `knn-query-k`) take
   21 interleaved pairs a point: at 9 they did not reproduce. The harness's `compare`
   takes an `mlx_setup` run before every mlxlearn call, outside the timed window, to
   time a first call as often as a comparison needs.
@@ -872,9 +888,13 @@ come first under **Changed**.
   SIMD-wide merge, after Johnson, Douze and Jégou, "Billion-scale similarity search with
   GPUs" (arXiv:1702.08734) — instead of MLX's tile expression and `argpartition`. Indices,
   distances and diagnostics counts are bit for bit those of MLX's selection
-  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1). It runs on MLX 0.32, the release
-  that identity was checked on; MLX's CPU device, MLX 0.31 and later releases not yet
-  checked keep MLX's selection. It compiles on the first query of a process that takes
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.1): it takes a first pass only where
+  every product of both paths is wider than it is deep, the shapes at which MLX's matmul
+  gives a row the same bits at any row count, and a block of its query rows makes the
+  choices — residual, integer path — each of MLX's blocks inside it would. It runs on MLX
+  0.32.2, the release that identity was checked on; MLX's CPU device, MLX 0.31 and every
+  other release, a later 0.32 patch release included, keep MLX's selection until checked.
+  It compiles on the first query of a process that takes
   it, once per list length, and is checked there against an answer the host computes.
   Private switch: `MLXLEARN_METAL_KERNELS=0`. The rules every such kernel follows —
   the gate, `fp contract(off)`, padded inputs, caching, when it compiles — are in
@@ -969,36 +989,38 @@ Where patched dispatch now sends each problem is under **Changed**.
   against 200 000 × 16 peaked at 21 MiB on the GPU and 53 MiB on MLX's CPU, against
   about 5 MiB before, and at a 16 MiB budget at 5.3 and 13.3 MiB.
 - Neighbor queries on the GPU select their first pass's candidates with mlxlearn's fused
-  kernel (**Added**) from 2²² (query row, training row) pairs, every answer and every
-  count the same bit for bit. Against MLX's own selection, after an idle gap:
-  1.69–7.29× at 1 000 000 × 64 for 16–4 096 queries, every case; and as medians over
-  data and k, 2.6–4.7× at 1 000 000 × 128 for 256–4 096 queries, 1.2–2.2× at
-  30 000–100 000 × 256 and 1.2–1.4× at 128 000 × 768 from the pair threshold up; ties
-  at 8 192 × 1 024 and 4 096 × 2 048, and below the threshold, where MLX's selection
-  still runs. On tall, narrow data the selection had been three quarters of the first
-  pass. Measured
-  on the prototype this kernel was ported from, whose answers match it bit for bit, on
-  the GPU of the same M4 Max with MLX 0.32.2, under Python 3.13 with scikit-learn 1.9.0
-  and Python 3.10 with 1.7.2: k = 10 and 50, Gaussian, clustered and low-rank float64
-  data, forced onto MLX, 12 calls each after a garbage collection and a 10 ms idle gap
-  — which understates what a small batch pays after a longer idle — and no query of the
-  1 224 measured significantly slower. A spot check of this release at k = 10 on
-  Gaussian data gave 1.8× (16 queries), 5.0× (256) and 6.2× (4 096) at
-  1 000 000 × 64, 1.5× at 30 000 × 256 with 256 queries and 1.1× at 8 192 × 1 024.
-  The kernel compiles on the first query of a process that takes it — under
-  `patch_sklearn()`, usually the fit's own probe, which is a first pass over 256 rows —
-  and a library never compiled on the machine costs that query about 85–95 ms, once per
-  machine, MLX release and kernel version: a first-ever patched fit took 156–159 ms
-  against 71–74 ms with MLX's selection at 30 000 × 256, and 312–326 ms against
-  250–264 ms at 1 000 000 × 64 (fresh processes, Python 3.13, five each). Once the
-  operating system's shader cache holds the library it took 67–72 and 218–227 ms. An
-  earlier design compiled on a background thread from the index build and hid the cost
-  at 1 000 000 × 64, but a library build stalls every other MLX GPU call in the process,
-  and at 30 000 × 256 it had only 8 ms of host work to hide behind (+70 ms there). A
-  query below the threshold after such a fit compiles MLX's tile expression, which the
-  fused probe no longer does: 4.1–4.5 ms against 2.1–3.3 ms for its first 16 queries at
-  30 000 × 256, once a process. No dispatch threshold moved: patched mode sends the same
-  problems to MLX as before.
+  kernel (**Added**) from 2²² (query row, training row) pairs — above 16 candidates, from
+  4 096 training rows — every answer and every count the same bit for bit. Against MLX's
+  own selection, on Gaussian float64 data at k = 10 and 50, after a garbage collection
+  and a 10 ms idle gap, 18 calls each in a balanced order, under Python 3.13 with
+  scikit-learn 1.9.0 and Python 3.10 with 1.7.2 (M4 Max, MLX 0.32.2): 1.66–6.66× at
+  1 000 000 × 64 for 16–4 096 queries; 1.45–5.25× at 1 000 000 × 128 for 16–4 096
+  (2.76–5.25× from 256); 1.21–2.38× at 30 000–100 000 × 256 from the pair threshold up;
+  1.18–1.50× at 128 000 × 768 from 64 queries; ties at 8 192 × 1 024 and 4 096 × 2 048;
+  and below the threshold, where MLX's selection still runs, 0.98–1.03×. No query of the
+  64 measured on each version was significantly slower, and every answer, distance bits
+  included, and every count was the same. On tall, narrow data the selection had been
+  three quarters of the first pass. The prototype this kernel was ported from, whose
+  answers match it bit for bit, measured 1 224 queries the same way on Gaussian,
+  clustered and low-rank data, forced onto MLX, none significantly slower. On training
+  sets of 40–1 024 rows with 17–64 candidates and 2²² pairs or more the kernel lost
+  (0.84–0.94×), and MLX's selection keeps those; and a query whose rows overflow the
+  kernel's register lists — rows repeated with a period that is a multiple of 128, a
+  set stacked 33 times or more — gives the kernel up after one block, having paid
+  1.05–1.21× for that block (1.01× over a query of four). The kernel compiles on the
+  first query of a process that takes it — under `patch_sklearn()`, usually the fit's
+  own probe — and a library never compiled on the machine costs that query 84–88 ms,
+  once per machine, MLX release and kernel version: a first-ever patched fit took
+  121–123 ms against 40–43 ms with MLX's selection at 30 000 × 256, and 282–302 ms
+  against 229–252 ms at 1 000 000 × 64 (medians of 12 fresh processes, Python 3.13 and
+  3.10, with the probe at 256 rows, before it grew to 512 under **Changed**). Once the
+  operating system's shader cache holds the library it took 35–38 and 193–216 ms, 4–5
+  and 36 ms faster than with MLX's selection. An earlier design compiled
+  on a background thread from the index build and hid the cost at 1 000 000 × 64, but a
+  library build stalls every other MLX GPU call in the process, and at 30 000 × 256 it
+  had only 8 ms of host work to hide behind (+70 ms there). A query below the threshold
+  after such a fit compiles MLX's tile expression, which the fused probe no longer does:
+  3.3–3.5 ms against 1.8 ms for its first 16 queries at 30 000 × 256, once a process.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32

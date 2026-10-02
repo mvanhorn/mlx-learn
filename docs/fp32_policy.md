@@ -157,24 +157,36 @@ Exactness does not rest on that agreement. The certificate needs only that every
 row left out has a Gram value at least the largest kept one, which the kernel's ordered
 lists guarantee by construction — and a row whose 32-long register lists might have
 dropped a candidate (only above 32 candidates) is flagged and selected again by MLX.
-What the bitwise agreement rests on is two behaviors of MLX 0.32 that MLX does not
+What the bitwise agreement rests on is two behaviors of MLX 0.32.2 that MLX does not
 promise: its GPU `argpartition` keeps the lowest index among equal values, as a stable
 sort does, and its matmul gives a row the same bits whatever the number of rows (two or
-more) and columns in the product. A one-row product is a matrix-vector kernel that rounds
-differently, so the kernel's blocks of query rows are unions of whole blocks of MLX's
-path, a one-row block stays a block of its own, and the rows a block cannot certify go
-to the wider pass in the groups MLX's blocks put them in. On another MLX release either
-behavior could change, and with it which of the rows tied at the last carried Gram value
-is carried and which query rows take a wider pass: the time a query takes and its
-diagnostics counts, not its answer, which the certificate and the `(distance, index)`
-order fix. So the kernel runs only on the MLX releases on which that identity was checked
-— 0.32 — and only for work resolved to the GPU. MLX's CPU device, MLX 0.31, and
-`MLXLEARN_METAL_KERNELS=0` select with MLX's own operations, as before. A run-time
-self-test could not take the release list's place: both behaviors depend on the shapes,
-and a test small enough to run on a first query exercises only its own. What a first use
-does check, once per process, is the kernel itself — it runs on a fixed input whose
-answer the host computes, and a kernel that does not build or does not match is not used —
-because Apple GPUs other than the M4 Max it was measured on are untested.
+more) and columns in the product — as long as the product is wider than it is deep. From
+128 features MLX multiplies a product of at most `n_features` columns with a kernel whose
+bits depend on its row count, and a one-row product of a few columns differs too; wider
+than `n_features`, a row's bits were those of any wider product at every row count from 2
+to 1 024 and every width measured, 64–4 096 features. So the kernel takes a first pass
+only when every train tile of both paths, the ragged last one included, is wider than
+`n_features`. A one-row product is a matrix-vector kernel that rounds differently, so the
+kernel's blocks of query rows are unions of whole blocks of MLX's path, a one-row block
+stays a block of its own, a row the kernel flags is selected again beside a second row,
+on MLX's path's tiles, and the rows a block cannot certify go to the wider pass in the
+groups MLX's blocks put them in. A block also makes choices for its rows together —
+whether they carry a float64 residual, which the certificate then allows for, and, on
+integer training data, whether they take the exact integer path — so a union of blocks
+that would not all choose alike is searched as runs of blocks that do. On another MLX
+release either behavior could change, and with it which of the rows tied at the last
+carried Gram value is carried and which query rows take a wider pass: the time a query
+takes and its diagnostics counts, not its answer, which the certificate and the
+`(distance, index)` order fix. So the kernel runs only on the MLX releases on which that
+identity was checked — 0.32.2, each patch release listed on its own, since which GEMM
+kernel MLX picks for a shape can change in any — and only for work resolved to the GPU.
+MLX's CPU device, MLX 0.31, and `MLXLEARN_METAL_KERNELS=0` select with MLX's own
+operations, as before. A run-time self-test could not take the release list's place: both
+behaviors depend on the shapes, and a test small enough to run on a first query exercises
+only its own. What a first use does check, once per process, is the kernel itself — it
+runs on a fixed input whose answer the host computes, and a kernel that does not build or
+does not match is not used — because Apple GPUs other than the M4 Max it was measured on
+are untested.
 
 A fixed over-selection margin was not enough, and nothing checked it. Where the Gram noise
 exceeds the gaps between neighbors — tight clusters, near-duplicates, one unscaled column
@@ -208,11 +220,11 @@ them: at 1 000 000 × 16, after an idle gap, about 1.25× the time for one query
 diagnostics event says for how many rows, and for how many the wider pass was skipped.
 
 Against stock scikit-learn rather than 0.1.0a2, that second pass is what decides: on such
-data MLX lost at every shape the size rules send it, down to 0.17× (grid `knn-data` in
+data MLX lost at every shape the size rules send it, down to 0.22× (grid `knn-data` in
 [`benchmarks.md`](benchmarks.md)), and since a batch waits for its slowest row, a few rows
 in a hundred that need it — rows repeated twice, clusters of std 0.5, one column on 100
 times the scale of the rest — were enough to lose mid-size batches (grid
-`knn-structured`). So under `patch_sklearn()` a fit first searches 256 of its own rows
+`knn-structured`). So under `patch_sklearn()` a fit first searches 512 of its own rows
 with the first pass alone and, if it cannot certify any one of them, hands the fit to
 scikit-learn's float64 brute force (diagnostics reason `"data-probe"`), whose answer is
 exact without a certificate. A directly imported estimator keeps the search, and its

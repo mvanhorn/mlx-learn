@@ -148,6 +148,41 @@ def test_the_data_probe_threshold_has_measurements_on_both_sides_of_it():
                 assert min(widths) < tuning.knn_wide_features <= max(widths)
 
 
+def test_the_probe_size_has_measurements_on_both_sides_of_it():
+    """`knn_probe_rows`: on both versions, draws a smaller probe passed lost a batch, and
+    every draw the configured probe passes won or tied every batch."""
+    tuning = get_tuning()
+    records = _committed("knn-probe")
+    for version in ("1.9.0", "1.7.2"):
+        mine = [r for r in records if r["sklearn"] == version]
+        assert {r["probe_rows"] for r in mine} == {tuning.knn_probe_rows}
+        assert max(r["probe_also_rows"] for r in mine) < tuning.knn_probe_rows
+        smaller = [r for r in mine if r["probe_also_uncertified"] == 0]
+        assert any(calibrate.is_loss(r) for r in smaller)
+        passed = [r for r in mine if calibrate.dispatch(r) == "MLX"]
+        assert passed and not any(calibrate.is_loss(r) for r in passed)
+
+
+def test_the_probe_table_counts_the_draws_each_probe_passed():
+    def draw(seed, also, found, speedup, **kwargs):
+        return _record(
+            "knn-probe", 30_000, 256, speedup, operation="kneighbors", q=16,
+            data="blobs0.5", data_seed=seed, probe_rows=512, probe_uncertified=found,
+            probe_also_rows=256, probe_also_uncertified=also, integer_path=False, **kwargs,
+        )
+
+    records = [
+        draw(0, 0, 0, 1.20), draw(0, 0, 0, 1.10, version="1.7.2"),
+        draw(1, 0, 2, 0.70), draw(1, 0, 2, 0.90, significant=False, version="1.7.2"),
+        draw(2, 3, 5, 0.50), draw(2, 3, 5, 0.40, version="1.7.2"),
+    ]
+    lines = calibrate.render("knn-probe", records).splitlines()
+    assert lines[1].startswith("| rows × features, data | draws | passed by 256 rows |")
+    assert lines[3] == (
+        "| 30 000 × 256, blobs0.5 | 3 | 2 | **0.70** / 0.90~ | 1 | 1.20 / 1.10 | MLX for 1 of 3 |"
+    )
+
+
 def test_the_host_inference_threshold_has_measurements_on_both_sides_of_it():
     tuning = get_tuning()
     for version in ("1.9.0", "1.7.2"):

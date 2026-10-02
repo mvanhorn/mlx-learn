@@ -689,23 +689,25 @@ features and 8 192 rows, at most 50 neighbors, on data the fit-time probe passes
 Gaussian grids `knn`, `knn-rows` and `knn-narrow` answered single rows 1.0×–5.7× faster
 than stock, 16 queries 0.98×–3.2× (a tie at worst), 256 queries 1.3×–7.7× and 4 096
 queries 2.6×–6.2×, on both versions, and every batch size between those won or tied too.
-With the other laws and k of the grids below (`knn-data`, `knn-structured`, `knn-k`,
-`knn-batches`), every routed batch still won or tied, 0.87×~ at worst (16 queries at
-1 000 000 × 64).
+With the other laws and k of the grids below (`knn-data`, `knn-structured`, `knn-probe`,
+`knn-k`, `knn-batches`), every routed batch still won or tied, 0.93×~ at worst (8 queries
+at 24 000 × 256, k = 50).
 
 Queries win; the index build does not. Stock brute force stores a reference, while
 mlxlearn uploads the training rows and builds the translated, scaled copy the search runs
 on, with its row norms and, for float64 input, a float32 residual: 0.05×–0.09× of the
 stock fit where patched dispatch uses MLX (11–256 ms against 1–16 ms, the fit columns
 above, which force the MLX path and so leave out the fit-time probe below). With the
-probe, a patched fit measured 0.04×–0.08× of stock (17–264 ms against 0.9–16 ms, at
-24 000 × 256 to 1 600 000 × 64 on both versions), the probe itself — one first pass for 256 queries at k = 5, timed alone — 2.1–6.8 ms
-back to back and 3.8–9.7 ms right after the GPU has idled (a collection and a 10 ms sleep
+probe, a patched fit measured 0.05×–0.07× of stock (17–232 ms against 1.1–12 ms, at
+8 192 × 1 024 to 1 600 000 × 64 on both versions, after an idle gap, medians of 9), the
+probe itself — one first pass for 512 queries at k = 5, timed alone — 4.0–14.1 ms
+back to back and 5.1–17.1 ms right after the GPU has idled (a collection and a 10 ms sleep
 before each call; medians of 9, both versions) at 8 192–65 536 rows and 256–4 096
-features, and 43–62 ms at a million rows and more. It is repaid after about 330–1 700
+features, and 16–28 ms at a million rows and more. It is repaid after about 330–1 700
 queries in batches of 256 to 4 096 — the fit's extra time over what each query of the
 batch saves, at the `knn` and `knn-rows` shapes patched dispatch sends to MLX — and with
-the probe after at most about 470–4 200, which is why
+the probe after at most about 490–4 500 (17 ms of probe added to every fit below a
+million rows, 28 ms from it), which is why
 `knn/fit` is listed in `benchmarks/gate.py::ACCEPTED_REGRESSIONS` rather than left to slip
 through the "no crossover measured, so not gated" branch. A model fitted to answer a
 handful of queries is faster on stock scikit-learn.
@@ -721,52 +723,52 @@ every query row ([`fp32_policy.md`](fp32_policy.md) §2.1). A row it cannot cert
 searched again, with a much wider candidate set and then exactly, and that costs more than
 the certified search saves. Grid `knn-data` times the same batches on other data at shapes
 the rules above send to MLX, k = 10, both versions. `probe` is what a patched fit finds
-when it searches 256 of its own rows with the first pass alone: how many it could not
+when it searches 512 of its own rows with the first pass alone: how many it could not
 certify, or `integer` for data on the exact integer path, which has nothing to certify:
 
 <!-- python -m benchmarks.calibrate table knn-data: scikit-learn 1.9.0 / 1.7.2 -->
 | rows × features, data | 1 query | 16 queries | 64 queries | 256 queries | 1024 queries | probe | dispatch |
 |---|---|---|---|---|---|---|---|
-| 1 000 000 × 16, gauss | 1.59 / 2.21 | **0.69** / 1.66 | 0.88~ / 1.24~ | 1.07~ / 0.89~ | **0.74** / **0.67** | 0/256 | scikit-learn |
-| 1 000 000 × 16, blobs | 1.54 / 2.07 | **0.72** / 0.86~ | 1.02~ / 1.02~ | 0.93~ / 0.91~ | **0.75** / **0.75** | 0/256 | scikit-learn |
-| 1 000 000 × 16, uniform | 1.58 / 2.06 | 0.80~ / 1.61~ | 0.97~ / 1.15~ | 0.95~ / 0.92~ | **0.69** / **0.73** | 0/256 | scikit-learn |
-| 1 000 000 × 16, unscaled | **0.03** / **0.05** | **0.09** / **0.09** | **0.09** / **0.09** | **0.07** / **0.07** | **0.07** / **0.07** | 243/256 | scikit-learn |
-| 1 000 000 × 16, dups | 1.20 / 1.25 | 0.73~ / **0.76** | **0.56** / **0.54** | **0.39** / **0.37** | **0.36** / **0.33** | 246/256 | scikit-learn |
-| 1 000 000 × 16, tight-blobs | 1.58 / 2.14 | 0.68~ / 1.32~ | 0.93~ / 0.74~ | **0.80** / **0.76** | **0.58** / **0.52** | 15/256 | scikit-learn |
-| 1 000 000 × 16, binary | 1.56 / 1.47 | **0.63** / 1.18~ | 0.84~ / 0.76~ | **0.71** / **0.70** | **0.46** / **0.44** | integer | scikit-learn |
-| 1 000 000 × 16, counts | 1.47 / 1.48 | 0.66~ / 0.77~ | 0.82~ / 0.80~ | **0.72** / **0.74** | **0.47** / **0.47** | integer | scikit-learn |
-| 1 000 000 × 32, gauss | 1.78 / 2.43 | 0.82~ / 1.83 | 1.23~ / 1.14~ | 1.11~ / 1.09~ | **0.84** / **0.83** | 0/256 | scikit-learn |
-| 1 000 000 × 32, blobs | 1.85 / 2.28 | 0.87~ / 0.90~ | 1.30~ / 1.45~ | 1.09~ / 1.14~ | 0.85~ / 0.85~ | 0/256 | scikit-learn |
-| 1 000 000 × 32, uniform | 1.83 / 2.54 | **0.72** / 1.56~ | 1.22~ / 1.09~ | 1.13~ / 1.04~ | 0.83~ / **0.83** | 0/256 | scikit-learn |
-| 1 000 000 × 32, unscaled | **0.04** / **0.06** | **0.10** / **0.10** | **0.10** / **0.10** | **0.08** / **0.07** | **0.08** / **0.07** | 243/256 | scikit-learn |
-| 1 000 000 × 32, dups | 0.98~ / 1.43 | 0.77~ / **0.85** | **0.66** / **0.63** | **0.44** / **0.44** | **0.31** / **0.30** | 250/256 | scikit-learn |
-| 1 000 000 × 32, tight-blobs | 1.78 / 2.50 | 1.08~ / 1.06~ | 1.00~ / 0.85~ | **0.86** / **0.81** | **0.47** / **0.46** | 67/256 | scikit-learn |
-| 1 000 000 × 32, binary | 1.73 / 1.81 | 0.78~ / 1.34~ | 1.01~ / 1.02~ | 0.93~ / **0.88** | **0.61** / **0.58** | integer | scikit-learn |
-| 1 000 000 × 32, counts | 1.70 / 1.84 | 1.34~ / 1.26 | 1.03~ / 0.99~ | 0.91~ / **0.81** | **0.56** / **0.57** | integer | scikit-learn |
-| 24 000 × 256, gauss | 1.05~ / 0.98~ | 1.06~ / 1.02~ | 1.17~ / 1.09~ | 1.51 / 1.54 | 2.48 / 2.91 | 0/256 | MLX |
-| 24 000 × 256, blobs | 1.12 / 1.07~ | 1.00~ / 1.05 | 1.16 / 1.16 | 1.35 / 1.48 | 2.44 / 2.47 | 0/256 | MLX |
-| 24 000 × 256, uniform | 1.07~ / 1.00~ | 1.11 / 1.11 | 1.16~ / 1.19 | 1.44 / 1.42 | 2.40 / 2.39 | 0/256 | MLX |
-| 24 000 × 256, unscaled | **0.64** / **0.59** | **0.56** / **0.55** | **0.48** / **0.49** | **0.57** / **0.49** | 0.83~ / 0.73~ | 236/256 | scikit-learn |
-| 24 000 × 256, dups | **0.65** / **0.59** | **0.60** / **0.56** | **0.52** / **0.50** | 0.89~ / 0.87~ | 0.99~ / 0.94~ | 248/256 | scikit-learn |
-| 24 000 × 256, tight-blobs | **0.69** / **0.58** | **0.55** / **0.52** | **0.47** / **0.43** | 0.62~ / 0.71~ | **0.77** / 0.77~ | 256/256 | scikit-learn |
-| 24 000 × 256, binary | 1.19 / 1.14 | 1.18 / 1.18 | 1.06~ / 1.24 | 1.36 / 1.72 | 2.58 / 2.56 | integer | MLX |
-| 24 000 × 256, counts | 1.13 / 1.09~ | 1.09~ / 1.10~ | 1.17 / 1.12~ | 1.49 / 1.51 | 2.35 / 2.28 | integer | MLX |
-| 65 536 × 256, gauss | 1.60 / 1.61 | 1.34 / 1.41 | 1.97 / 1.89 | 2.29 / 2.30 | 4.32 / 4.45 | 0/256 | MLX |
-| 65 536 × 256, blobs | 1.60 / 1.73 | 1.40 / 1.44 | 1.87 / 1.92 | 1.78 / 2.00 | 4.15 / 4.82 | 0/256 | MLX |
-| 65 536 × 256, uniform | 1.66 / 1.71 | 1.31 / 1.32 | 2.08 / 1.83 | 2.26 / 2.17 | 4.62 / 4.74 | 0/256 | MLX |
-| 65 536 × 256, unscaled | **0.25** / **0.24** | **0.17** / **0.17** | **0.25** / **0.20** | **0.26** / **0.33** | **0.27** / **0.26** | 241/256 | scikit-learn |
-| 65 536 × 256, dups | 0.95~ / **0.89** | **0.69** / **0.74** | **0.82** / **0.83** | 1.04~ / 1.55~ | 1.70 / 1.76 | 244/256 | scikit-learn |
-| 65 536 × 256, tight-blobs | 0.97~ / 1.17~ | **0.67** / **0.70** | **0.76** / **0.78** | 0.98~ / 1.02~ | 1.55 / 1.65 | 256/256 | scikit-learn |
-| 65 536 × 256, binary | 1.58 / 1.76 | 1.30 / 1.31 | 1.92 / 1.76 | 1.92 / 4.10 | 3.93 / 3.49 | integer | MLX |
-| 65 536 × 256, counts | 1.67 / 1.69 | 1.39 / 1.41 | 1.82 / 1.87 | 1.82 / 2.06 | 3.66 / 3.86 | integer | MLX |
-| 8 192 × 1024, gauss | 1.25 / 1.31 | 1.32 / 1.42 | 1.50 / 1.52~ | 1.91 / 1.66 | 2.62 / 2.03 | 0/256 | MLX |
-| 8 192 × 1024, blobs | 1.20 / 1.23 | 1.38 / 1.34 | 1.04~ / 1.01~ | 1.49 / 1.43 | 1.84 / 1.74 | 7/256 | scikit-learn |
-| 8 192 × 1024, uniform | 1.30 / 1.24 | 1.30 / 1.32 | 1.53 / 1.65 | 1.79 / 1.76 | 2.56 / 2.00 | 0/256 | MLX |
-| 8 192 × 1024, unscaled | **0.78** / **0.68** | **0.63** / **0.59** | **0.66** / **0.68** | **0.52** / **0.59** | **0.62** / **0.64** | 241/256 | scikit-learn |
-| 8 192 × 1024, dups | **0.84** / **0.71** | **0.71** / **0.60** | **0.61** / **0.78** | **0.54** / 0.72~ | **0.69** / **0.71** | 248/256 | scikit-learn |
-| 8 192 × 1024, tight-blobs | **0.78** / **0.71** | **0.63** / **0.67** | **0.64** / **0.69** | **0.53** / **0.48** | **0.61** / **0.58** | 256/256 | scikit-learn |
-| 8 192 × 1024, binary | 1.31 / 1.35 | 1.28 / 1.22 | 1.47 / 1.24~ | 1.64 / 1.79 | 2.25 / 2.08 | integer | MLX |
-| 8 192 × 1024, counts | 1.31 / 1.31 | 1.37 / 1.09~ | 1.52 / 1.47 | 1.54 / 1.71 | 2.42 / 2.23 | integer | MLX |
+| 1 000 000 × 16, gauss | 1.53 / 2.06 | 2.35 / 2.17 | 1.97 / 1.91 | 3.60 / 3.43 | 5.69 / 5.53 | 0/512 | scikit-learn |
+| 1 000 000 × 16, blobs | 1.56 / 1.86 | 2.36 / 2.25 | 1.99 / 1.91 | 3.67 / 3.48 | 5.91 / 5.55 | 0/512 | scikit-learn |
+| 1 000 000 × 16, uniform | 1.55 / 1.98 | 2.30 / 2.27 | 1.94 / 1.88 | 3.65 / 3.43 | 5.63 / 5.61 | 0/512 | scikit-learn |
+| 1 000 000 × 16, unscaled | **0.74** / **0.77** | 0.67~ / **0.57** | **0.34** / **0.32** | **0.30** / **0.27** | **0.23** / **0.22** | 478/512 | scikit-learn |
+| 1 000 000 × 16, dups | **0.80** / 1.00~ | 1.02~ / 0.93~ | 0.69~ / 0.70~ | **0.69** / **0.66** | **0.47** / **0.45** | 498/512 | scikit-learn |
+| 1 000 000 × 16, tight-blobs | 1.48 / 1.87 | 1.51 / 1.47 | 1.19~ / 1.13~ | 1.81 / 1.82 | 2.14 / 2.03 | 33/512 | scikit-learn |
+| 1 000 000 × 16, binary | 1.62 / 1.64 | **0.78** / 1.86~ | 0.91~ / 3.30~ | 1.00~ / 0.95~ | 0.88~ / 0.90~ | integer | scikit-learn |
+| 1 000 000 × 16, counts | 1.62 / 1.65 | **0.78** / 1.51 | 1.10~ / 1.06~ | 1.06~ / 0.96~ | 0.90~ / **0.85** | integer | scikit-learn |
+| 1 000 000 × 32, gauss | 1.90 / 2.53 | 2.21 / 2.25 | 1.87 / 1.84 | 3.76 / 3.71 | 6.13 / 6.32 | 0/512 | scikit-learn |
+| 1 000 000 × 32, blobs | 1.85 / 2.34 | 2.14 / 2.00 | 2.01 / 1.97 | 4.90 / 3.45 | 6.41 / 5.92 | 0/512 | scikit-learn |
+| 1 000 000 × 32, uniform | 1.83 / 1.84 | 2.09 / 2.08 | 1.89 / 1.87 | 3.60 / 3.31 | 6.46 / 6.11 | 0/512 | scikit-learn |
+| 1 000 000 × 32, unscaled | **0.72** / **0.83** | **0.48** / **0.47** | **0.32** / **0.30** | **0.18** / **0.16** | **0.18** / **0.17** | 491/512 | scikit-learn |
+| 1 000 000 × 32, dups | **0.95** / 1.19 | 0.98~ / 1.13~ | 0.83~ / 0.95~ | **0.82** / **0.79** | **0.63** / **0.62** | 500/512 | scikit-learn |
+| 1 000 000 × 32, tight-blobs | 1.83 / 2.43 | **0.83** / **0.83** | 1.30~ / 1.22~ | 1.47 / 1.41 | 1.71 / 1.82 | 128/512 | scikit-learn |
+| 1 000 000 × 32, binary | 1.87 / 1.85 | **0.81** / 1.81 | 1.33~ / 1.23~ | 1.18~ / 1.07~ | 1.06~ / 1.07~ | integer | scikit-learn |
+| 1 000 000 × 32, counts | 1.97 / 1.96 | 0.84~ / 1.28 | 0.96~ / 0.91~ | **0.79** / **0.81** | **0.55** / **0.53** | integer | scikit-learn |
+| 24 000 × 256, gauss | 1.07~ / 1.02~ | 1.08~ / 1.03~ | 1.18 / 1.21 | 2.63 / 2.95 | 4.10 / 4.31 | 0/512 | MLX |
+| 24 000 × 256, blobs | 1.05~ / 1.05~ | 1.08~ / 1.07~ | 1.15 / 1.13~ | 2.44 / 2.35 | 3.95 / 3.93 | 0/512 | MLX |
+| 24 000 × 256, uniform | 1.05~ / 1.01~ | 1.08~ / 1.04~ | 1.10 / 1.09 | 2.94 / 2.82 | 4.15 / 3.79 | 0/512 | MLX |
+| 24 000 × 256, unscaled | **0.51** / **0.47** | **0.50** / **0.44** | **0.41** / **0.36** | **0.48** / **0.55** | 0.76~ / 0.78~ | 485/512 | scikit-learn |
+| 24 000 × 256, dups | **0.59** / **0.51** | **0.56** / **0.48** | **0.50** / **0.43** | 0.67~ / **0.67** | 1.00~ / 0.95~ | 495/512 | scikit-learn |
+| 24 000 × 256, tight-blobs | **0.59** / **0.50** | **0.50** / **0.47** | **0.45** / **0.40** | **0.51** / **0.59** | 0.86~ / 0.81~ | 512/512 | scikit-learn |
+| 24 000 × 256, binary | 1.13 / 1.17 | 1.19 / 1.15 | 1.28 / 1.16 | 1.55 / 1.64 | 2.42 / 2.60 | integer | MLX |
+| 24 000 × 256, counts | 1.18 / 1.15 | 1.15 / 1.18 | 1.23 / 1.30 | 1.57 / 1.68 | 2.82 / 2.45 | integer | MLX |
+| 65 536 × 256, gauss | 1.61 / 1.55 | 1.38 / 1.44 | 2.79 / 3.10 | 3.65 / 3.60 | 6.09 / 6.49 | 0/512 | MLX |
+| 65 536 × 256, blobs | 1.65 / 1.58 | 1.30 / 1.41 | 2.75 / 2.89 | 3.03 / 2.81 | 6.23 / 6.78 | 0/512 | MLX |
+| 65 536 × 256, uniform | 1.53 / 1.55 | 1.27 / 1.30 | 3.14 / 2.79 | 3.64 / 3.82 | 7.04 / 7.31 | 0/512 | MLX |
+| 65 536 × 256, unscaled | **0.59** / **0.55** | **0.26** / **0.35** | **0.28** / **0.36** | **0.29** / **0.22** | **0.31** / **0.29** | 480/512 | scikit-learn |
+| 65 536 × 256, dups | **0.93** / **0.84** | **0.69** / **0.65** | **0.79** / 0.92~ | 1.14~ / 1.17~ | 1.88 / 1.76 | 495/512 | scikit-learn |
+| 65 536 × 256, tight-blobs | **0.90** / **0.79** | **0.64** / **0.56** | 0.92~ / **0.76** | 1.00~ / 0.99~ | 1.61 / 1.54 | 512/512 | scikit-learn |
+| 65 536 × 256, binary | 1.67 / 1.67 | 1.44 / 1.35 | 1.90 / 2.21 | 2.11 / 2.23 | 4.33 / 4.34 | integer | MLX |
+| 65 536 × 256, counts | 1.71 / 1.69 | 1.47 / 1.48 | 1.94 / 1.94 | 2.25 / 2.13 | 4.53 / 4.29 | integer | MLX |
+| 8 192 × 1024, gauss | 1.26 / 1.16 | 1.25 / 1.32 | 1.55 / 1.52 | 1.68 / 2.15 | 2.95 / 2.63 | 0/512 | MLX |
+| 8 192 × 1024, blobs | 1.17 / 1.21 | 1.22~ / 1.29 | 0.97~ / 0.90~ | 1.50 / 1.36 | 2.22 / 1.76 | 14/512 | scikit-learn |
+| 8 192 × 1024, uniform | 1.21 / 1.26 | 1.35 / 1.42 | 1.31~ / 1.96 | 1.97 / 1.63 | 2.82 / 2.32 | 0/512 | MLX |
+| 8 192 × 1024, unscaled | **0.71** / **0.59** | **0.57** / **0.50** | **0.57** / **0.66** | **0.40** / **0.47** | **0.61** / **0.67** | 488/512 | scikit-learn |
+| 8 192 × 1024, dups | **0.71** / **0.64** | **0.71** / **0.59** | **0.61** / **0.67** | **0.54** / **0.67** | **0.71** / **0.66** | 493/512 | scikit-learn |
+| 8 192 × 1024, tight-blobs | **0.73** / **0.63** | **0.65** / **0.56** | **0.55** / **0.65** | **0.45** / **0.51** | **0.57** / **0.56** | 512/512 | scikit-learn |
+| 8 192 × 1024, binary | 1.70 / 1.32 | 1.17 / 1.21 | 1.46 / 1.56 | 1.70 / 1.72 | 1.98 / 2.27 | integer | MLX |
+| 8 192 × 1024, counts | 1.25 / 1.35 | 1.12 / 1.22~ | 1.38~ / 1.39 | 2.08 / 2.02 | 1.96 / 1.92 | integer | MLX |
 
 `gauss`, `blobs` (100 clusters of std 1 around centres of std 3) and `uniform` are data the
 first pass certifies. `unscaled` is one column uniform on 0–10 000 beside standardized
@@ -774,18 +776,21 @@ ones; `dups` repeats every row about 20 times; `tight-blobs` is 100 clusters of 
 `binary` is 0/1 features at 20%, `counts` Poisson(2) counts.
 
 - **Far from certified.** Every shape of the three data the first pass cannot certify
-  lost on some batch, on both versions, down to 0.03× (a single row at 1 000 000 × 16,
-  unscaled), and their probes found 236–256 of 256 rows uncertified — but only 15 and 67
-  for tight clusters at a million rows and 16 or 32 features, where each cluster holds
-  10 000 rows (the width rule, below, hands those shapes to scikit-learn anyway).
-  Gaussian and uniform data left none uncertified at every shape; clusters of std 1 none
-  at 256 features or at a million rows, and 7 of 256 at 8 192 × 1 024, where 64 queries
-  only tied.
+  lost on some batch, on both versions, down to 0.22× at the wide shapes (256 queries at
+  65 536 × 256, unscaled) and 0.16× at a million rows, and their probes found 478–512 of
+  512 rows uncertified — but only 33 and 128 for tight clusters at a million rows and 16
+  or 32 features, where each cluster holds 10 000 rows (the width rule, below, hands
+  those shapes to scikit-learn anyway). Gaussian and uniform data left none uncertified
+  at every shape; clusters of std 1 none at 256 features or at a million rows, and 14 of
+  512 at 8 192 × 1 024, where 64 queries only tied. At a million rows and 16 or 32
+  features those three won every batch here (1.53× at worst), measured with the fused
+  selection kernel (fp32_policy §2.1); the width rule rests on grid `knn-narrow`,
+  measured before it, and stays until that grid is re-run.
 - **Integer data** is searched on the exact integer path, which kept up with stock brute
-  force from 256 features (1.06×~ at worst) but, at a million rows and 16 or 32 features,
-  lost batches of 256 and 1 024 queries (0.44×–0.88×). Below `knn_wide_features` it goes
-  to scikit-learn too, with the same reason — conservatively at 64–255 features, which
-  this grid did not measure on MLX.
+  force from 256 features (1.12× at worst) but, at a million rows and 16 or 32 features,
+  lost batches of 16 queries and, of counts, of 256 and 1 024 (0.53×–0.85×). Below
+  `knn_wide_features` it goes to scikit-learn too, with the same reason — conservatively
+  at 64–255 features, which this grid did not measure on MLX.
 
 **A few rows in a hundred are enough to lose.** A row the first pass cannot certify costs
 its batch a second search, and the whole batch waits for it, so the cost is per *batch*:
@@ -799,82 +804,113 @@ each cell is the worse version's ratio:
 <!-- python -m benchmarks.calibrate table knn-structured: scikit-learn 1.9.0 / 1.7.2, the worse of them -->
 | rows × features, data | 1 query | 2 queries | 4 queries | 8 queries | 16 queries | 32 queries | 64 queries | 128 queries | 256 queries | 512 queries | 1024 queries | 4096 queries | probe | dispatch |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 000 000 × 64, gauss | 2.47 | 1.71 | 1.47 | 1.23~ | 0.87~ | 1.39~ | 1.70 | 1.38 | 1.44 | 1.68 | 1.26 | — | 0/256 | MLX |
-| 1 000 000 × 64, dup2 | 2.31 | 1.74 | 1.45 | 1.22 | 1.00~ | 1.51~ | 1.64 | 1.10~ | 1.24 | 1.32 | 1.01~ | — | 10/256 | scikit-learn |
-| 1 000 000 × 64, scaled100 | 2.37 | 1.79 | 1.45 | 0.98~ | 1.63~ | 1.64 | 1.25~ | 1.22~ | 1.37 | 1.22 | 0.91~ | — | 10/256 | scikit-learn |
-| 1 000 000 × 64, blobs0.5 | 2.25 | 1.80 | 1.59 | 1.28 | 1.19~ | 1.83 | 1.63 | 1.40 | 1.66 | 1.68 | 1.21 | — | 0/256 | MLX |
-| 1 000 000 × 64, blobs0.4 | 2.37 | 1.78 | 1.59 | 1.18 | 1.02~ | 1.80 | 1.81 | 1.43 | 1.57 | 1.66 | 1.18 | — | 0/256 | MLX |
-| 24 000 × 256, gauss | 0.97~ | 1.09 | 1.02~ | 0.98~ | 1.02~ | 1.13~ | 1.11~ | 1.25 | 1.51 | 1.58 | 2.34 | 3.80 | 0/256 | MLX |
-| 24 000 × 256, dup2 | 1.02~ | 1.10 | 1.04~ | 1.00~ | **0.67** | **0.62** | 1.11 | 0.83~ | 1.13~ | 1.65 | 2.33 | 3.11 | 13/256 | scikit-learn |
-| 24 000 × 256, scaled100 | 1.00~ | 1.06~ | **0.58** | 1.02~ | 0.99~ | **0.79** | **0.79** | **0.85** | 1.05~ | 1.21~ | 1.97 | 3.06 | 13/256 | scikit-learn |
-| 24 000 × 256, blobs0.5 | 1.04~ | 1.06~ | 1.01~ | 0.99~ | **0.66** | 1.12 | 1.10~ | 1.23 | 1.24 | 1.62~ | 2.25 | 3.79 | 3/256 | scikit-learn |
-| 24 000 × 256, blobs0.4 | 1.02~ | 1.04~ | 1.04~ | 1.02~ | **0.69** | **0.73** | **0.76** | 0.91~ | 1.10~ | 1.31~ | 2.19 | 2.99 | 16/256 | scikit-learn |
-| 30 000 × 256, gauss | 1.11 | 1.17 | 1.09~ | 1.06~ | 1.06~ | 1.16~ | 1.12~ | 1.24~ | 1.48 | 3.31 | 2.88 | 3.90 | 0/256 | MLX |
-| 30 000 × 256, dup2 | 1.09 | 1.20 | 1.12 | 1.09~ | **0.60** | **0.70** | **0.78** | 0.98~ | 1.19~ | 1.37~ | 2.35 | 3.35 | 17/256 | scikit-learn |
-| 30 000 × 256, scaled100 | 1.13~ | 1.09~ | 1.12 | **0.68** | **0.61** | **0.86** | **0.74** | 0.96~ | 1.06~ | 1.80 | 2.33 | 3.53 | 24/256 | scikit-learn |
-| 30 000 × 256, blobs0.5 | 1.10~ | 1.19 | 1.16 | 1.04~ | **0.64** | 1.05~ | **0.82** | 1.00~ | 1.21 | 1.78 | 2.51 | 3.54 | 2/256 | scikit-learn |
-| 30 000 × 256, blobs0.4 | 1.15 | 1.16 | 1.12 | 1.09 | **0.62** | **0.80** | **0.75** | 0.94~ | 1.26 | 1.58 | 2.35 | 3.52 | 8/256 | scikit-learn |
-| 65 536 × 256, gauss | 1.60 | 1.34 | 1.36 | 1.29 | 1.41 | 1.40 | 1.88 | 1.83 | 2.21 | 3.29 | 4.00 | 6.83 | 0/256 | MLX |
-| 65 536 × 256, dup2 | 1.62 | 1.38 | 1.38 | 1.25 | **0.82** | 1.02~ | 1.23 | 1.47 | 1.66 | 2.94 | 3.58 | 4.82 | 13/256 | scikit-learn |
-| 65 536 × 256, scaled100 | 1.52 | 1.31 | 1.44 | 0.90~ | 1.28 | **0.81** | 1.35 | 1.35 | 1.56 | 2.50 | 3.36 | 4.25 | 25/256 | scikit-learn |
-| 65 536 × 256, blobs0.5 | 1.56 | 1.42 | 1.36 | 1.29 | 1.37 | 1.03~ | 1.22 | 1.50 | 2.03 | 2.80 | 3.53 | 4.85 | 5/256 | scikit-learn |
-| 65 536 × 256, blobs0.4 | 1.61 | 1.41 | 1.41 | 1.27 | **0.78** | 1.10 | 1.26 | 1.55 | 1.62~ | 2.85 | 3.37 | 4.20 | 15/256 | scikit-learn |
-| 100 000 × 256, gauss | 1.97 | 1.52 | 1.47 | 1.31 | 1.29 | 1.23~ | 1.63 | 1.61 | 2.54 | 3.26 | 4.79 | 5.90 | 0/256 | MLX |
-| 100 000 × 256, dup2 | 1.92 | 1.57 | 1.48 | 0.96~ | 0.95~ | 1.06~ | 1.29 | 1.42 | 2.17 | 2.68 | 3.44 | 4.44 | 14/256 | scikit-learn |
-| 100 000 × 256, scaled100 | 1.89 | 1.47 | 1.45 | **0.77** | **0.76** | 0.95~ | 1.13~ | 2.23 | 1.99 | 2.00 | 2.85 | 3.91 | 21/256 | scikit-learn |
-| 100 000 × 256, blobs0.5 | 1.90 | 1.46 | 1.51 | 1.37 | 1.29 | 1.58 | 1.35~ | 1.28~ | 2.15 | 2.65 | 4.14 | 4.42 | 6/256 | scikit-learn |
-| 100 000 × 256, blobs0.4 | 1.86 | 1.04~ | 1.51 | 1.33 | **0.76** | 1.29 | 1.15~ | 1.40~ | 2.22 | 2.63 | 3.27 | 4.30 | 19/256 | scikit-learn |
-| 12 000 × 512, gauss | 1.00~ | 1.20 | 1.18 | 1.11~ | 1.14 | 1.23 | 1.34 | 1.78 | 1.22 | 1.13 | 1.92 | 2.61 | 0/256 | MLX |
-| 12 000 × 512, dup2 | 1.07~ | 1.19 | 1.20 | 1.13 | **0.75** | **0.78** | **0.81** | 0.97~ | **0.79** | 1.07~ | 1.52~ | 1.93 | 8/256 | scikit-learn |
-| 12 000 × 512, scaled100 | 1.09~ | **0.72** | **0.75** | 1.16~ | **0.69** | **0.66** | **0.78** | 1.05~ | **0.82** | 1.01~ | 1.37~ | 1.65 | 29/256 | scikit-learn |
-| 12 000 × 512, blobs0.5 | 1.01~ | 1.08~ | 1.14 | **0.71** | **0.65** | **0.69** | **0.83** | 1.11~ | **0.82** | 0.95~ | 1.29~ | 1.64 | 27/256 | scikit-learn |
-| 12 000 × 512, blobs0.4 | 1.01~ | **0.73** | **0.72** | **0.62** | **0.64** | **0.65** | **0.68** | 0.91~ | **0.57** | 0.76~ | 0.87~ | 1.09~ | 85/256 | scikit-learn |
-| 50 000 × 512, gauss | 2.00 | 1.62 | 1.63 | 1.52 | 1.60 | 1.84 | 2.36 | 2.43 | 1.79 | 2.50 | 3.19 | 4.40 | 0/256 | MLX |
-| 50 000 × 512, dup2 | 1.89 | 1.64 | 1.72 | 1.47 | 0.99~ | 1.19~ | 1.60 | 1.78 | 1.60 | 1.86 | 2.57 | 3.69 | 19/256 | scikit-learn |
-| 50 000 × 512, scaled100 | 1.88 | 1.76 | 1.68 | **0.90** | **0.89** | 1.05~ | 1.52 | 1.47~ | 1.47 | 1.99 | 2.09 | 3.17 | 63/256 | scikit-learn |
-| 50 000 × 512, blobs0.5 | 1.85 | 1.75 | 1.08~ | 1.14~ | **0.89** | 1.06~ | 1.52 | 1.38 | 1.54 | 1.79 | 2.36 | 2.93 | 57/256 | scikit-learn |
-| 50 000 × 512, blobs0.4 | 1.18~ | 1.73 | **0.87** | **0.81** | **0.77** | 1.04~ | 1.13 | 1.22~ | 1.04~ | 1.32~ | 1.60 | 2.07 | 136/256 | scikit-learn |
-| 16 384 × 768, gauss | 1.49 | 1.42 | 1.40 | 1.37 | 1.48 | 1.63 | 2.38 | 1.61 | 1.67 | 1.90 | 2.48 | 3.54 | 0/256 | MLX |
-| 16 384 × 768, dup2 | 1.39 | 1.43 | 1.37 | 1.34 | 0.95~ | 0.99~ | 1.33 | 1.29~ | 1.34 | 1.54~ | 2.22 | 3.00 | 11/256 | scikit-learn |
-| 16 384 × 768, scaled100 | 1.40 | 1.60 | 0.98~ | **0.75** | **0.76** | **0.72** | 1.19 | 1.02~ | 1.17~ | 1.36~ | 1.70 | 2.18 | 64/256 | scikit-learn |
-| 16 384 × 768, blobs0.5 | **0.81** | 1.41 | **0.73** | **0.74** | **0.73** | **0.74** | 1.05~ | **0.80** | 0.91~ | 0.98~ | 1.08~ | 1.48 | 123/256 | scikit-learn |
-| 16 384 × 768, blobs0.4 | **0.82** | 0.95~ | **0.80** | **0.75** | **0.72** | **0.67** | 0.86~ | **0.76** | 0.73~ | 0.79~ | 0.87~ | 1.07~ | 213/256 | scikit-learn |
-| 8 192 × 1024, gauss | 1.21 | 1.37 | 1.38 | 1.34 | 1.33 | 1.43 | 1.18~ | 1.59 | 1.73 | 2.01 | 2.03 | 2.90 | 0/256 | MLX |
-| 8 192 × 1024, dup2 | 1.21 | 1.33 | 1.42 | **0.85** | 1.22 | 0.88~ | 1.05~ | 1.05~ | 1.13~ | 1.25 | 1.46 | 2.28 | 20/256 | scikit-learn |
-| 8 192 × 1024, scaled100 | 1.18~ | 1.36 | **0.76** | **0.78** | **0.84** | **0.74** | 0.96~ | **0.81** | 0.96~ | 1.00~ | 1.22~ | 1.49 | 72/256 | scikit-learn |
-| 8 192 × 1024, blobs0.5 | 1.24~ | 1.42 | **0.75** | **0.70** | **0.68** | **0.70** | **0.75** | **0.59** | **0.61** | **0.63** | **0.73** | 0.92~ | 170/256 | scikit-learn |
-| 8 192 × 1024, blobs0.4 | **0.70** | **0.77** | **0.70** | **0.68** | **0.61** | **0.61** | **0.64** | **0.56** | **0.51** | **0.56** | **0.61** | **0.71** | 235/256 | scikit-learn |
-| 4 096 × 2048, gauss | 1.14 | 1.10~ | 1.14 | 1.23 | 1.20 | 0.86~ | 1.29 | 1.27~ | 1.33 | 1.43 | 1.63 | 2.23 | 0/256 | scikit-learn |
-| 4 096 × 2048, dup2 | 1.18 | 1.18 | 1.16 | 1.22 | 1.13~ | 0.91~ | 1.06~ | 1.69 | 1.34 | 1.32 | 1.69 | 2.21 | 0/256 | scikit-learn |
-| 4 096 × 2048, scaled100 | 1.17 | 1.12~ | 1.16 | 1.31 | **0.69** | **0.57** | **0.74** | 1.03~ | **0.89** | 1.14~ | 1.40 | 1.71 | 13/256 | scikit-learn |
-| 4 096 × 2048, blobs0.5 | 0.72~ | **0.80** | **0.76** | **0.65** | **0.65** | **0.50** | **0.60** | **0.45** | **0.51** | **0.58** | **0.75** | **0.83** | 143/256 | scikit-learn |
-| 4 096 × 2048, blobs0.4 | **0.67** | **0.70** | **0.64** | **0.58** | **0.51** | **0.41** | **0.40** | **0.36** | **0.50** | **0.47** | **0.51** | **0.55** | 247/256 | scikit-learn |
+| 1 000 000 × 64, gauss | 2.26 | 1.72 | 1.42 | 2.08 | 2.23 | 2.67 | 2.25 | 3.46 | 4.44 | 6.33 | 7.90 | — | 0/512 | MLX |
+| 1 000 000 × 64, dup2 | 2.36 | 1.69 | 1.44 | 2.01 | 2.24 | 1.85 | 1.96 | 2.35 | 2.68 | 3.56 | 4.45 | — | 22/512 | scikit-learn |
+| 1 000 000 × 64, scaled100 | 2.26 | 1.73 | 1.44 | 1.38 | 1.13 | 1.97 | 1.91 | 2.38 | 2.47 | 3.14 | 3.38 | — | 30/512 | scikit-learn |
+| 1 000 000 × 64, blobs0.5 | 2.32 | 1.73 | 1.48 | 1.99 | 2.21 | 2.65 | 2.14 | 3.21 | 4.47 | 6.37 | 8.36 | — | 0/512 | MLX |
+| 1 000 000 × 64, blobs0.4 | 2.35 | 1.75 | 1.65 | 2.12 | 2.15 | 2.81 | 2.15 | 3.39 | 4.84 | 5.51 | 8.34 | — | 0/512 | MLX |
+| 24 000 × 256, gauss | 1.01~ | 1.07~ | 0.98~ | 0.97~ | 1.04~ | 1.14 | 1.09 | 1.21~ | 2.36 | 3.20 | 3.69 | 4.38 | 0/512 | MLX |
+| 24 000 × 256, dup2 | 1.03~ | 1.02~ | 1.07~ | 0.99~ | **0.57** | **0.58** | 1.09~ | **0.80** | 1.62 | 2.35 | 2.65 | 3.34 | 23/512 | scikit-learn |
+| 24 000 × 256, scaled100 | 1.08~ | 1.02~ | **0.50** | 1.00~ | 1.04~ | **0.69** | **0.67** | **0.72** | 1.47 | 2.08 | 2.58 | 2.93 | 27/512 | scikit-learn |
+| 24 000 × 256, blobs0.5 | 1.06~ | 1.02~ | 1.02~ | 0.97~ | **0.53** | 1.10~ | 1.13 | 1.28 | 1.78 | 2.33 | 3.27 | 3.54 | 7/512 | scikit-learn |
+| 24 000 × 256, blobs0.4 | 1.00~ | 1.01~ | 1.04~ | 0.99~ | **0.58** | **0.64** | **0.72** | **0.83** | 1.86 | 2.20 | 2.88 | 3.20 | 28/512 | scikit-learn |
+| 30 000 × 256, gauss | 1.06~ | 1.13~ | 1.12 | 1.04~ | 1.07 | 1.07~ | 1.21 | 1.32 | 2.67 | 3.36 | 4.31 | 5.51 | 0/512 | MLX |
+| 30 000 × 256, dup2 | 1.12 | 1.10 | 1.13 | 1.05~ | **0.56** | **0.68** | **0.77** | 0.89~ | 1.70 | 2.41 | 3.19 | 5.22 | 23/512 | scikit-learn |
+| 30 000 × 256, scaled100 | 1.11 | 1.15 | 1.12 | **0.59** | **0.61** | **0.72** | **0.68** | 0.97~ | 1.74 | 2.06 | 2.71 | 4.48 | 37/512 | scikit-learn |
+| 30 000 × 256, blobs0.5 | 1.08~ | 1.11~ | 1.13 | 1.00~ | **0.52** | 1.14 | **0.76** | 1.01~ | 1.95 | 2.69 | 3.61 | 6.00 | 3/512 | scikit-learn |
+| 30 000 × 256, blobs0.4 | 1.14 | 1.09~ | 1.23 | 1.07~ | **0.55** | **0.69** | **0.68** | **0.84** | 1.54 | 2.27 | 2.95 | 5.37 | 19/512 | scikit-learn |
+| 65 536 × 256, gauss | 1.70 | 1.41 | 1.35 | 1.31 | 1.33 | 1.49 | 2.73 | 2.84 | 3.08 | 4.02 | 6.25 | 10.02 | 0/512 | MLX |
+| 65 536 × 256, dup2 | 1.62 | 1.35 | 1.37 | 1.27 | **0.69** | **0.87** | 1.68 | 2.09 | 2.01 | 2.94 | 5.47 | 6.71 | 32/512 | scikit-learn |
+| 65 536 × 256, scaled100 | 1.55 | 1.38 | 1.37 | **0.77** | 1.39 | **0.83** | 1.33 | 1.82 | 2.05 | 3.19 | 4.26 | 5.48 | 46/512 | scikit-learn |
+| 65 536 × 256, blobs0.5 | 1.59 | 1.42 | 1.38 | 1.30 | 1.32 | 0.91~ | 1.38 | 2.02 | 2.49 | 3.48 | 4.90 | 7.14 | 9/512 | scikit-learn |
+| 65 536 × 256, blobs0.4 | 1.62 | 1.38 | 1.37 | 1.30 | **0.70** | 0.95~ | 1.49 | 1.79 | 2.33 | 2.90 | 4.54 | 5.76 | 40/512 | scikit-learn |
+| 100 000 × 256, gauss | 1.85 | 1.61 | 1.40 | 1.34 | 1.18 | 1.43 | 2.98 | 3.51 | 4.27 | 4.86 | 8.37 | 12.61 | 0/512 | MLX |
+| 100 000 × 256, dup2 | 1.90 | 1.57 | 1.51 | **0.91** | **0.88** | 1.04~ | 1.73 | 2.10 | 2.32 | 3.96 | 5.49 | 7.58 | 36/512 | scikit-learn |
+| 100 000 × 256, scaled100 | 1.89 | 1.56 | 1.43 | **0.73** | **0.67** | **0.81** | 1.40 | 1.87 | 2.13~ | 4.21 | 4.71 | 6.21 | 53/512 | scikit-learn |
+| 100 000 × 256, blobs0.5 | 1.82 | 1.49 | 1.47 | 1.30 | 1.27 | 1.37 | 1.75 | 2.27 | 3.01 | 4.11 | 5.46 | 7.58 | 10/512 | scikit-learn |
+| 100 000 × 256, blobs0.4 | 1.86 | 1.03~ | 1.52 | 1.35 | **0.72** | 0.99~ | 1.54 | 1.62 | 2.56 | 3.62 | 5.40 | 6.44 | 44/512 | scikit-learn |
+| 12 000 × 512, gauss | 1.03~ | 1.07~ | 1.12 | 1.19 | 1.20~ | 1.27 | 1.41 | 1.50 | 1.29 | 1.93 | 2.41 | 2.35 | 0/512 | MLX |
+| 12 000 × 512, dup2 | 1.01~ | 1.14~ | 1.15 | 1.10~ | **0.67** | **0.65** | **0.77** | 1.01~ | 0.89~ | 1.44 | 1.73 | 1.91 | 22/512 | scikit-learn |
+| 12 000 × 512, scaled100 | 0.97~ | **0.62** | **0.66** | 1.21 | **0.64** | **0.65** | **0.82** | 0.92~ | **0.71** | 1.28~ | 1.44 | 1.39 | 56/512 | scikit-learn |
+| 12 000 × 512, blobs0.5 | 1.02~ | 1.19 | 1.22 | **0.57** | **0.57** | **0.61** | **0.74** | 1.03~ | 0.89~ | 1.17 | 1.42 | 1.32 | 50/512 | scikit-learn |
+| 12 000 × 512, blobs0.4 | 1.03~ | **0.65** | **0.62** | **0.53** | **0.59** | **0.59** | **0.65** | 0.80~ | **0.57** | **0.78** | 0.88~ | 1.06~ | 146/512 | scikit-learn |
+| 50 000 × 512, gauss | 2.01 | 1.73 | 1.70 | 1.62 | 1.74 | 1.78 | 2.16 | 3.57 | 2.42 | 2.98 | 4.45 | 6.27 | 0/512 | MLX |
+| 50 000 × 512, dup2 | 1.88 | 1.74 | 1.61 | 1.51 | 0.95~ | 1.45 | 1.36 | 2.34 | 1.91 | 2.52 | 3.39 | 4.55 | 27/512 | scikit-learn |
+| 50 000 × 512, scaled100 | 1.88 | 1.59 | 1.58 | **0.76** | **0.88** | 1.03~ | 1.29~ | 2.03 | 1.70 | 2.07 | 2.47 | 3.25 | 104/512 | scikit-learn |
+| 50 000 × 512, blobs0.5 | 1.87 | 1.79 | 1.15~ | 1.07~ | **0.83** | 0.98~ | 1.29~ | 1.68 | 1.48 | 2.02 | 2.43 | 2.87 | 120/512 | scikit-learn |
+| 50 000 × 512, blobs0.4 | 0.98~ | 1.65 | **0.78** | **0.81** | **0.74** | **0.79** | 0.98~ | 1.14~ | 1.36 | 1.41 | 1.61 | 2.18 | 252/512 | scikit-learn |
+| 16 384 × 768, gauss | 1.45 | 1.48 | 1.37 | 1.34 | 1.37 | 1.62 | 2.08 | 1.55 | 2.56 | 2.47 | 3.07 | 4.57 | 0/512 | MLX |
+| 16 384 × 768, dup2 | 1.38 | 1.41 | 1.34 | 1.38 | **0.88** | **0.78** | 1.22~ | 1.18~ | 1.51 | 1.87 | 2.21 | 3.29 | 22/512 | scikit-learn |
+| 16 384 × 768, scaled100 | 1.48 | 1.41 | **0.84** | **0.72** | **0.78** | **0.79** | 1.07~ | **0.82** | 1.20~ | 1.38 | 1.99 | 2.24 | 107/512 | scikit-learn |
+| 16 384 × 768, blobs0.5 | **0.70** | 1.49 | **0.73** | **0.71** | **0.69** | **0.81** | 0.90~ | 0.90~ | 0.81~ | 0.94~ | 1.06~ | 1.40 | 245/512 | scikit-learn |
+| 16 384 × 768, blobs0.4 | **0.71** | **0.79** | **0.68** | **0.65** | **0.65** | **0.70** | **0.78** | **0.63** | **0.70** | **0.73** | 0.89~ | 1.10~ | 401/512 | scikit-learn |
+| 8 192 × 1024, gauss | 1.22 | 1.33 | 1.31 | 1.32 | 1.27 | 1.33 | 1.50 | 1.44 | 1.95 | 2.15 | 2.26 | 2.84 | 0/512 | MLX |
+| 8 192 × 1024, dup2 | 1.22 | 1.37 | 1.31 | **0.76** | 1.29 | **0.73** | 0.84~ | 0.96~ | 1.06~ | 1.46 | 1.85 | 2.27 | 53/512 | scikit-learn |
+| 8 192 × 1024, scaled100 | 1.19~ | 1.29 | **0.66** | **0.71** | **0.77** | **0.66** | 0.86~ | 0.86~ | 0.88~ | 1.05~ | 1.21 | 1.54 | 106/512 | scikit-learn |
+| 8 192 × 1024, blobs0.5 | 1.19~ | 1.33 | **0.68** | **0.62** | **0.56** | **0.63** | **0.68** | **0.57** | **0.63** | **0.63** | **0.71** | 0.89~ | 327/512 | scikit-learn |
+| 8 192 × 1024, blobs0.4 | **0.62** | **0.64** | **0.65** | **0.64** | **0.57** | **0.58** | **0.65** | **0.53** | **0.53** | **0.50** | **0.62** | **0.71** | 461/512 | scikit-learn |
+| 4 096 × 2048, gauss | 1.13 | 1.10 | 1.09~ | 1.19 | 1.21 | **0.80** | 1.38 | 1.34 | 1.36 | 1.47 | 1.68 | 2.24 | 0/512 | scikit-learn |
+| 4 096 × 2048, dup2 | 1.17 | 1.10~ | 1.02~ | 1.28 | 1.25 | 0.96~ | 0.90~ | 1.24 | 1.10~ | 1.34 | 1.72 | 1.96 | 2/512 | scikit-learn |
+| 4 096 × 2048, scaled100 | 1.15 | 1.11~ | 1.12~ | 1.20 | **0.62** | **0.54** | **0.75** | 0.98~ | 0.90~ | 1.22 | 1.36 | 1.62 | 34/512 | scikit-learn |
+| 4 096 × 2048, blobs0.5 | 0.63~ | **0.82** | **0.70** | **0.65** | **0.56** | **0.55** | **0.52** | **0.47** | **0.45** | **0.56** | **0.70** | **0.76** | 275/512 | scikit-learn |
+| 4 096 × 2048, blobs0.4 | **0.66** | **0.60** | **0.57** | **0.57** | **0.50** | **0.39** | **0.38** | **0.36** | **0.38** | **0.44** | **0.48** | **0.52** | 473/512 | scikit-learn |
 
-These four laws lost some batch at 30 of the 40 shapes measured, down to 0.36× — at 256
-features batches of 4–64 queries, 0.58×–0.88×, which the probe's previous rule (more than
-8 of 64 rows uncertified) mostly let through. The probe found 2–247 of 256 rows
-uncertified at every one of the 30, and 2 were enough to lose: clusters of std 0.5 at
-30 000 × 256, 0.64× at 16 queries. Where it found none — rows repeated twice at
-4 096 × 2 048, clusters at 1 000 000 × 64 — every batch won or tied, as it did on Gaussian
-data at every shape. So patched mode probes 256 of the rows of every fit the size rules
-would send to MLX and hands it to scikit-learn if it cannot certify any one of them
-(`knn_probe_rows = 256`, `knn_probe_max_uncertified = 0`), recorded as `"data-probe"`
-with the count on the event. It probes with the fitted k, since the first pass's noise
-band grows with k and the width (the `knn-k` table above). Sixty-four rows, the probe's
-previous size, see no uncertified row about half the time when one row in a hundred is;
-256 miss one time in thirteen.
+These four laws lost some batch at 32 of the 40 shapes measured, down to 0.36× — at 256
+features batches of 4–128 queries, 0.50×–0.91×, which the probe's first rule (more than
+8 of 64 rows uncertified) mostly let through. The probe found 3–473 of 512 rows
+uncertified at every one of the 32, and 3 were enough to lose: clusters of std 0.5 at
+30 000 × 256, 0.52× at 16 queries. Where it found none — clusters at 1 000 000 × 64 —
+every batch won or tied, as it did on Gaussian data at every shape the size rules send to
+MLX (at 4 096 × 2 048, below the row floor, a batch of 32 lost, 0.80×). So patched mode
+probes 512 of the rows of every fit the size rules would send to MLX and hands it to
+scikit-learn if it cannot certify any one of them (`knn_probe_rows = 512`,
+`knn_probe_max_uncertified = 0`), recorded as `"data-probe"` with the count on the event.
+It probes with the fitted k, since the first pass's noise band grows with k and the width
+(the `knn-k` table above). Sixty-four rows, the probe's first size, see no uncertified
+row about half the time when one row in a hundred is; 256 miss one time in thirteen, and
+512 one time in 170 (grid `knn-probe`, below).
 
-What the rule gives up is those laws where a second search was affordable: 7 of the 40,
-which won or tied every batch — rows repeated twice at 100 000 × 256, 50 000 × 512 and
-16 384 × 768 and at a million rows, the column on a larger scale at a million rows, and
-clusters of std 0.5 at 65 536 and 100 000 × 256 — up to 4.9× at 4 096 queries; and the
-wins of the other 30 at large batches (up to 4.8×).
+What the rule gives up is those laws where a second search was affordable: 5 of the 40,
+which won or tied every batch at shapes the size rules route — rows repeated twice at
+50 000 × 512 and at a million rows, the column on a larger scale at a million rows, and
+clusters of std 0.5 at 65 536 and 100 000 × 256 — up to 7.9× at 4 096 queries; and the
+wins of the other 32 at large batches (up to 8.0×).
 
-The probe costs the fit one first pass for 256 queries — 2.1–9.7 ms at 256–4 096
-features and 43–62 ms at a million rows and more (above) — on top of the index build (the
-`knn/fit` accepted regression), and a fit it hands over has paid for both before
-scikit-learn's own. A directly imported estimator does not probe: it searches on MLX,
-certified, whatever the data.
+**How many rows the probe needs.** On clusters of std 0.5 at 24 000 and 30 000 × 256,
+about one row in a hundred cannot be certified, few enough that a probe of 256 rows sees
+none of them in some draws of the data. Grid `knn-probe` times 64 draws of that law at
+each shape, and 8 draws each of Gaussian, low-rank (three latent directions plus noise of
+std 0.05) and std-1 cluster data there and at 8 192 × 1 024, batches of 16–256 queries,
+k = 10; each draw records what probes of 256 and of 512 rows found. A row of the table
+counts the draws each probe passed and gives the worst batch among them, per version:
+
+<!-- python -m benchmarks.calibrate table knn-probe: scikit-learn 1.9.0 / 1.7.2 -->
+| rows × features, data | draws | passed by 256 rows | worst batch of those | passed by 512 rows | worst batch of those | dispatch |
+|---|---|---|---|---|---|---|
+| 24 000 × 256, gauss | 8 | 8 | 1.01~ / 1.03~ | 8 | 1.01~ / 1.03~ | MLX for 8 of 8 |
+| 24 000 × 256, blobs | 8 | 8 | 1.05~ / 1.03~ | 8 | 1.05~ / 1.03~ | MLX for 8 of 8 |
+| 24 000 × 256, blobs0.5 | 64 | 4 | **0.63** / **0.56** | 0 | — | MLX for 0 of 64 |
+| 24 000 × 256, lowrank | 8 | 8 | 1.02~ / 1.01~ | 8 | 1.02~ / 1.01~ | MLX for 8 of 8 |
+| 30 000 × 256, gauss | 8 | 8 | 1.04~ / 1.09~ | 8 | 1.04~ / 1.09~ | MLX for 8 of 8 |
+| 30 000 × 256, blobs | 8 | 8 | 1.03~ / 1.06~ | 6 | 1.03~ / 1.06~ | MLX for 6 of 8 |
+| 30 000 × 256, blobs0.5 | 64 | 5 | **0.75** / **0.61** | 0 | — | MLX for 0 of 64 |
+| 30 000 × 256, lowrank | 8 | 8 | 1.05~ / 1.05~ | 8 | 1.05~ / 1.05~ | MLX for 8 of 8 |
+| 8 192 × 1024, gauss | 8 | 7 | 1.16 / 1.28 | 6 | 1.21~ / 1.30 | MLX for 6 of 8 |
+| 8 192 × 1024, blobs | 8 | 0 | — | 0 | — | MLX for 0 of 8 |
+| 8 192 × 1024, lowrank | 8 | 8 | 1.11~ / 1.25~ | 7 | 1.11~ / 1.25~ | MLX for 7 of 8 |
+
+A probe of 256 rows passed 9 of the 128 clustered draws, and 8 of those 9 lost a batch of
+16–64 queries on one version or both, down to 0.56×; with 512 rows it passed none — it
+found 1–11 of 512 uncertified in every one. It gave up 5 of the 72 other draws, which
+the smaller probe passed and which won or tied every batch (1.06×–3.7×): two of Gaussian
+data and one low-rank at 8 192 × 1 024, and two of std-1 clusters at 30 000 × 256. Every
+draw it passed won or tied every batch, 1.01×~ at worst.
+
+The probe costs the fit one first pass for 512 queries — 5.1–17.1 ms after an idle gap at
+256–4 096 features and 16–28 ms at a million rows and more (above) — on top of the index
+build (the `knn/fit` accepted regression), and a fit it hands over has paid for both
+before scikit-learn's own. A directly imported estimator does not probe: it searches on
+MLX, certified, whatever the data.
 
 ### Narrow data goes to scikit-learn, whatever its size
 
@@ -1759,7 +1795,7 @@ queries, slower still.
 solver iteration: a float32 copy of the data and its upload, a device round trip for each
 objective evaluation or batch of kernel rows, and, after the GPU has idled, a slower first
 few milliseconds. A rule can weigh that against what a fit shows before it runs — its
-shape, its parameters, and for a neighbor fit a probe of 256 of its own rows. It cannot
+shape, its parameters, and for a neighbor fit a probe of 512 of its own rows. It cannot
 see what decides the rest: how many rows become support vectors and how often SMO revisits
 them, which the labels and the data's intrinsic dimension set, and how many iterations
 L-BFGS takes to converge. Where those went against MLX on a grid, the rules hand the whole

@@ -327,33 +327,38 @@ class MLXNeighborsMixin(BackendMixin):
         hundred, which put one in most batches of 16-64 queries, lose to stock brute
         force, whose float64 search needs no certificate. On rows repeated about
         twice, one column on 100 times the scale of the rest, or 100 clusters of std
-        0.4-0.5, some batch lost at 30 of 40 shapes measured on and near the size
-        floors, down to 0.36x, with as few as 2 of 256 probed rows uncertified; on
+        0.4-0.5, some batch lost at 32 of 40 shapes measured on and near the size
+        floors, down to 0.36x, with as few as 3 of 512 probed rows uncertified; on
         rows repeated about 20 times, 100 clusters of std 0.1 or one column in raw
-        units, at every shape, down to 0.03x (``docs/benchmarks.md``, tables
+        units, at every shape, down to 0.16x (``docs/benchmarks.md``, tables
         ``knn-structured`` and ``knn-data``). A fit cannot see its queries, but it
-        can see its own rows, so patched mode searches ``knn_probe_rows`` (256) of
+        can see its own rows, so patched mode searches ``knn_probe_rows`` (512) of
         them with the first pass alone
         (:meth:`NeighborIndex.probe <mlxlearn._kernels.distance.NeighborIndex.probe>`,
-        one pass for 256 rows) and hands the fit to scikit-learn when more than
+        one pass for 512 rows) and hands the fit to scikit-learn when more than
         ``knn_probe_max_uncertified`` of them — at 0, any of them — could not be
-        certified. Gaussian and uniform data left none uncertified at k = 10 up to
-        3 072 features, and stayed on MLX; the first pass's noise band grows with
-        the width and with k, and at 4 096 features, or 3 072 at k = 5, or 256 at
-        k = 200, even Gaussian data left a few (table ``knn-k``), and goes to
-        scikit-learn. The probe searches with the fitted ``n_neighbors`` for that
-        reason.
+        certified. Where one row in a hundred is, 256 rows saw none in 9 of 128 draws
+        of the data, and 8 of those lost a mid-size batch; 512 saw some in every one
+        (table ``knn-probe``). Gaussian and uniform data left none of 256 uncertified
+        at k = 10 up to 3 072 features (table ``knn-k``), and stayed on MLX; of 512, 2
+        of 8 draws of Gaussian data at 8 192 x 1 024 left one each, and go to
+        scikit-learn. The first pass's noise band grows with the width and with k, and
+        at 4 096 features, or 3 072 at k = 5, or 256 at k = 200, even Gaussian data
+        left a few (table ``knn-k``), and goes to scikit-learn. The probe searches with
+        the fitted ``n_neighbors`` for that reason.
 
         Integer-valued data — binary, one-hot, counts — is searched on an exact
         integer path instead, with no certificate to fail; it kept up with stock
         brute force from ``knn_wide_features`` features, and at a million rows and
-        16 or 32 features lost at 256 and 1 024 queries (0.48x-0.88x). Narrower than
-        ``knn_wide_features`` it goes to scikit-learn too — conservatively at 64-255
-        features, where it was not measured on MLX.
+        16 or 32 features lost batches of 16 queries and, of counts, of 256 and
+        1 024 (0.53x-0.85x). Narrower than ``knn_wide_features`` it goes to
+        scikit-learn too — conservatively at 64-255 features, where it was not
+        measured on MLX.
 
         Recorded as ``"data-probe"``. Only patched mode acts on this, as on the
         width rules, and never on a backend forced by ``MLXLEARN_FORCE_BACKEND``.
-        The calibration is ``docs/benchmarks.md``'s ``knn-data`` table.
+        The calibration is ``docs/benchmarks.md``'s ``knn-data``, ``knn-structured``
+        and ``knn-probe`` tables.
         """
         if not self._mlxlearn_allow_fallback or get_tuning().force_backend:
             return None

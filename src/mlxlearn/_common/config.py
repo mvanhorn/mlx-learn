@@ -292,25 +292,35 @@ class Tuning:
     # 16-64 queries, are enough to lose. Table `knn-structured`, every batch of
     # 1-4096 queries at shapes on and near the size floors: rows repeated about
     # twice, one column on 100 times the scale of the rest, and 100 clusters of std
-    # 0.4 or 0.5 lost some batch at 30 of the 40 shapes and laws measured, on both
-    # versions, down to 0.36x — at 256 features mostly batches of 4-64 queries
-    # (0.58x-0.88x) — and the probe found 2-247 of 256 rows uncertified in every
-    # one of the 30, 2 of 256 for clusters of std 0.5 at 30 000 x 256 (0.64x at 16
-    # queries). Where it found none (rows repeated at 4 096 x 2 048, clusters at
-    # 1 000 000 x 64) they won or tied; so did Gaussian data, with none at every
-    # shape of that table and of `knn-data`. Table `knn-data`: one column in raw
-    # units, rows repeated about 20 times and 100 clusters of std 0.1 left 236-256
-    # of 256 at every wide shape and lost everywhere, down to 0.17x (0.03x at a
-    # million rows and 16 features); clusters of std 1 left none at 256 features
-    # and 7 at 8 192 x 1 024, where 64 queries only tied. The probe used to search
-    # 64 rows and allow 8 uncertified: with one row in a hundred uncertified, 64
-    # rows see none about half the time, 256 one time in thirteen.
+    # 0.4 or 0.5 lost some batch at 32 of the 40 shapes and laws measured, on one
+    # version or both, down to 0.36x — at 256 features batches of 4-128 queries
+    # (0.50x-0.91x) — and the probe found 3-473 of 512 rows uncertified in every
+    # one of the 32, 3 of 512 for clusters of std 0.5 at 30 000 x 256 (0.52x at 16
+    # queries). Where it found none (clusters at 1 000 000 x 64) they won or tied;
+    # so did Gaussian data, with none at every shape of that table and of
+    # `knn-data`, wherever the size rules route it. Table `knn-data`: one column in
+    # raw units, rows repeated about 20
+    # times and 100 clusters of std 0.1 left 478-512 of 512 at every wide shape and
+    # lost everywhere, down to 0.22x (0.16x at a million rows and 32 features);
+    # clusters of std 1 left none at 256 features and 14 at 8 192 x 1 024, where 64
+    # queries only tied. The probe first searched 64 rows and allowed 8 uncertified:
+    # with one row in a hundred uncertified, 64 rows see none about half the time,
+    # 256 one time in thirteen and 512 one time in 170. Table `knn-probe`, 64 draws of
+    # those std-0.5 clusters at each of 24 000 and 30 000 x 256, where about one row
+    # in a hundred is: a probe of 256 rows passed 9 of the 128, 8 of which lost a
+    # batch of 16-64 queries on one version or both (down to 0.56x); 512 rows passed
+    # none. Of 72 draws of Gaussian, low-rank and std-1 cluster data beside them, 512
+    # rows gave up 5 that 256 passed, which won or tied every batch (1.06x-3.7x), and
+    # every draw they passed won or tied (1.01x at worst). The probe of 512 rows costs
+    # a fit 5-17 ms after an idle gap at 256-4 096 features and 16-28 ms at a million
+    # rows and more (k = 5); see the `knn/fit` accepted regression.
     # Integer-valued data takes an exact path with nothing to certify; narrower than
     # knn_wide_features it goes to scikit-learn too: at a million rows and 16 or 32
-    # features it lost batches of 256 and 1024 queries (0.44x-0.88x), while from 256
-    # features it kept up (64-255 features were not measured on MLX).
+    # features it lost batches of 16 queries and, of counts, 256 and 1024 queries
+    # (0.53x-0.85x), while from 256 features it kept up (64-255 features were not
+    # measured on MLX).
     knn_probe_max_uncertified: float = 0.0
-    knn_probe_rows: int = 256
+    knn_probe_rows: int = 512
     #
     # Logistic regression, max_iter=200 (see LogisticRegression._below_crossover).
     # Every fit needs logreg_min_samples rows. Multinomial fits won at every width

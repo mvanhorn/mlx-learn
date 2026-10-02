@@ -33,7 +33,7 @@ same property. So a query block's result is its first ``k_carry`` columns under
 certificate is built on. Each value is computed with the tile expression's operations
 in its order — ``s = ‖q‖² + ‖t‖²``, then ``s − 2G`` (``2G`` is exact), then MLX's
 ``maximum(x, 0)`` — under ``fp contract(off)``, so it is the built-in tile's value bit
-for bit. That identity rests on how MLX 0.32 implements ``argpartition`` and the
+for bit. That identity rests on how MLX 0.32.2 implements ``argpartition`` and the
 matmul, which is why :data:`VALIDATED_MLX` names the releases it was checked on.
 
 **List length and the overflow flag.** A lane's own last value rejects little — it is
@@ -51,7 +51,7 @@ and low-rank data at 56 000–1 000 000 rows it flagged at most one row in 1 024
 this kernel, and once per list length (16 or 32): :func:`selection` builds the
 library, runs it once on a fixed input whose answer the host computes, and serves it
 only if the two agree. A library never compiled on the machine cost that first query
-85–95 ms on an M4 Max with MLX 0.32.2, once per machine, MLX release and kernel
+84–88 ms on an M4 Max with MLX 0.32.2, once per machine, MLX release and kernel
 version; the operating system's shader cache then serves it to later processes in a
 few milliseconds. MLX holds a lock that stalls the process's other GPU work while a
 library builds, so it is not built on a background thread: one started at the index
@@ -75,17 +75,20 @@ __all__ = ["BUCKETS", "VALIDATED_MLX", "Selection", "bucket", "selection"]
 #: ``k_carry`` is served in one of these buckets; a larger one keeps the built-in path.
 BUCKETS = (16, 32, 64)
 
-#: MLX minor releases on which the kernel's answers were checked bit for bit against
-#: MLX's built-in selection — ``tests/unit/test_fused_selection.py``, and a grid of 791
-#: cases of data, k and blocking against the search before the kernel existed. The
-#: identity rests on two behaviors of these releases, not on promises — the GPU
-#: ``argpartition`` keeping the lowest columns among equal values, as a stable sort
-#: does, and the matmul giving a row the same bits whatever the number of rows (two or
-#: more) and columns in its product. A release outside the list keeps the built-in
-#: selection until it has been checked. A one-time self-test at run time could not
-#: stand in for that: both behaviors depend on the shape, and a test small enough to
-#: run on a first query would exercise only the shapes it is given.
-VALIDATED_MLX = ((0, 32),)
+#: MLX releases, ``(major, minor, patch)``, on which the kernel's answers were checked
+#: bit for bit against MLX's built-in selection — ``tests/unit/test_fused_selection.py``,
+#: and a grid of 791 cases of data, k and blocking against the search before the
+#: kernel existed. The identity rests on two behaviors of these releases, not on
+#: promises — the GPU ``argpartition`` keeping the lowest columns among equal values,
+#: as a stable sort does, and the matmul giving a row the same bits whatever the
+#: number of rows (two or more) and columns in a product wider than it is deep
+#: (``distance._tiles_wider``). Which GEMM kernel MLX picks for a shape can change in
+#: any release, a patch release included, so each is listed on its own, and one
+#: outside the list keeps the built-in selection until it has been checked. A
+#: one-time self-test at run time could not stand in for that: both behaviors depend
+#: on the shape, and a test small enough to run on a first query would exercise only
+#: the shapes it is given.
+VALIDATED_MLX = ((0, 32, 2),)
 
 #: Register list length, at most. See the module docstring.
 _LIST_MAX = 32
@@ -498,7 +501,7 @@ def selection(device: str, k_carry: int) -> Selection | None:
     if (
         bucket(k_carry) is None
         or not _metal.kernels_enabled(device)
-        or _metal.mlx_version()[:2] not in VALIDATED_MLX
+        or _metal.mlx_version() not in VALIDATED_MLX
     ):
         return None
     length = _list_length(k_carry)

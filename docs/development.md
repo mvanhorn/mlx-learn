@@ -257,10 +257,11 @@ rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shippe
 - **A kernel that must match MLX bit for bit lists the MLX releases it was checked on.**
   The fused selection reproduces MLX's `argpartition` and matmul bits through behaviors
   MLX does not promise (`docs/fp32_policy.md` §2.1), so `_topk.VALIDATED_MLX` names the
-  releases on which every identity test passed, and any other keeps MLX's own selection
-  until someone runs them there and adds it. A run-time self-test does not replace the
-  list: the behaviors depend on the shapes, which a test small enough for a first query
-  does not reach.
+  releases, to the patch (`(0, 32, 2)`), on which every identity test passed, and any
+  other — a later patch release of the same minor one included, since which GEMM kernel
+  MLX picks for a shape can change in one — keeps MLX's own selection until someone runs
+  them there and adds it. A run-time self-test does not replace the list: the behaviors
+  depend on the shapes, which a test small enough for a first query does not reach.
 - **`#pragma METAL fp contract(off)` first** (`_metal.PRELUDE`, prepended by
   `_metal.metal_kernel`). Metal's default mode fuses `a*b + c` written as one expression
   into an fma, which rounds once where MLX rounds twice; `math_mode` is pinned to

@@ -667,9 +667,9 @@ def test_the_probe_agrees_with_the_query_it_predicts(rng):
 
 
 def test_the_probe_searches_as_many_rows_as_it_is_asked_to(rng):
-    """Patched dispatch probes ``knn_probe_rows`` rows (256), enough to see a rate of
-    uncertified rows near 1%, which 64 rows miss about half the time; fewer when the
-    index has fewer rows."""
+    """Patched dispatch probes ``knn_probe_rows`` rows (512), enough to see a rate of
+    uncertified rows near 1% all but one time in 170, which 64 rows miss about half the
+    time and 256 one time in thirteen; fewer when the index has fewer rows."""
     X = rng.normal(size=(3000, 16))
     X[:, 0] *= 100.0
     index = build_index(X, backend="cpu")
