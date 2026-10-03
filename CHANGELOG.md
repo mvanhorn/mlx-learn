@@ -489,9 +489,16 @@ come first under **Changed**.
     that costs a call of a few milliseconds most: at 16–128 features a batch of 8–512
     queries lost on one version or both at 42 of the 50 sizes measured below a million
     rows, down to 0.44× — mostly at batch sizes the previous calibration, which timed 1,
-    16, 256 and 4 096 queries, never tried. From a million rows at 64 features and more,
-    and at 256 features from 12 000 rows, every batch won or tied on both versions. A
-    directly imported class searches on MLX regardless.
+    16, 256 and 4 096 queries, never tried. With the fused selection kernel, 27 of the 50
+    still lost a batch of 1–128 queries (down to 0.55×), all at 180 000 rows or fewer;
+    from 262 144 rows every batch of the grid won or tied, but the largest batch MLX's own
+    selection still answers below 2²² (query row, training row) pairs, which the grid's
+    powers of two step over, lost at 262 144 × 16 (15 queries, 0.90×–0.91×) and only tied
+    at 400 000 rows (table `knn-boundary`), and only Gaussian data at k = 10 was measured
+    below a million rows, so the floor stays. From a million rows at 16 features and
+    more, and at 256 features from 33 000 rows (the first size the work floor lets
+    through), every batch won or tied on both versions. A directly imported class
+    searches on MLX regardless.
   - Patched mode hands every neighbor fit with 256 features or more and fewer than 8 192
     rows to scikit-learn (`knn_wide_min_samples`, `MLXLEARN_KNN_WIDE_MIN_SAMPLES`; table
     `knn-batches`, every few batch sizes from 8 to 64 queries at 4 096–12 000 rows and
@@ -505,16 +512,31 @@ come first under **Changed**.
     4 096–7 500 rows and 2 048–4 096 features (1.02×–3.0×), and every fit of 6 000–8 191
     rows at 1 000–2 047 features, which no grid measured. A directly imported class
     searches on the GPU from 4 096 rows as before.
-  - Patched mode hands every neighbor fit with fewer than 64 features to scikit-learn, at
+  - Patched mode hands every neighbor fit with fewer than 16 features to scikit-learn, at
     any size: to its KD-tree where `algorithm="auto"` would build one (diagnostics reason
     `"tree-wins"`), to its brute force otherwise (`knn_min_features`,
     `MLXLEARN_KNN_MIN_FEATURES`; tables `knn-tree`, `knn-tree-lowrank`,
     `knn-narrow-brute`, `knn-narrow`). A KD-tree answered single rows faster than an MLX
     call at every size measured up to 8 features, and at 12 features up to 65 536 rows;
-    at 2–5 features it won every batch. Before, a patched fit and 1 000-row predict at
-    200 000 × 3 ran at 0.40× of stock (see **Performance**). At 16–48 features, even at a
-    million rows, a batch of 16 queries lost on one version or both (0.73×–0.84×), and
-    one of 1 024 (0.62×–0.79×), on Gaussian, clustered and uniform data alike.
+    at 2–5 features it won every batch. Where it would build no tree, stock brute force
+    answered some batch faster at 2 features at every size measured, up to 2 097 152
+    rows, and at 8 features up to 131 072 rows (0.62×–0.91×). Before, a patched fit and
+    1 000-row predict at 200 000 × 3 ran at 0.40× of stock (see **Performance**). This
+    floor stood at 64 features until the first pass selected its candidates with the
+    fused kernel (see **Performance**): before it, 16–48 features lost at a million rows —
+    a batch of 16 queries on one version or both (0.73×–0.84×) and one of 1 024
+    (0.62×–0.79×), on Gaussian, clustered and uniform data alike. Re-measured with it,
+    after an idle gap on both versions, every configuration at 1 000 000–1 600 000 rows
+    and 16–48 features won or tied: every batch of 1–4 096 queries on Gaussian data
+    (table `knn`, 1.55× at worst), Gaussian, std-1 cluster and uniform data (`knn-narrow`,
+    1.55×; `knn-data`, 1.53×), clusters of std 0.4–0.5, which the fit-time probe passes
+    (`knn-structured`, 1.54×), rows repeated about twice and one column on 100 times the
+    scale of the rest, which it hands off (0.98×~), and k = 1–50 (`knn-k`, 1.26×~; the
+    grids gained these shapes). What the move costs is the index build at those shapes:
+    a patched fit, probe included, took 47–132 ms against stock's 1.9–6.0 ms
+    (0.04×–0.06×; see the accepted `knn/fit` regression), and a float64 index holds three
+    times the float32 data on the device. Fits of 16–255 features still need a million
+    rows (above).
   - **Patched neighbor fits read `n_neighbors`.** The size rules were measured at k = 10,
     and MLX pays per query for every neighbor it keeps where stock brute force barely
     does (table `knn-k`, k = 1–200, up to 4 096 features): at k = 100 a 1 024-query
@@ -548,7 +570,7 @@ come first under **Changed**.
     MLX ran as slow as 0.22× of stock brute force (table `knn-data`); on rows repeated
     about twice, one column on 100 times the scale of the rest or clusters of std
     0.4–0.5, a few rows in a hundred went uncertified, enough to put one in most batches
-    of 16–64 queries, and some batch lost at 32 of the 40 shapes and laws measured on
+    of 16–64 queries, and some batch lost at 32 of the 52 shapes and laws measured on
     and near the size floors, down to 0.36× (table `knn-structured`). A patched fit now
     searches 512 of its own rows with the first pass alone and hands the fit to
     scikit-learn if any of them could not be certified — as few as 3 of 512 lost — or
@@ -567,7 +589,7 @@ come first under **Changed**.
     idled at 8 192–65 536 rows and 256–4 096 features, and 16–28 ms at a million rows
     and more (medians of 9, both versions).
     A directly imported class does not probe and searches on MLX regardless.
-    This gives up those laws' wins where a second search was affordable (5 of the 40
+    This gives up those laws' wins where a second search was affordable (11 of the 52
     won or tied every batch at shapes the size rules route, up to 7.9×).
   - `LogisticRegression` needs at least 60 000 rows (was 20 000 rows and 2·10⁷
     element-ops), a multinomial fit also at least two features
@@ -928,8 +950,10 @@ come first under **Changed**.
   (`logreg-separable`), the kernel on data unlike the Gaussian grids (`svc-poly`),
   `cache_size` (`svc-cache`), `tol` and `max_iter` (`logreg-params`), and the k a query
   asks for, in float64 and float32, with the first such query timed apart
-  (`knn-query-k`), and many draws of one law, each probed at two sizes (`knn-probe`,
-  rendered as how many draws each probe passed and their worst batch). Grids whose
+  (`knn-query-k`), many draws of one law, each probed at two sizes (`knn-probe`,
+  rendered as how many draws each probe passed and their worst batch), and the largest
+  query batch below the fused selection kernel's 2²² pairs, which powers of two step over
+  (`knn-boundary`). Grids whose
   ratios sit near 1 (`logreg-params`, `knn-query-k`) take
   21 interleaved pairs a point: at 9 they did not reproduce. The harness's `compare`
   takes an `mlx_setup` run before every mlxlearn call, outside the timed window, to
@@ -1101,6 +1125,10 @@ Where patched dispatch now sends each problem is under **Changed**.
   had only 8 ms of host work to hide behind (+70 ms there). A query below the threshold
   after such a fit compiles MLX's tile expression, which the fused probe no longer does:
   3.3–3.5 ms against 1.8 ms for its first 16 queries at 30 000 × 256, once a process.
+  On tall, narrow data the kernel turned patched dispatch's losses into wins: at
+  1 000 000 × 16, 16 queries went from about 10–12 ms to 3 ms against stock's 7–8 ms,
+  and 1 024 from about 260 to 33 ms against 180 ms, so a million-row fit now goes to MLX
+  from 16 features instead of 64 (see **Changed**).
 - Multiclass rbf `SVC` fits on the GPU solve their one-vs-one pairs concurrently
   (**Added**). On the 23 multiclass cells of an A/B grid that patched dispatch sends to
   MLX today and the kernel serves — 256–784 features, 1 536–8 000 rows, 3–16 classes,

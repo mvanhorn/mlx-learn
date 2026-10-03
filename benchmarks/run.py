@@ -116,16 +116,20 @@ PROFILES: dict[str, list[Case]] = {
     # each estimator has cases patched dispatch hands to scikit-learn and cases it
     # sends to MLX, so the MLX fit and query paths are gated, not only the handoffs.
     "smoke": [
-        # Neighbors: below the row floor; wide and above both floors (MLX); 64-255
-        # features, short (scikit-learn) and tall (MLX); fewer than 64 features,
-        # tall, to scikit-learn's brute force; narrow data the KD-tree takes whatever
-        # its size ("tree-wins"), and below the work floor.
+        # Neighbors: below the row floor; wide and above both floors (MLX); 16-255
+        # features, short (scikit-learn) and tall (MLX, at 64 and at 16); fewer than
+        # 16 features, tall, to scikit-learn's brute force where it would build no
+        # tree; narrow data the KD-tree takes whatever its size ("tree-wins"), and
+        # below the work floor.
         *_knn_grid([1_000], [32], [256]),
         *_knn_grid([65_536], [256], [256]),
         *_knn_grid([262_144], [64], [256], operations=("kneighbors",)),
         *_knn_grid([1_048_576], [64], [256], operations=("kneighbors",)),
         *_knn_grid([1_048_576], [16], [256], operations=("kneighbors",)),
         *_knn_grid([1_048_576], [8], [256], operations=("kneighbors",)),
+        *_knn_grid(
+            [1_048_576], [8], [256], operations=("kneighbors",), sklearn_algorithm="brute"
+        ),
         *_knn_grid([50_000], [3], [256], operations=("kneighbors",)),
         # Data the size rules would send to MLX and the fit-time probe does not:
         # duplicated rows at a wide shape — about 20 copies each, and about 2, which

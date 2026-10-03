@@ -213,24 +213,45 @@ class Tuning:
     # with fewer than knn_min_features features goes to scikit-learn at any size: to
     # its KD-tree where algorithm='auto' would build one (at most 15 features; reason
     # "tree-wins"; tables `knn-tree`, `knn-tree-lowrank`), else to its brute force
-    # (tables `knn-narrow-brute`, `knn-narrow`). Re-measured at a million rows on
-    # Gaussian, clustered and uniform data (table `knn-narrow`), 16-48 features lost
-    # a batch on one version or both — 16 queries at 0.73x-0.84x, 1024 at
-    # 0.62x-0.79x — which the `knn` table, measured on Gaussian data alone, had
-    # shown as wins; from 64 features every batch won or tied (0.94x at worst).
-    # 0 disables the rule.
-    knn_min_features: int = 64
+    # (table `knn-narrow-brute`: at 2 features some batch lost at every size measured,
+    # up to 2 097 152 rows, and at 8 features up to 131 072 rows, 0.62x-0.91x). This
+    # floor stood at 64 while MLX's own selection picked the first pass's candidates:
+    # at a million rows 16-48 features lost batches of 16 queries (0.73x-0.84x) and
+    # 1 024 (0.62x-0.79x). With the fused selection kernel (_kernels/_topk.py), every
+    # configuration measured at 1 000 000-1 600 000 rows and 16-48 features won or
+    # tied on both versions, each MLX call after an idle GPU: every batch of 1-4096
+    # queries on Gaussian data (table `knn`, 1.55x at worst); Gaussian, 100 clusters
+    # of std 1 and uniform data (`knn-narrow`, 1.55x; `knn-data`, 1.53x); clusters of
+    # std 0.4 and 0.5, which the fit-time probe below passes (`knn-structured`,
+    # 1.54x), and rows repeated about twice and one column on 100 times the scale of
+    # the rest, which it hands off (0.98x~ at worst); and k = 1-50 (`knn-k`, 1.26x~).
+    # What the move costs is the index build: a patched fit there, probe included,
+    # took 47-132 ms against stock's 1.9-6.0 ms (0.04x-0.06x, after an idle gap,
+    # medians of 9, both versions; see the `knn/fit` accepted regression), and a
+    # float64 index holds three times the float32 data on the device. 0 disables the
+    # rule.
+    knn_min_features: int = 16
     #
     # And a fit with fewer than knn_wide_features features needs
     # knn_narrow_min_samples rows (table `knn`: 16-256 features, 12 000-1.6 million
     # rows, every batch of 1-4096 queries). An idled GPU runs a call of a few
     # milliseconds' work up to two or three times slower, so at 16-128 features
-    # batches of 8-512 queries lost on one version or both at 42 of the 50 sizes
-    # measured below a million rows (down to 0.44x; 400 000 x 64 and 400 000 x 96
-    # among them), while from 1 000 000 rows at 64-128 features every batch won or
-    # tied (tables `knn`, `knn-narrow`). At 256 features every batch won or tied
-    # from 12 000 rows. The previous floors alone sent 180 000 x 32 to MLX, where
-    # 32-query batches ran 0.57x-0.64x.
+    # batches of 1-128 queries lost on one version or both at 27 of the 50 sizes
+    # measured below a million rows (down to 0.55x), every one of them at 180 000
+    # rows or fewer; the size floors alone send 180 000 x 32 to MLX, where 16-query
+    # batches ran 0.67x-0.71x. From 262 144 rows every batch of that table won or
+    # tied (1.00x~ at worst), but its batches are powers of two, and a query of fewer
+    # than 2^22 (query row, training row) pairs runs MLX's own selection rather than
+    # the fused kernel: the largest such batch, which the table's 8 and 16 queries
+    # straddle at 262 144 rows, lost there at 16 features (15 queries, 0.90x-0.91x)
+    # and only tied at 400 000 rows (10 queries, 0.99x~-1.02x~); at 600 000 it won or
+    # tied (6 queries, 1.27x-3.1x; table `knn-boundary`) — all of it on Gaussian data at
+    # k = 10, the only law and k measured below a million rows. From 1 000 000 rows
+    # at 16-128 features every configuration the other rules route there won or tied
+    # (tables `knn`, `knn-narrow`, `knn-structured`, `knn-k`). At 256 features every batch won or tied from
+    # 33 000 rows, the first size of the table the work floor lets through (1.07x at
+    # worst); at 12 000 and 20 000 rows single rows and small batches lost
+    # (0.85x-0.93x).
     knn_wide_features: int = 256
     knn_narrow_min_samples: int = 1_000_000
     #
@@ -261,7 +282,9 @@ class Tuning:
     # 64 on both versions (0.80x), and at 4 096-6 000 rows and 2 048-4 096 features
     # batches of 32-4 096 queries lost (0.61x-0.89x); k = 200 lost there at nearly
     # every batch from 8 (down to 0.33x), at 8 192 x 1 024 (0.74x-0.82x, 128
-    # queries) and at 1 000 000-1 600 000 x 64 (0.67x-0.83x, 512-1 024 queries).
+    # queries) and at 1 000 000-1 600 000 x 64 (0.67x-0.83x, 512-1 024 queries); at
+    # 16-48 features, measured with the fused selection kernel, k = 100 and 200 lost
+    # batches of 8-4 096 queries (0.54x-0.94x) where k = 1-50 won every batch.
     # k = 50 won or tied everywhere, but with 82-125 rows per neighbor at 2 048-4 096
     # features — 4 096-5 000 rows at k = 40-50 — only tied at batches of 16-512
     # queries (0.84x-0.99x); from 150 rows per neighbor every batch won or tied, and
@@ -292,13 +315,13 @@ class Tuning:
     # 16-64 queries, are enough to lose. Table `knn-structured`, every batch of
     # 1-4096 queries at shapes on and near the size floors: rows repeated about
     # twice, one column on 100 times the scale of the rest, and 100 clusters of std
-    # 0.4 or 0.5 lost some batch at 32 of the 40 shapes and laws measured, on one
+    # 0.4 or 0.5 lost some batch at 32 of the 52 shapes and laws measured, on one
     # version or both, down to 0.36x — at 256 features batches of 4-128 queries
     # (0.50x-0.91x) — and the probe found 3-473 of 512 rows uncertified in every
     # one of the 32, 3 of 512 for clusters of std 0.5 at 30 000 x 256 (0.52x at 16
-    # queries). Where it found none (clusters at 1 000 000 x 64) they won or tied;
-    # so did Gaussian data, with none at every shape of that table and of
-    # `knn-data`, wherever the size rules route it. Table `knn-data`: one column in
+    # queries). Where it found none (clusters at a million rows and 16-64 features)
+    # they won or tied; so did Gaussian data, with none at every shape of that table
+    # and of `knn-data`, wherever the size rules route it. Table `knn-data`: one column in
     # raw units, rows repeated about 20
     # times and 100 clusters of std 0.1 left 478-512 of 512 at every wide shape and
     # lost everywhere, down to 0.22x (0.16x at a million rows and 32 features);
@@ -317,7 +340,7 @@ class Tuning:
     # Integer-valued data takes an exact path with nothing to certify; narrower than
     # knn_wide_features it goes to scikit-learn too: at a million rows and 16 or 32
     # features it lost batches of 16 queries and, of counts, 256 and 1024 queries
-    # (0.53x-0.85x), while from 256 features it kept up (64-255 features were not
+    # (0.53x-0.85x), while from 256 features it kept up (33-255 features were not
     # measured on MLX).
     knn_probe_max_uncertified: float = 0.0
     knn_probe_rows: int = 512
