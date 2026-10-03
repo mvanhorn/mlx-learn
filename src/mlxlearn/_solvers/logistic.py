@@ -719,8 +719,13 @@ def solve_logistic(
             intercept = np.asarray(theta[:, n_features], dtype=np.float64)
             if center is not None:
                 # Undo the centering exactly: b = b′ − w·μ, in float64, with the μ
-                # that was actually subtracted.
-                intercept = intercept - coef @ center
+                # that was actually subtracted. Both lie in float32's range — an
+                # iterate the objective was finite at, means of range-checked
+                # columns — so a flag NumPy's BLAS raises on w·μ is spurious
+                # (lbfgs._dot).
+                with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                    shift = coef @ center
+                intercept = intercept - shift
         else:
             intercept = np.zeros(n_targets, dtype=np.float64)
         return coef, np.ascontiguousarray(intercept)
@@ -842,7 +847,12 @@ def reference_objective(
         sw = np.asarray(sample_weight, dtype=np.float64)
         sw_sum = float(sw.sum())
 
-    raw = Xd @ W.T + b
+    # A score that really overflowed makes the objective returned here non-finite,
+    # which is what a caller compares; a flag NumPy's BLAS raises on finite scores
+    # is spurious (lbfgs._dot).
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        raw = Xd @ W.T
+    raw += b
     if n_classes == 2:
         score = raw[:, 0]
         target = codes.astype(np.float64)

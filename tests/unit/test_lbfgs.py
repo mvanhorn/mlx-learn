@@ -15,6 +15,7 @@ grow and the objective must not get worse.
 from __future__ import annotations
 
 import math
+import warnings
 
 import mlx.core as mx
 import numpy as np
@@ -140,6 +141,34 @@ def test_an_inconsistent_gradient_ends_in_line_search_failure():
     assert not state.converged
     assert state.n_iter == 0
     np.testing.assert_array_equal(np.asarray(state.x), [2.0, -1.0])
+
+
+@pytest.mark.parametrize("bad", [math.nan, math.inf])
+def test_a_gradient_that_turns_non_finite_never_reports_convergence(bad):
+    """The solver's inner products report no floating-point flags (``lbfgs._dot``), so
+    a gradient that is not finite has to be found by the solver itself.
+
+    A quadratic in 1 000 variables whose gradient turns ``bad`` in one coordinate
+    past ``x₀ = −0.5``, the value still finite: the run stops unconverged with that
+    ``max|g|``, on an iterate whose objective was finite. A NaN raises no flag of its
+    own, so it is answered without a single warning; an infinity still warns where
+    the iterate's own arithmetic meets it.
+    """
+    target = np.linspace(-1.0, 1.0, 1000)
+
+    def fun(x):
+        v = np.asarray(x, dtype=np.float64)
+        grad = 2.0 * (v - target)
+        if v[0] < -0.5:
+            grad[0] = bad
+        return float(np.sum((v - target) ** 2)), grad
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error" if math.isnan(bad) else "ignore", RuntimeWarning)
+        state = minimize(fun, mx.zeros((1000,)), LBFGSConfig())
+    assert not state.converged and state.stop_reason != "gtol"
+    assert not math.isfinite(state.grad_max_abs)
+    assert np.isfinite(np.asarray(state.x)).all()
 
 
 def test_rosenbrock():

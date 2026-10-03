@@ -156,6 +156,27 @@ def test_a_wide_problem_agrees_on_the_objective_then_on_probabilities_at_tight_t
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize(
+    "n_classes, units", [(2, 1.0), (5, 100.0)], ids=["binary", "multinomial-mixed-units"]
+)
+def test_a_wide_fit_raises_no_floating_point_warnings(n_classes, units, backend):
+    """NumPy 2.2's BLAS on macOS left floating-point flags set on finite products of
+    about 900 entries and more, and a wide fit warned on every L-BFGS iteration —
+    each inner product, the preconditioned step's included — then on undoing the
+    centering, and the reference objective on scoring the result.
+
+    Inference is scikit-learn's own float64 code, and its warnings are its own.
+    """
+    X, y = _data(n_classes=n_classes, n_samples=2000, n_features=1000)
+    X[:, ::3] *= units  # a third of the columns in other units: a preconditioned step
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        mlx = _fit(backend, LogisticRegression(max_iter=1000), X, y)
+        objective = reference_objective(mlx.coef_, mlx.intercept_, X, y, n_classes=n_classes)
+    assert math.isfinite(objective)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("n_classes", [2, 5])
 def test_parity_without_intercept(n_classes, backend):
     X, y = _data(n_classes=n_classes)
