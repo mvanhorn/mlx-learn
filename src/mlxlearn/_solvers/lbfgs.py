@@ -71,6 +71,35 @@ mechanisms keep the solver honest there:
   stops with ``stop_reason="float32-floor"``. Without it, a ``tol`` below what
   float32 can resolve (``tol=0``, say) would wander at noise level until
   ``max_iter``.
+
+A dense initial inverse Hessian
+-------------------------------
+The two-loop recursion needs *some* symmetric positive-definite ``H₀`` to start each
+iteration from, and nothing else about it (Nocedal & Wright, *Numerical
+Optimization*, 2nd ed., §7.2). A diagonal is enough when the curvature lives along
+the coordinates; when the features are strongly correlated, ten curvature pairs
+cannot describe it, and the iteration count climbs with the condition number. A
+caller that knows a fixed curvature model can hand its inverse over as a
+:class:`DensePreconditioner`, an operator ``v ↦ Pv``. Each iteration then starts from
+``γₖP`` with ``γₖ = sₖᵀyₖ / yₖᵀPyₖ`` — the scaling §7.2 gives the identity, in ``P``'s
+metric — and an iteration with no curvature pairs takes ``−Pg``, a Newton step for
+the model, whose first trial is the unit step rather than a unit move. The line
+search, the curvature test, the stopping rules and the float32 floor are the same
+code; only the search direction differs.
+
+The operator may be *deferred*: a zero-argument callable, resolved once, after the
+first evaluation of ``fun``, and only if the run is going to take a step. A caller
+whose model is built from the data can then build it while the device computes that
+first evaluation, instead of before it.
+
+A model can be wrong where its caller could not see it. So a run on the operator
+that would stop without converging — a failed line search, or the stall that ends a
+run on the float32 floor — while ``max|g|`` is still above what float32 resolves
+(:data:`GRADIENT_RESOLUTION`) does not stop: it leaves the operator, clears the
+curvature pairs gathered under it, and searches again from the same point as a run
+given only ``preconditioner`` would start. It *falls back*, once, and says so
+(:attr:`LBFGSState.fallback`). A run that converges, reaches the floor, or uses up
+``max_iter`` on the operator is unchanged by it.
 """
 
 from __future__ import annotations
@@ -83,7 +112,13 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-__all__ = ["GRADIENT_RESOLUTION", "LBFGSConfig", "LBFGSState", "minimize"]
+__all__ = [
+    "GRADIENT_RESOLUTION",
+    "DensePreconditioner",
+    "LBFGSConfig",
+    "LBFGSState",
+    "minimize",
+]
 
 #: ``fun(x) -> (objective, gradient)``: a Python float, and an ``mx.array`` or a NumPy
 #: array shaped like ``x``, float32 or float64, which the solver reads through
@@ -204,6 +239,15 @@ class LBFGSState:
     initial_grad_max_abs : float
         ``max|gradient|`` at ``x0``, the scale :data:`GRADIENT_RESOLUTION` is
         relative to.
+    preconditioner : str
+        The initial inverse Hessian the iterations ended on: ``"identity"``,
+        ``"diagonal"`` or ``"dense"``. A run that took no step reports the one it
+        was given before any deferred operator was resolved, and one that left a
+        dense operator (``fallback``) the one it left it for.
+    fallback : bool
+        Whether the run left a dense operator for ``preconditioner``: it would have
+        stopped above the float32 floor without converging, and went on from the
+        same point without the operator instead (module docstring).
     """
 
     x: Any
@@ -214,11 +258,26 @@ class LBFGSState:
     converged: bool
     stop_reason: str
     initial_grad_max_abs: float = math.nan
+    preconditioner: str = "identity"
+    fallback: bool = False
 
     @property
     def at_resolution_floor(self) -> bool:
         """Whether ``max|g|`` is below what float32 can resolve for this problem."""
         return self.grad_max_abs <= GRADIENT_RESOLUTION * self.initial_grad_max_abs
+
+
+@dataclass(frozen=True, slots=True)
+class DensePreconditioner:
+    """A dense symmetric positive-definite initial inverse Hessian ``P``, as ``v ↦ Pv``.
+
+    ``apply`` takes and returns a flat float64 vector the size of the parameter. The
+    solver never forms ``P``; it multiplies by it, twice per iteration. ``−Pg`` is
+    taken to be scaled like a Newton step for the caller's model, so an iteration
+    without curvature pairs tries the unit step along it.
+    """
+
+    apply: Callable[[np.ndarray], np.ndarray]
 
 
 # ------------------------------------------------------------------- line search
@@ -231,7 +290,7 @@ def _cubic_minimum(
 
     Returns ``None`` when the cubic has no interior minimum, which is the signal
     for the caller to bisect instead. Written out rather than delegating to SciPy
-    because ``_solvers`` deliberately has no SciPy dependency: the ancestor's
+    because the solver deliberately has no SciPy dependency: the ancestor's
     default path was SciPy's ``fmin_l_bfgs_b`` with a bare-``except`` fallback to a
     materially different hand-written optimizer, so which algorithm ran was not
     knowable from the outside.
@@ -436,6 +495,9 @@ def minimize(
     *,
     callback: Callable[[np.ndarray], None] | None = None,
     preconditioner: np.ndarray | None = None,
+    dense_preconditioner: (
+        DensePreconditioner | Callable[[], DensePreconditioner | None] | None
+    ) = None,
 ) -> LBFGSState:
     """Minimize ``fun`` from ``x0`` by limited-memory BFGS.
 
@@ -472,6 +534,13 @@ def minimize(
         takes steps sized for the largest curvature in every direction and never
         moves the others. ``None`` is the identity. Neither ``tol`` nor the
         reported gradient is rescaled by it.
+    dense_preconditioner : DensePreconditioner or callable, optional
+        A dense initial inverse Hessian (module docstring), used in place of
+        ``preconditioner`` when there is one. A zero-argument callable is resolved
+        once, after the first evaluation of ``fun`` and only if the run takes a
+        step, and returns a :class:`DensePreconditioner` or ``None``; ``None`` keeps
+        ``preconditioner``. A run that fails on the operator above the float32 floor
+        falls back to ``preconditioner`` (module docstring).
 
     Returns
     -------
@@ -507,6 +576,11 @@ def minimize(
             converged=converged,
             stop_reason=stop_reason,
             initial_grad_max_abs=initial_grad_max,
+            preconditioner=(
+                "dense" if dense is not None
+                else "diagonal" if diagonal is not None else "identity"
+            ),
+            fallback=fallback,
         )
 
     x = np.asarray(x0, dtype=np.float32).astype(np.float64).reshape(-1)
@@ -520,6 +594,13 @@ def minimize(
             )
         if np.all(diagonal == 1.0):
             diagonal = None
+    dense = None
+    deferred = None
+    fallback = False
+    if isinstance(dense_preconditioner, DensePreconditioner):
+        dense = dense_preconditioner
+    elif dense_preconditioner is not None:
+        deferred = dense_preconditioner
 
     objective, grad = evaluate(x)
     n_fev = 1
@@ -530,6 +611,13 @@ def minimize(
         return finish("non-finite-objective")
     if grad_max <= config.tol:
         return finish("gtol", converged=True)
+    if deferred is not None and config.max_iter > 0:
+        dense = deferred()
+        if dense is not None and not isinstance(dense, DensePreconditioner):
+            raise TypeError(
+                "a deferred dense_preconditioner must return a DensePreconditioner or "
+                f"None, got {type(dense).__name__}"
+            )
 
     s_history: deque[np.ndarray] = deque(maxlen=config.history_size)
     y_history: deque[np.ndarray] = deque(maxlen=config.history_size)
@@ -541,8 +629,21 @@ def minimize(
     reference_objective = objective
     stalled = 0
 
-    for _ in range(config.max_iter):
-        direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
+    def unresolved() -> bool:
+        """Whether ``max|g|`` is still above what float32 resolves (``at_resolution_floor``)."""
+        return grad_max > GRADIENT_RESOLUTION * initial_grad_max
+
+    def leave_dense() -> None:
+        """Fall back (module docstring): the curvature pairs gathered under the dense
+        operator go with it, and the next search starts as the diagonal path's first."""
+        s_history.clear()
+        y_history.clear()
+        rho_history.clear()
+
+    # Every pass either accepts a step, returns, or — once at most — leaves the dense
+    # operator and tries again from the same point, so this counts accepted steps.
+    while n_iter < config.max_iter:
+        direction = _two_loop(grad, s_history, y_history, rho_history, diagonal, dense)
         gtd = _dot(grad, direction)
         if not gtd < 0.0 or not math.isfinite(gtd):
             # The stored curvature no longer describes this objective — reset to
@@ -551,7 +652,7 @@ def minimize(
             s_history.clear()
             y_history.clear()
             rho_history.clear()
-            direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
+            direction = _two_loop(grad, s_history, y_history, rho_history, diagonal, dense)
             gtd = _dot(grad, direction)
 
         # Unit for a quasi-Newton direction. With no curvature pairs — the first
@@ -562,8 +663,10 @@ def minimize(
         # where that one long step already meets scikit-learn's tolerance, the fit
         # took 11-15 iterations to get where scikit-learn's single one did (60 000 x
         # 256, three to ten classes), while on the pinned problems of
-        # tests/unit/test_lbfgs.py it saved two or three of 16-47.
-        if s_history:
+        # tests/unit/test_lbfgs.py it saved two or three of 16-47. A dense operator's
+        # −Pg is a Newton step for the caller's model, not a direction of arbitrary
+        # length, so its natural trial is the unit step itself.
+        if s_history or dense is not None:
             t_init = 1.0
         else:
             d_l2 = float(np.sqrt(_dot(direction, direction)))
@@ -588,7 +691,12 @@ def minimize(
             # the iteration count as if work had been done. Which kind of stall it
             # is depends on what the slope predicted: a decrease already below the
             # objective's resolution is the float32 floor, anything larger is a
-            # genuine failure — typically a gradient inconsistent with the value.
+            # genuine failure — typically a gradient inconsistent with the value. On a
+            # dense operator, above the floor, it is the operator that failed: fall back.
+            if dense is not None and unresolved():
+                leave_dense()
+                dense, fallback, stalled = None, True, 0
+                continue
             predicted = abs(gtd) * t_init
             floor = predicted <= config.objective_noise * abs(objective)
             return finish("float32-floor" if floor else "line-search-failure")
@@ -624,22 +732,29 @@ def minimize(
             else:
                 stalled += 1
                 if stalled >= config.stall_iterations:
+                    if dense is not None and unresolved():
+                        leave_dense()
+                        dense, fallback, stalled = None, True, 0
+                        continue
                     return finish("float32-floor")
 
     return finish("max_iter")
 
 
-def _two_loop(grad, s_history, y_history, rho_history, diagonal=None):
+def _two_loop(grad, s_history, y_history, rho_history, diagonal=None, dense=None):
     """Nocedal's two-loop recursion: ``-H∇f`` without forming ``H``.
 
     Returns the *descent* direction directly, i.e. the negation is folded in. The
-    initial inverse Hessian is ``gamma·D``, with ``D`` the diagonal preconditioner
-    (the identity when ``None``) and ``gamma = sᵀy / yᵀDy`` from the newest pair,
-    which is what makes the first step of each iteration well-scaled. Host NumPy
-    float64 throughout: ``2m + 1`` inner products of vectors a few hundred elements
-    long.
+    initial inverse Hessian is ``gamma·D``, with ``D`` the dense operator ``P`` when
+    there is one, else the diagonal preconditioner (the identity when ``None``), and
+    ``gamma = sᵀy / yᵀDy`` from the newest pair, which is what makes the first step
+    of each iteration well-scaled. Host NumPy float64 throughout: ``2m + 1`` inner
+    products of vectors a few hundred elements long, plus two applications of a
+    dense operator.
     """
     if not s_history:
+        if dense is not None:
+            return -dense.apply(grad)
         return -grad if diagonal is None else -(diagonal * grad)
 
     q = grad.copy()
@@ -652,7 +767,10 @@ def _two_loop(grad, s_history, y_history, rho_history, diagonal=None):
         q -= alpha * y
 
     y_last = y_history[-1]
-    if diagonal is None:
+    if dense is not None:
+        gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, dense.apply(y_last)), 1e-300))
+        r = gamma * dense.apply(q)
+    elif diagonal is None:
         gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, y_last), 1e-300))
         r = gamma * q
     else:

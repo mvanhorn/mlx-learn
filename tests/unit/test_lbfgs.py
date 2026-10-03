@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 from sklearn.datasets import make_classification
 
-from mlxlearn._solvers.lbfgs import LBFGSConfig, LBFGSState, minimize
+from mlxlearn._solvers.lbfgs import DensePreconditioner, LBFGSConfig, LBFGSState, minimize
 from mlxlearn._solvers.logistic import LogisticConfig, reference_objective, solve_logistic
 
 
@@ -269,6 +269,122 @@ def test_an_invalid_preconditioner_is_rejected(preconditioner):
         minimize(_quadratic([1.0, 2.0]), mx.ones((2,)), LBFGSConfig(), preconditioner=preconditioner)
 
 
+# -------------------------------------------------------- dense initial inverse Hessian
+
+
+def _correlated_quadratic(n=16, rho=0.99):
+    """``½xᵀAx − bᵀx`` with ``A`` the AR(ρ) correlation matrix: condition ~4e4."""
+    lags = np.abs(np.subtract.outer(np.arange(n), np.arange(n)))
+    A = rho**lags
+    b = np.linspace(-1.0, 1.0, n)
+    A32, b32 = mx.array(A.astype(np.float32)), mx.array(b.astype(np.float32))
+
+    def fun(x):
+        Ax = A32 @ x
+        return float(0.5 * mx.sum(x * Ax) - mx.sum(b32 * x)), Ax - b32
+
+    return fun, A, b
+
+
+def test_an_exact_dense_preconditioner_takes_one_newton_step():
+    """With ``P = A⁻¹`` the first direction ``−Pg`` is the Newton step, and its unit
+    trial lands on the minimizer: one iteration, one line-search evaluation. From the
+    identity, the same quadratic stalls on the float32 floor after dozens."""
+    fun, A, b = _correlated_quadratic()
+    P = np.linalg.inv(A)
+    config = LBFGSConfig(tol=1e-4, max_iter=500)
+
+    dense = minimize(fun, mx.zeros((16,)), config, dense_preconditioner=DensePreconditioner(
+        lambda v: P @ v
+    ))
+    plain = minimize(fun, mx.zeros((16,)), config)
+
+    assert dense.converged and (dense.n_iter, dense.n_fev) == (1, 2)
+    assert dense.preconditioner == "dense"
+    assert plain.n_iter > 10 * dense.n_iter
+    np.testing.assert_allclose(np.asarray(dense.x), np.linalg.solve(A, b), atol=1e-3)
+
+
+def test_a_deferred_dense_preconditioner_is_resolved_once_after_the_first_evaluation():
+    fun, A, _ = _correlated_quadratic()
+    events = []
+
+    def counted(x):
+        events.append("evaluate")
+        return fun(x)
+
+    def deferred():
+        events.append("resolve")
+        return DensePreconditioner(lambda v: np.linalg.solve(A, v))
+
+    state = minimize(counted, mx.zeros((16,)), LBFGSConfig(tol=1e-4), dense_preconditioner=deferred)
+
+    assert events[:2] == ["evaluate", "resolve"] and events.count("resolve") == 1
+    assert state.preconditioner == "dense" and state.converged
+
+
+@pytest.mark.parametrize("config", [LBFGSConfig(tol=1e3), LBFGSConfig(max_iter=0)],
+                         ids=["optimal-start", "no-budget"])
+def test_a_deferred_dense_preconditioner_is_not_resolved_without_a_step(config):
+    fun, _, _ = _correlated_quadratic()
+
+    def deferred():
+        raise AssertionError("resolved for a run that takes no step")
+
+    state = minimize(fun, mx.zeros((16,)), config, dense_preconditioner=deferred)
+    assert state.n_iter == 0 and state.preconditioner == "identity"
+
+
+def test_a_deferred_none_keeps_the_diagonal():
+    """``None`` from the deferred callable is the caller declining: the run is the
+    diagonal-preconditioned one, bit for bit."""
+    scale = np.array([1e6, 1.0, 1.0, 30.0])
+    fun = _quadratic(scale)
+    x0 = mx.array([1.0, 1.0, -2.0, 0.5])
+    config = LBFGSConfig(tol=1e-6)
+
+    declined = minimize(fun, x0, config, preconditioner=1.0 / scale, dense_preconditioner=lambda: None)
+    diagonal = minimize(fun, x0, config, preconditioner=1.0 / scale)
+
+    assert declined.preconditioner == diagonal.preconditioner == "diagonal"
+    assert (declined.n_iter, declined.n_fev, declined.objective) == (
+        diagonal.n_iter, diagonal.n_fev, diagonal.objective
+    )
+    np.testing.assert_array_equal(np.asarray(declined.x), np.asarray(diagonal.x))
+
+
+def test_a_deferred_dense_preconditioner_of_the_wrong_type_is_an_error():
+    fun, _, _ = _correlated_quadratic()
+    with pytest.raises(TypeError, match="DensePreconditioner"):
+        minimize(fun, mx.zeros((16,)), LBFGSConfig(), dense_preconditioner=lambda: np.ones(16))
+
+
+def test_a_dense_operator_whose_search_fails_falls_back_to_the_diagonal():
+    """An operator whose Newton step is 1e30 times too long: the line search, 32
+    evaluations long, cannot shrink it to any decrease, and the run would stop on a
+    line-search failure far from the minimizer. It leaves the operator instead, starts
+    again from the same point as the diagonal path would, and converges there."""
+    scale = np.array([4.0, 1.0, 1.0, 9.0])
+    fun = _quadratic(scale)
+    x0 = mx.array([1.0, 1.0, -2.0, 0.5])
+    config = LBFGSConfig(tol=1e-6)
+    wrong = DensePreconditioner(lambda v: 1e30 * v)
+
+    state = minimize(fun, x0, config, preconditioner=1.0 / scale, dense_preconditioner=wrong)
+
+    assert state.fallback and state.converged and state.stop_reason == "gtol"
+    assert state.preconditioner == "diagonal"
+    np.testing.assert_allclose(np.asarray(state.x), np.zeros(4), atol=1e-5)
+
+
+def test_a_dense_run_that_converges_never_falls_back():
+    fun, A, _ = _correlated_quadratic()
+    state = minimize(fun, mx.zeros((16,)), LBFGSConfig(tol=1e-4), dense_preconditioner=(
+        DensePreconditioner(lambda v: np.linalg.solve(A, v))
+    ))
+    assert state.converged and state.preconditioner == "dense" and not state.fallback
+
+
 def test_the_callback_sees_every_accepted_iterate():
     seen = []
     state = minimize(
@@ -382,6 +498,7 @@ def test_a_tol_below_the_float32_floor_stops_on_the_floor():
 #: finish then left every count unchanged, on MLX 0.31.2 and 0.32.2, and moved the GPU
 #: objectives by at most 8e-10 relative, both ways. Changes to the solver's internals may
 #: reach the same point in fewer iterations or at a lower objective, never the reverse.
+#: These are the diagonal path's, pinned with the dense preconditioner off.
 _PINNED = {
     (2, 0.01, True): (18, 0.5293678799),
     (2, 1.0, True): (19, 0.5263766441),
@@ -391,6 +508,23 @@ _PINNED = {
     (5, 1.0, True): (46, 1.0847425512),
     (5, 1.0, False): (29, 1.0866184672),
     (5, 100.0, True): (46, 1.0845855493),
+}
+
+#: The same problems as the solver takes them by default: four of the twenty features
+#: are linear combinations of others, so the dense preconditioner's gate fires
+#: (``docs/fp32_policy.md`` §2.3) and the runs take 6 iterations where the diagonal
+#: path takes 18-19, and 8-12 where it takes 29-46, to a lower objective in every
+#: case. Measured with MLX 0.32.2 on an M4 Max: the same counts on both devices,
+#: objectives up to 1.4e-10 apart.
+_PINNED_DENSE = {
+    (2, 0.01, True): (6, 0.5293678737),
+    (2, 1.0, True): (6, 0.5263766419),
+    (2, 1.0, False): (6, 0.5294598380),
+    (2, 100.0, True): (6, 0.5263454034),
+    (5, 0.01, True): (11, 1.0993982091),
+    (5, 1.0, True): (12, 1.0847424806),
+    (5, 1.0, False): (8, 1.0866183786),
+    (5, 100.0, True): (12, 1.0845854610),
 }
 
 
@@ -405,25 +539,29 @@ def _pinned_data():
     }
 
 
+@pytest.mark.parametrize("dense", [False, True], ids=["diagonal", "dense"])
 @pytest.mark.parametrize("device", ["gpu", "cpu"])
 @pytest.mark.parametrize("key", sorted(_PINNED))
-def test_logistic_trajectories_do_not_regress(key, device, _pinned_data):
+def test_logistic_trajectories_do_not_regress(key, device, dense, _pinned_data):
     from mlxlearn._common.device import gpu_available
 
     if device == "gpu" and not gpu_available():
         pytest.skip("no usable MLX GPU")
     n_classes, C, fit_intercept = key
-    pinned_iter, pinned_objective = _PINNED[key]
+    pinned_iter, pinned_objective = (_PINNED_DENSE if dense else _PINNED)[key]
     X, y = _pinned_data[n_classes]
 
     solution = solve_logistic(
         X, y, n_classes=n_classes,
-        config=LogisticConfig(C=C, fit_intercept=fit_intercept, device=device),
+        config=LogisticConfig(
+            C=C, fit_intercept=fit_intercept, device=device, dense_preconditioner=dense
+        ),
     )
     objective = reference_objective(
         solution.coef, solution.intercept, X, y, n_classes=n_classes, C=C
     )
 
+    assert solution.preconditioner == ("dense" if dense else "diagonal")
     assert solution.converged and solution.stop_reason == "gtol"
     # Headroom for another chip's float32 accumulation order, which is all that
     # differs between Apple GPUs and between Accelerate builds. One iteration: the

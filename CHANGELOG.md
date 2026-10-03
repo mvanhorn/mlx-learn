@@ -754,6 +754,20 @@ come first under **Changed**.
 - `import mlxlearn; mlxlearn.svm.SVC` works: the estimator subpackages load lazily on first
   access, and `import mlxlearn` still imports neither scikit-learn nor MLX.
 - An `mx.array` converted to NumPy through mlxlearn's array helpers is a read-only view.
+- **`LogisticRegression` takes a different L-BFGS path on correlated features**, through
+  the dense preconditioner (**Added**). The objective and the stopping test are the same,
+  but `n_iter_` drops — on the pinned problems of `tests/unit/test_lbfgs.py` from 18-19
+  to 6 iterations (two classes) and from 29-46 to 8-12 (five) — and a fit stops at a
+  different point inside `tol`. Over a 582-fit grid its objective was closer to the
+  float64 optimum than the diagonal path's in 302 of 335 non-separable fits; at the
+  default `tol`, on ill-conditioned problems where every solver stops 1e-5 to 1e-3 above
+  the optimum, coefficients can differ from 0.1.0a2's by more than they used to, and the
+  objective is the assertion that judges them ([`docs/fp32_policy.md`](docs/fp32_policy.md)
+  §2.3, §3). No fit of the 582 that converged on the diagonal path stopped short on the
+  dense one, and 35 went the other way. Every MLX fit's `fit_event_.extra` now carries
+  `preconditioner`, `preconditioner_reason` and `n_fev`, converged or not; a fit that
+  started on the dense path and left it for the diagonal (below) records
+  `preconditioner="diagonal"` with `preconditioner_reason="fallback"`.
 
 #### Memory
 
@@ -1013,6 +1027,30 @@ come first under **Changed**.
   `MLXLEARN_METAL_KERNELS=0` turns it off with the neighbor kernel; every fit it does not
   serve runs the host solver exactly as before
   ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.5).
+- A dense preconditioner for `LogisticRegression`'s L-BFGS: where a gate on a sample of
+  the rows finds correlated features and no nearly separable classes, every iteration
+  starts from the inverse of the loss's curvature at the zero start — its Fisher
+  (Gauss-Newton) matrix there, built once from at most 8 192 rows and factorized — in
+  place of the diagonal of the column scales (Nocedal and Wright §7.2 for the initial
+  inverse Hessian; Lin, Weng and Keerthi, 2008, for the logistic Hessian;
+  [`docs/fp32_policy.md`](docs/fp32_policy.md) §2.3). The gate asks for within-class
+  correlation or scales the diagonal leaves apart, and turns away classes whose
+  between-class variance along some direction is five times the within-class variance
+  or more, where the fit ends far from the curvature it starts with (ten-class digits:
+  35-42 evaluations became 65-116 without that limit). Both samples are spread over all
+  the rows, or over their weight, so that the order of the rows and a few heavily
+  weighted ones read as they would anywhere; each feature's curvature is floored at the
+  whole design's, from one more pass over the rows, so that one-hot levels too rare for
+  the sample do not get steps orders of magnitude too long; and each feature's ridge is
+  relative to its own curvature, so that one column in units of 1e8 does not swamp the
+  rest. A run on the model that would stop above the float32 floor without converging
+  leaves it and goes on along the diagonal path from where it stands. It serves 2 to
+  1 024 features on both MLX devices and MLX 0.31, with no kernel of its own: the model
+  is built on the host while the device computes the first evaluation, its
+  factorizations on one BLAS thread, and the device graph and the stopping test are the
+  diagonal path's — so a fit it turns away is that path bit for bit. Every MLX fit's
+  `fit_event_.extra` says which path it took and why (`preconditioner`,
+  `preconditioner_reason`). Private switch: `MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0`.
 
 ### Removed
 
@@ -1293,6 +1331,25 @@ Where patched dispatch now sends each problem is under **Changed**.
   takes about 1 ms. Where the buffer-cache release triggers — machines with less memory —
   repeated same-shape large queries pay reallocation: a repeated 150 000 × 64 query with
   6 000 queries took 168 ms with the release forced on every call against 162 ms without.
+- `LogisticRegression` on correlated features (**Added**). Measured so far in objective
+  evaluations, which do not depend on the machine — wall-clock figures are pending a
+  measurement on a quiet machine. Over a 582-fit calibration grid
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.3) the gate sent 348 fits to the
+  dense path, which took 13 694 evaluations where the diagonal path took 59 313: a
+  median 4.9× fewer, 4.75× over the 223 at sizes patched dispatch routes (from 60 000
+  rows for several classes, 200 000 for two), and up to 50× (one-hot blocks with rare
+  levels, AR(0.99) features, raw breast cancer and digits). It took more on 4 of the 348:
+  +1 to +4 evaluations on three fits of 9-24, and +12 at `tol=1e-6` on a fit whose `tol`
+  is below the float32 floor. Twelve fell back to the diagonal path where they would
+  have stopped short — eight on Cauchy features, three on raw breast cancer, one on raw
+  digits. On 168 more fits whose rows a sample reads wrong (rare one-hot levels, rows
+  ordered by source or label, one column in units of 1e6-1e8, a few heavily weighted
+  rows, a constant column; `C` from 1 to `inf`) it took 2 937 evaluations on the 124 it
+  ran on, where the diagonal path took 22 471, and more on none. The 234 fits of the
+  grid it turned away run the diagonal path unchanged; their only added cost is the
+  gate's host work, done while the device computes the first evaluation. A fit it admits
+  also pays one pass over its rows for the model's floor. No dispatch threshold
+  changed.
 
 ## [0.1.0a2] — 2026-09-02
 

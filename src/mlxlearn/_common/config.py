@@ -505,6 +505,13 @@ class Tuning:
     # ---- solvers ----------------------------------------------------------------------
     lbfgs_history: int = 10
     lbfgs_max_line_search: int = 32
+    #: LogisticRegression's dense L-BFGS preconditioner: the curvature at the zero start,
+    #: used as every iteration's initial inverse Hessian where a gate on a sample of the
+    #: rows finds correlated features and no near-separable classes
+    #: (``_solvers/logistic.py``, ``docs/fp32_policy.md`` §2.3). Off, every fit takes
+    #: the diagonal path, bit for bit as before it, and no sample is taken. For tests and
+    #: bisection only: MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0.
+    lbfgs_dense_preconditioner: bool = True
     smo_kernel_cache_fraction: float = 0.05  # of physical memory
     smo_kernel_cache_min_bytes: int = 32 * 1024 * 1024
     smo_kernel_cache_max_bytes: int = 2 * 1024 * 1024 * 1024
@@ -545,6 +552,11 @@ class Tuning:
         # Normalized like Config's booleans: a NumPy bool is the value meant, and an int
         # or a string is a mistake to name, not a truth value to guess.
         object.__setattr__(self, "metal_kernels", _as_bool("metal_kernels", self.metal_kernels))
+        object.__setattr__(
+            self,
+            "lbfgs_dense_preconditioner",
+            _as_bool("lbfgs_dense_preconditioner", self.lbfgs_dense_preconditioner),
+        )
         for f in fields(self):
             value = getattr(self, f.name)
             if isinstance(value, int) and not isinstance(value, bool) and value < 0:
