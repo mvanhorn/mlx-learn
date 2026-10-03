@@ -1303,6 +1303,7 @@ class _Search:
             following = min(train_cols, n_train - t_end)
             if following and in_flight + following * col_bytes > budget:
                 mx.eval(*best, *([] if flags is None else [flags]))
+                mx.synchronize()
                 in_flight = 0
         vals, idx = best
         gmax = vals[:, k_carry - 1]
@@ -1378,11 +1379,17 @@ class _Search:
             # caller evaluates the result with its refinement, and a block searched in
             # one tile — the usual case — gains no synchronization. Left lazy, every
             # tile was alive at once: 40 000 000 x 2, 64 queries, peaked 7.0 GiB above
-            # the index against 1 GiB, in this pass and in the second.
+            # the index against 1 GiB, in this pass and in the second. ``eval``
+            # returns once the values are ready, but MLX takes the tiles' buffers back
+            # only when their command buffer completes, on a thread of its own; so the
+            # stream is synchronized too, or the next tiles are sometimes allocated
+            # beside the last ones: 8-10 MiB against a 4 MiB budget in 7 of 120 runs
+            # of the tests that hold this pass and the fused one to it.
             in_flight += (t_end - t_start) * col_bytes
             following = min(train_cols, n_train - t_end)
             if following and in_flight + following * col_bytes > budget:
                 mx.eval(best_idx, best_val)
+                mx.synchronize()
                 in_flight = 0
 
         return best_idx, mx.max(best_val, axis=1)

@@ -92,7 +92,7 @@ come first under **Changed**.
   40 000 000 × 2 peaked 7.0 GiB above the index against 1 GiB, 256 queries 23 GiB, and 256
   against 10 000 000 × 2 at 256 MiB 6.0 GiB. The search now evaluates its running
   candidates once one more tile would take the work in flight past the budget, as the
-  exact search already did: 610 MiB and 164 MiB there, every answer and every count the
+  exact search already did: 610 MiB and 159 MiB there, every answer and every count the
   same bit for bit. Those evaluations are device round trips, and they end the overlap
   between tiles that the unbounded search ran with: 1.03×, 1.04× and 1.09–1.11× the query
   time at 40 000 000 × 2 for 16, 64 and 256 queries, and 1.11–1.12× at 10 000 000 × 2. A
@@ -101,7 +101,14 @@ come first under **Changed**.
   and paired median times of 0.99–1.02×, each interquartile range spanning 1. Measured on
   the GPU of an M4 Max with MLX 0.32.2 and Python 3.13, the code before and after in one
   process, each call after a garbage collection and a 10 ms idle gap, in alternating
-  order: 31 pairs, 9 on the long training sets.
+  order: 31 pairs, 9 on the long training sets. Each such evaluation then waits for the
+  stream to finish: MLX takes an evaluated tile's buffers back only when its command
+  buffer completes, on a thread of its own, so without the wait the next tiles were
+  sometimes allocated beside the last ones — 159–303 MiB over five calls of 256 queries
+  against 10 000 000 × 2 at 256 MiB, past the budget, and 8–10 MiB against 4 MiB in 7 of
+  120 runs of the two tests that hold the search to it. With it, all five calls peaked at
+  the 610 MiB and 159 MiB above, and the six long-training-set shapes took 1.00–1.01× the
+  query time they took without it (9 pairs each, measured the same way).
 
 #### LogisticRegression
 
