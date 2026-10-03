@@ -712,6 +712,31 @@ def test_the_fused_working_set_stays_near_the_budget(rng):
     assert peak <= 2 * budget, f"peak {peak / MiB:.0f} MiB against a {budget / MiB:.0f} MiB budget"
 
 
+@needs_kernel
+def test_a_block_searched_in_many_tiles_stays_near_the_budget(rng, launches):
+    """64 rows against 200 000 at 4 MiB: the fused pass takes 25 train tiles, and the
+    second pass, where the duplicates send every row, 86 more. Left lazy, every tile was
+    alive at once: 153 MiB here, and 7.0 GiB above the index for 64 rows against
+    40 000 000 x 2 at a 1 GiB budget."""
+    budget = 4 * MiB
+    X = _data("dup20", 200_000, 4, rng).astype(np.float32)
+    Q = _queries(X, 64, rng)
+    with tuning_context(distance_block_bytes=budget, distance_block_bytes_max=budget):
+        index = build_index(X, backend="mlx")
+        index.query(Q, 5)
+        mx.eval(mx.zeros(1))
+        mx.clear_cache()
+        base = mx.get_active_memory()
+        mx.reset_peak_memory()
+        before = launches["scan"]
+        stats: dict = {}
+        index.query(Q, 5, stats=stats)
+        peak = mx.get_peak_memory() - base
+    assert launches["scan"] - before > 10, "the fused pass did not take many tiles"
+    assert stats["widened_rows"] > 0, "nothing reached the second pass"
+    assert peak <= 2 * budget, f"peak {peak / MiB:.0f} MiB against a {budget / MiB:.0f} MiB budget"
+
+
 # ----------------------------------------------------------------------------------
 # devices, the probe and the estimators
 # ----------------------------------------------------------------------------------

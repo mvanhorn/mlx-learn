@@ -1282,6 +1282,9 @@ class _Search:
         mx, state = self.mx, self.state
         n_train = self.index.n_samples
         k_carry = self.k_carry
+        budget = _distance_budget_bytes(self.plan_backend)
+        col_bytes = qb.n * 4 * _TILE_WORKSET_FUSED  # a tile column, as resolve_blocks budgets it
+        in_flight = 0
         best = flags = None
         for t_start in range(0, n_train, train_cols):
             t_end = min(t_start + train_cols, n_train)
@@ -1295,6 +1298,12 @@ class _Search:
             best = (vals, idx)
             if flagged is not None:
                 flags = flagged if flags is None else mx.maximum(flags, flagged)
+            # Bounded as in :meth:`candidates`.
+            in_flight += (t_end - t_start) * col_bytes
+            following = min(train_cols, n_train - t_end)
+            if following and in_flight + following * col_bytes > budget:
+                mx.eval(*best, *([] if flags is None else [flags]))
+                in_flight = 0
         vals, idx = best
         gmax = vals[:, k_carry - 1]
         if flags is None:
@@ -1339,6 +1348,9 @@ class _Search:
         mx, state = self.mx, self.state
         fns = self.fns
         n_train = self.index.n_samples
+        budget = _distance_budget_bytes(self.plan_backend)
+        col_bytes = qb.n * 4 * _TILE_WORKSET_FACTOR  # a tile column, as resolve_blocks budgets it
+        in_flight = 0
         best_idx = None
         best_val = None
 
@@ -1360,6 +1372,18 @@ class _Search:
                 sel = mx.argpartition(merged_val, kth=keep - 1, axis=1)[:, :keep]
                 best_idx = mx.take_along_axis(merged_idx, sel, axis=1)
                 best_val = mx.take_along_axis(merged_val, sel, axis=1)
+
+            # Evaluated once one more tile would take the working set in flight past
+            # the budget, as in :meth:`exact`, but never after the last tile: the
+            # caller evaluates the result with its refinement, and a block searched in
+            # one tile — the usual case — gains no synchronization. Left lazy, every
+            # tile was alive at once: 40 000 000 x 2, 64 queries, peaked 7.0 GiB above
+            # the index against 1 GiB, in this pass and in the second.
+            in_flight += (t_end - t_start) * col_bytes
+            following = min(train_cols, n_train - t_end)
+            if following and in_flight + following * col_bytes > budget:
+                mx.eval(best_idx, best_val)
+                in_flight = 0
 
         return best_idx, mx.max(best_val, axis=1)
 
