@@ -116,7 +116,7 @@ sparse) and for float64 values beyond float32's range
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above; multi-output `y` included, voted per output; callable `weights` | as above |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above; multi-output `y` included, averaged per output; callable `weights` | as above |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized, binary and multinomial; scikit-learn 1.9 callbacks (`set_callbacks`) are driven on this path | `l1`/`elasticnet` however spelled; non-`lbfgs` solvers; `dual=True`; `warm_start=True`; `multi_class` other than `"deprecated"`/`"auto"` (1.7 only); `intercept_scaling != 1` with `fit_intercept=True`; multi-label or multi-output `y`; negative `sample_weight`; under `patch_sklearn()` on scikit-learn 1.9, `array_api_dispatch=True` |
-| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32; a linear or poly kernel on data whose variation float32's inner product cannot resolve — so far from the origin, for its spread, that its rounding swamps the differences between rows, or rows that all round, in float32, to the same nonzero row (reason `"float32-cancellation"`); a class whose every sample has zero effective weight (reason `"empty-class"`) |
+| `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid, one-vs-one; `shrinking` honored by the host solver; on the GPU, a multiclass rbf fit solves every one-vs-one pair at once in mlxlearn's Metal kernel, each pair verified on the host in float64 and finished there if it fails ([`fp32_policy.md`](fp32_policy.md) §2.5) | `kernel="precomputed"`, callable kernels, `probability=True`; `gamma=0.0` with a non-linear kernel; a `gamma` or `coef0` float32 cannot represent once the data is mapped into its compute frame; a linear-kernel row whose squared norm overflows float32; a linear or poly kernel on data whose variation float32's inner product cannot resolve — so far from the origin, for its spread, that its rounding swamps the differences between rows, or rows that all round, in float32, to the same nonzero row (reason `"float32-cancellation"`); a class whose every sample has zero effective weight (reason `"empty-class"`) |
 
 A few inputs that look like capability questions are served directly. `SVC` treats a
 negative `sample_weight` as a zero weight, which is exactly what LIBSVM does, and a
@@ -213,7 +213,13 @@ choice unless the queries come in large batches.
   the polynomial and linear kernels (up to 2.3e-2 in the decision values measured, poly at
   `C=10`, where LIBSVM's moved 3.2e-2). The support-vector count can change by one, and a
   training point that close to the boundary can change label. See
-  [`fp32_policy.md`](fp32_policy.md) §2.4.
+  [`fp32_policy.md`](fp32_policy.md) §2.4. On the GPU's one-vs-one kernel — a fit with
+  three or more classes, the rbf kernel, and pairs of at most 4 096 rows whose Grams fit
+  `cache_size` — nothing shrinks, whatever `shrinking` says: shrinking is a speed
+  heuristic, and the optimum and the full-set stopping test do not depend on it. There
+  `n_iter_` counts the kernel's steps per pair plus any the host took to finish it, and
+  `cache_size` bounds how many pairs' Grams the GPU holds at once
+  ([`fp32_policy.md`](fp32_policy.md) §2.5).
 - **Neighbor ties** are decided by `(distance, training index)` over the whole training
   set, where scikit-learn's order among exactly equal distances is undefined
   ([`fp32_policy.md`](fp32_policy.md) §3.1).

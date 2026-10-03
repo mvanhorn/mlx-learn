@@ -35,9 +35,9 @@ answers a way a kernel went wrong there:
   keeps the compiled source across processes, as long as the source and name stay
   the same.
 
-When a kernel compiles is each kernel's policy; see :mod:`._topk`. A library MLX
-builds holds a lock that stalls every other MLX GPU call in the process while it
-builds, so nothing here builds ahead of need.
+When a kernel compiles is each kernel's policy; see :mod:`._topk` and :mod:`._ovo`.
+A library MLX builds holds a lock that stalls every other MLX GPU call in the process
+while it builds, so nothing here builds ahead of need.
 """
 
 from __future__ import annotations

@@ -50,6 +50,14 @@ costs one round trip per row nor evicts the rows the next iterations need. It
 still adds them up one row at a time in index order, as LIBSVM does, so neither
 the batch size nor the BLAS build decides how the rebuilt gradient rounds.
 
+**Finishing a solution found elsewhere.** :func:`finish_c_svc` takes the dual
+variables another solver reached — the one-vs-one GPU kernel's, whose state is
+double-float rather than float64 (``_kernels/_ovo.py``) — and holds them to this
+module's contract: the gradient is recomputed from them in float64, the full-set KKT
+stop is tested on it, and a solution that fails the test is finished by the loop
+below, warm-started where the other solver stopped. What it returns is therefore a
+solution this module would have accepted as its own.
+
 This module imports numpy and nothing else. It never sees an estimator, never
 reads global configuration, and never imports scikit-learn.
 """
@@ -64,7 +72,7 @@ from functools import partial
 
 import numpy as np
 
-__all__ = ["SMOConfig", "SMOState", "solve_c_svc"]
+__all__ = ["SMOConfig", "SMOState", "finish_c_svc", "solve_c_svc"]
 
 #: LIBSVM's floor for a degenerate working-set quadratic coefficient. Duplicate
 #: rows, and the indefinite sigmoid and polynomial kernels, can make
@@ -442,6 +450,122 @@ def solve_c_svc(
     return _solve(y, C, k_diag, cache, config)
 
 
+#: Rows of the Gram read per matrix product when :func:`finish_c_svc` rebuilds a
+#: gradient: their float64 copy stays within 32 MiB, at 4 096 columns. 256 rows at a
+#: time measured 1.13x slower at 120 pairs of 1 000 rows.
+_GRADIENT_ROWS = 1024
+
+
+def finish_c_svc(
+    y: np.ndarray,
+    C: np.ndarray,
+    k_diag: np.ndarray,
+    gram: np.ndarray,
+    alpha: np.ndarray,
+    n_iter: int,
+    config: SMOConfig,
+) -> SMOState:
+    """Hold dual variables found elsewhere to this solver's stop, finishing them if needed.
+
+    ``alpha`` is a candidate solution of the subproblem :func:`solve_c_svc` solves —
+    the one-vs-one GPU kernel's, carried there in double-float — reached in
+    ``n_iter`` working-set updates. It is clipped into the box, and the gradient is
+    recomputed from it in float64, ``yg = −y + Σ_s α_s y_s K[s, :]`` over the nonzero
+    ``α_s``, from ``gram``'s float32 entries widened. Then:
+
+    * a candidate that already spent ``config.max_iter`` updates is reported as
+      exhausted, as :func:`solve_c_svc` reports a budget stop — its loop never tests
+      the iterate its last update produced, and neither does this;
+    * a finite gradient whose full-set KKT violation is below ``config.tol`` — the
+      stop :func:`solve_c_svc` applies — is a converged solution;
+    * anything else is finished by :func:`solve_c_svc`'s loop, warm-started at
+      ``alpha`` and the recomputed gradient, with ``n_iter`` already spent.
+
+    Either way the bias is read off the recomputed gradient by LIBSVM's rule.
+
+    A gradient that is not finite is returned as ``stop_reason="non-finite"``, for
+    the caller to solve again from scratch.
+
+    Parameters
+    ----------
+    y, C, k_diag
+        As for :func:`solve_c_svc`.
+    gram : ndarray of shape (n_samples, n_samples), float32
+        The subproblem's whole kernel matrix, every self-entry the closed-form
+        diagonal: the values the candidate was computed against. Rows are read
+        through it as views; nothing is copied whole.
+    alpha : ndarray of shape (n_samples,)
+    n_iter : int
+        Updates already spent; the finish counts on from here.
+    config : SMOConfig
+        ``cache_rows`` is ignored: every row is resident in ``gram``.
+
+    Returns
+    -------
+    SMOState
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from mlxlearn._solvers.smo import SMOConfig, finish_c_svc, solve_c_svc
+    >>> X = np.array([[-1.0], [-0.5], [0.5], [1.0]])
+    >>> y = np.array([-1.0, -1.0, 1.0, 1.0])
+    >>> K = (X @ X.T).astype(np.float32)
+    >>> C, k_diag = np.full(4, 1.0), np.diag(K).astype(np.float64)
+    >>> done = solve_c_svc(y, C, k_diag, K.__getitem__, SMOConfig(cache_rows=4))
+    >>> again = finish_c_svc(y, C, k_diag, K, done.alpha, done.n_iter, SMOConfig())
+    >>> again.converged, again.n_iter == done.n_iter
+    (True, True)
+    >>> finish_c_svc(y, C, k_diag, K, np.zeros(4), 0, SMOConfig()).converged
+    True
+    """
+    y = np.ascontiguousarray(y, dtype=np.float64)
+    C = np.ascontiguousarray(C, dtype=np.float64)
+    k_diag = np.ascontiguousarray(k_diag, dtype=np.float64)
+    n = int(y.shape[0])
+    if gram.shape != (n, n) or C.shape[0] != n or k_diag.shape[0] != n:
+        raise ValueError(
+            f"y, C, k_diag and gram must agree in size; got {n}, {C.shape[0]}, "
+            f"{k_diag.shape[0]} and {gram.shape}."
+        )
+    alpha = np.clip(np.asarray(alpha, dtype=np.float64), 0.0, C)
+    n_iter = int(n_iter)
+    positive = y > 0.0
+    yg = _gradient(y, alpha, gram)
+    if not np.isfinite(yg).all():
+        return _finish(alpha, C, yg, positive, n_iter, False, math.nan)
+    upper, lower = _bound_status(alpha, C)
+    up_set = np.where(positive, ~upper, ~lower)
+    low_set = np.where(positive, ~lower, ~upper)
+    violation = 0.0
+    if up_set.any() and low_set.any():
+        violation = float((-yg[up_set]).max() + yg[low_set].max())
+    if n_iter >= config.max_iter:
+        return _finish(alpha, C, yg, positive, n_iter, False, violation)
+    if violation < float(config.tol):
+        return _finish(alpha, C, yg, positive, n_iter, True, violation)
+    # Every row is resident and read as a view, so the cache adds no memory.
+    cache = _RowCache(gram.__getitem__, max(n, 2), n)
+    return _solve(y, C, k_diag, cache, config, start=(alpha, yg, n_iter))
+
+
+def _gradient(y: np.ndarray, alpha: np.ndarray, gram: np.ndarray) -> np.ndarray:
+    """``yg = −y + Σ_{α_s ≠ 0} α_s y_s K[s, :]`` in float64, the rows widened.
+
+    The rows are read :data:`_GRADIENT_ROWS` at a time and contracted by NumPy's
+    matrix product, chunk after chunk in index order, so the result depends on the
+    data and the BLAS alone — not on threads, timing or which rows were read
+    together before.
+    """
+    yg = -y.copy()
+    support = np.flatnonzero(alpha)
+    weights = alpha[support] * y[support]
+    for start in range(0, support.shape[0], _GRADIENT_ROWS):
+        rows = gram[support[start : start + _GRADIENT_ROWS]].astype(np.float64)
+        yg += weights[start : start + _GRADIENT_ROWS] @ rows
+    return yg
+
+
 def _finish(
     alpha: np.ndarray,
     C: np.ndarray,
@@ -605,8 +729,13 @@ def _solve(
     k_diag: np.ndarray,
     cache: _RowCache,
     config: SMOConfig,
+    start: tuple[np.ndarray, np.ndarray, int] | None = None,
 ) -> SMOState:
     """The SMO loop behind :func:`solve_c_svc`, shrinking when the config asks.
+
+    ``start``, from :func:`finish_c_svc`, is ``(alpha, yg, n_iter)``: a feasible
+    point, its float64 gradient and the updates already spent on it. Without it the
+    loop starts at ``α = 0``.
 
     There is one loop, whether or not samples are ever set aside, so the numerics
     that decide LIBSVM parity exist once. It runs over *compact copies* of the
@@ -636,9 +765,15 @@ def _solve(
     tol = float(config.tol)
     shrinking = bool(config.shrinking)
 
-    alpha = np.zeros(n, dtype=np.float64)
-    # ∇ = −e at α = 0, so yg = y ⊙ ∇ = −y.
-    yg = -y.copy()
+    if start is None:
+        alpha = np.zeros(n, dtype=np.float64)
+        # ∇ = −e at α = 0, so yg = y ⊙ ∇ = −y.
+        yg = -y.copy()
+        n_iter = 0
+    else:
+        alpha = np.array(start[0], dtype=np.float64)
+        yg = np.array(start[1], dtype=np.float64)
+        n_iter = int(start[2])
     ygbar: np.ndarray | None = None  # built at the first shrinking pass
     positive = y > 0.0
     # I_up and I_low as LIBSVM derives them from the single alpha status. They are
@@ -654,7 +789,6 @@ def _solve(
     period = min(n, 1000)
     counter = period + 1
     unshrunk = False
-    n_iter = 0
     converged = False
     # Measured at α = 0 too, so a zero budget reports the violation it stopped at
     # rather than an unmeasured 0.0 that reads as optimal.

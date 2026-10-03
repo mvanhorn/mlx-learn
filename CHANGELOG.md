@@ -418,6 +418,25 @@ come first under **Changed**.
   samples set aside is rebuilt one row at a time in index order, as LIBSVM rebuilds it, so
   a fit does not depend on how `cache_size` batches that work or on the NumPy/BLAS build.
   `shrinking=False` never sets a sample aside.
+- **Multiclass rbf `SVC` fits on the GPU keep their dual state in double-float** — a
+  change to the float32 policy, made with its safeguard. Where the one-vs-one kernel
+  (**Added**) runs, the dual variables and gradient are a float32 value plus a float32
+  residual, about 48 bits, rather than float64, and the working-set key is float32, so
+  where two candidates tie that closely the path can part from the host solver's: a
+  different path to the same optimum, never a looser stop, since every pair is verified in
+  float64 against the full-set KKT stop and finished on the host if it fails. Against
+  scikit-learn 1.9.0 and 1.7.2 over 21 configurations — 3 to 26 classes, C from 0.1 to
+  100, four `gamma` resolutions, class and sample weights with zeros, imbalanced,
+  low-rank and random-label data — decision values agreed within 1.25e-3, labels and
+  support-vector sets exactly, and each pair's dual objective within 6.3e-7 relative.
+  On that path `shrinking` changes nothing — the kernel does not shrink; shrinking is a
+  speed heuristic, and the optimum and the stop do not depend on it — `n_iter_` counts
+  each pair's kernel steps plus any the host took to finish it, and any `cache_size` that
+  holds the largest pair's Gram gives the same model, bit for bit. No dispatch threshold
+  changed: patched mode sends to MLX exactly the fits it sent before, and the kernel's own
+  calibration of `svc_min_pair_work`, `svc_min_features` and `svc_max_c` is still to come.
+  A directly imported `SVC` takes it for every multiclass rbf fit on the GPU it serves
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.5).
 - **Multi-output targets are accelerated** in `KNeighborsClassifier` and
   `KNeighborsRegressor`: the neighbor search does not depend on `y`, and votes and averages
   are taken per output. The Layer 1 tags now advertise multi-output (and, for the
@@ -702,6 +721,16 @@ come first under **Changed**.
   memory is higher, and still inside the same budget: for 4 096 queries, 326 → 436 MiB at
   1 000 000 × 64 and × 128, 228 → 423 MiB at 100 000 × 256, and 298 → 596 MiB at
   128 000 × 768, against a 1 GiB budget on a 128 GB machine.
+- A multiclass rbf `SVC` fit on the one-vs-one kernel (**Added**) holds its pairs' Grams on
+  the GPU, which the host solver held one pair at a time: in waves whose Grams fit
+  `cache_size` — within the SMO kernel-cache ceiling, as for the host solver's row cache —
+  while building them takes transients within `Tuning.distance_block_bytes`, the budget
+  `kernel_matrix`'s own blocks keep to. At 16 000 × 32 with 16 classes, 1.83 GiB of Grams in
+  all, the fit peaked at 332 MiB at the default `cache_size=200`, in ten waves, against
+  1.97 GiB for every pair at once and 18 MiB on the host solver; across fits of 2–10 waves
+  the default took 0.89–1.04× the time of one wave. The buffers are freed with the fit;
+  every wave uses one buffer size, so MLX's buffer cache grew about as the host solver's
+  churn grows it (1.26 against 1.03 GiB there), under the same release rule.
 
 #### Packaging, CI and benchmarks
 
@@ -899,6 +928,26 @@ come first under **Changed**.
   Private switch: `MLXLEARN_METAL_KERNELS=0`. The rules every such kernel follows —
   the gate, `fp contract(off)`, padded inputs, caching, when it compiles — are in
   [`docs/development.md`](docs/development.md).
+- mlxlearn's second Metal kernel: `SVC`'s one-vs-one SMO. On the GPU a multiclass rbf fit
+  solves every one-vs-one pair at once, one threadgroup per pair and the whole working set
+  at every step, instead of pair after pair on the host — LIBSVM's SMO (Platt, 1998;
+  Keerthi et al., 2001; second-order selection after Fan, Chen and Lin, 2005; Chang and
+  Lin's stopping rule and one-vs-one, with Hsu and Lin, 2002), its selection run as a
+  parallel reduction after Catanzaro, Sundaram and Keutzer (2008), with no shrinking, its
+  dual variables and gradient in double-float (Dekker, 1971; Knuth) and its working-set key
+  in float32 (**Changed**). Every pair is verified on the host in float64 against the
+  full-set KKT stop and finished there if it fails; a pair with no free dual variable,
+  whose bias LIBSVM takes from its own rounding, and one that went non-finite, are solved
+  again by the host solver. Pairs run in waves whose Grams fit `cache_size` (**Memory**).
+  It serves three classes or more, pairs of at most 4 096 rows, and MLX 0.32 and later —
+  every answer is verified, so it keeps no list of validated MLX releases — and compiles on
+  the first fit of a process that takes it, checked there against a problem whose answer
+  the host verifies. A fit's `fit_event_.extra` counts the pairs it solved
+  (`ovo_kernel_pairs`), the host finished (`ovo_host_finished`) and the host solved again
+  (`ovo_resolved_non_finite`, `ovo_resolved_no_free`), and its waves and launches.
+  `MLXLEARN_METAL_KERNELS=0` turns it off with the neighbor kernel; every fit it does not
+  serve runs the host solver exactly as before
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.5).
 
 ### Removed
 
@@ -1021,6 +1070,30 @@ Where patched dispatch now sends each problem is under **Changed**.
   had only 8 ms of host work to hide behind (+70 ms there). A query below the threshold
   after such a fit compiles MLX's tile expression, which the fused probe no longer does:
   3.3–3.5 ms against 1.8 ms for its first 16 queries at 30 000 × 256, once a process.
+- Multiclass rbf `SVC` fits on the GPU solve their one-vs-one pairs concurrently
+  (**Added**). On the 24 multiclass cells of the prototype's grid that patched dispatch
+  sends to MLX today — 256–784 features, 1 536–8 000 rows, 3–16 classes, C ≤ 1, on
+  Gaussian, overlapping, random-label, low-rank, imbalanced and digit data — after a
+  garbage collection and a 10 ms idle gap, 9 calls each in a rotating order, fits ran
+  2.09–21.5× as fast as on the host solver and 4.25–54.4× as fast as stock scikit-learn
+  under Python 3.13 with scikit-learn 1.9.0 (medians 4.2× and 13.2×), and 2.22–21.0× and
+  4.20–45.7× under Python 3.10 with 1.7.2: every cell significantly faster than both, on
+  both, decision values within 9.1e-4 of scikit-learn's, and the iteration counts the host
+  solver's in 23 cells of 24. The prototype the kernel was ported from measured
+  2.0–23.7× its host solver and 3.9–60.6× stock on the same cells, holding every pair's
+  Gram at once where the integrated kernel keeps to `cache_size` (**Memory**). The two
+  cells of that grid with pairs of more than 4 096 rows — 8 000 rows in 3 classes — keep the
+  host solver (0.97–1.00×, not significant). A fit whose every pair ends with no free dual
+  variable is solved twice: random labels with balanced class weights at C = 0.1–0.2 took
+  0.83–0.88× the host solver's time, still 2.5–3.1× stock; at the same sizes without the
+  weights, at C = 0.05–0.1, no pair needed it (4.4–11.8× the host solver). The kernel compiles on the first fit of a process that takes it: a
+  library never compiled on the machine costs that fit 133–150 ms, once per machine, MLX
+  release and kernel version — first fits of 168–191 ms against 32–58 ms once the operating
+  system's shader cache holds it, medians of five fresh processes under both Pythons —
+  where the host solver's first fit took 32–795 ms and stock scikit-learn's 8–610 ms on the
+  same cells. No dispatch threshold changed, so patched mode sends no new fit to MLX;
+  narrower and many-class fits, which the prototype measured faster than stock as well,
+  wait for their own calibration.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32

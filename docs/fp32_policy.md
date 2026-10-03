@@ -13,7 +13,7 @@ that "we xfail that one" is a policy and not a reaction to a red test.
 |---|---|
 | Input `X`, `y` | anything scikit-learn accepts; float64/int/bool are converted |
 | Computation on the MLX device, GPU or CPU | **float32**, always |
-| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the finish of `LogisticRegression`'s objective on the GPU — the device's partial sums added, normalized and penalized (§2.2) — the SMO dual variables and gradients, the contraction of SVC decision values, the rbf entries SVC recomputes directly (§2.4), neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_` |
+| Host-side arithmetic around it | **float64**: the L-BFGS bookkeeping, the finish of `LogisticRegression`'s objective on the GPU — the device's partial sums added, normalized and penalized (§2.2) — the SMO dual variables and gradients, the contraction of SVC decision values, the rbf entries SVC recomputes directly (§2.4), neighbor votes, and all of `LogisticRegression`'s inference, which is scikit-learn's own NumPy code on `coef_`. The one exception is SVC's one-vs-one kernel on the GPU, whose dual variables and gradients are double-float on the device — and verified, and if need be finished, in float64 on the host (§2.5) |
 | Returned distances, probabilities, decision values | **float64** |
 | Fitted attributes (`coef_`, `intercept_`, `dual_coef_`, `support_vectors_`) | **float64** |
 | Returned indices, labels | `int64` / the input label dtype, matching scikit-learn |
@@ -405,7 +405,8 @@ moved by up to 6.3e-3 (1.6e-2) at `C=1` and 1.0e-2 (2.0e-2) at `C=10`. The numbe
 support vectors changed by one in some of those fits, and a training point whose decision
 value was that close to zero could change label, as LIBSVM's did. The gradient it rebuilds
 is summed in a fixed order, so shrinking adds no dependence of its own on `cache_size` or
-on the NumPy/BLAS build. The tolerances in §3 hold either way.
+on the NumPy/BLAS build. The tolerances in §3 hold either way. The GPU's one-vs-one kernel
+does not shrink at all (§2.5), so `shrinking` changes nothing on that path.
 
 **`cache_size`.** When the row cache can hold a whole one-vs-one subproblem, its Gram is
 built in one blocked matmul; otherwise rows are evaluated on demand, and the two can round
@@ -417,7 +418,106 @@ moved the decision values by up to 9.2e-4. On MLX's CPU device they accumulate i
 different orders at any width: at 2 000 × 10 the decision values moved by up to 2.2e-3 and
 the iteration count changed. Every fit is KKT-optimal and inside the §3 tolerance.
 scikit-learn is bit-identical across `cache_size`; pin it for bit-reproducible fits, on
-either device.
+either device. On the GPU's one-vs-one kernel path `cache_size` sets how many pairs' Grams
+are held at once and nothing else: every `cache_size` that holds the largest pair's Gram
+gives the same model, bit for bit (§2.5); one that does not sends the fit to the host loop.
+
+### 2.5 SVC's one-vs-one pairs on the GPU: double-float state, verified on the host
+
+A multiclass rbf `SVC` fit on the GPU solves its one-vs-one pairs concurrently, in a Metal
+kernel of mlxlearn's own (`_kernels/_ovo.py`): one threadgroup per pair, the whole working
+set at every step, and every pair at once. Metal has no float64, so the state the host
+loop keeps in float64 — the dual variables and the gradient — is **double-float** on the
+device: a float32 value plus a float32 residual, about 48 bits, added and multiplied
+with error-free transformations (Dekker, 1971; Knuth, TAOCP vol. 2, §4.2.2) and `fma`
+for a product's exact error. The **working-set key** — the second-order gain that ranks
+the candidates for `j` — is **float32**. The kernel entries are the float32 Gram the host
+loop would have built for the pair, from the same MLX operations, block for block —
+§2.4's frame, rbf refinement and self-entries included — and the tests check it bit for
+bit.
+
+That changes the path, not the contract:
+
+- **A different path to the same optimum.** Where two candidates' keys agree to
+  float32's precision, or two gradients to double-float's, the kernel can pick a
+  different working pair from the host loop's float64 choice. On the fixed problem the
+  kernel is checked on at first use, the two moved together bit for bit for 17 steps and
+  within 2e-14 for six more, then parted where two gradients stood 2e-16 apart; both
+  stopped at the KKT test.
+- **Every pair is verified on the host, in float64.** `smo.finish_c_svc` recomputes the
+  gradient from the kernel's dual variables — in float64, from the pair's float32 Gram,
+  in fixed chunks of rows — and applies the host loop's own stop: the full-set KKT
+  violation below `tol`. A pair that fails it is **finished by the host loop**,
+  warm-started where the kernel stopped and counting on from its iterations; a pair whose
+  state went non-finite is solved again from scratch by the host loop. The bias is read
+  off the float64 gradient by LIBSVM's rule. So what a fit returns is a solution the host
+  loop would have accepted as its own; the kernel never decides convergence alone. The
+  fit's diagnostics event counts the pairs each way (`ovo_kernel_pairs`,
+  `ovo_host_finished`, `ovo_resolved_non_finite`, `ovo_resolved_no_free`, `ovo_waves`,
+  `ovo_launches`).
+- **A pair with no free dual variable is solved again on the host.** Its bias is not
+  determined by the problem: with every dual variable at a bound, any value in an
+  interval is optimal, and LIBSVM reads it off whichever sample its own rounding left a
+  hair inside a bound. On a pair of a 9-class fit at C = 0.19 with balanced class weights,
+  LIBSVM and the host loop took the bias, 0.46, from a sample 3.5e-15 below its box; the
+  double-float state's rounding left a different sample 4e-14 below its box, and gave
+  −0.38 — two KKT points, decision values 0.85 apart. The verification cannot tell them
+  apart, so the rule is structural: a pair none of whose dual variables lies more than
+  2⁻³² of its box inside it is solved again from scratch by the host loop, which rounds
+  as LIBSVM does. In 200 random fits it took 90 of 5 794 pairs, in 6 fits — five at boxes
+  of 0.1–0.4, two of them with balanced class weights, which it took every pair of, and
+  one pair of a two-feature fit at C = 8.9 — and every bias that differed from the host
+  loop's by more than 1e-2 was among them. A fit it takes every pair of costs the host
+  loop's time plus the kernel's: random labels with balanced class weights at C = 0.1–0.2
+  took 0.83–0.88× the host loop's time, still 2.5–3.1× stock scikit-learn's.
+- **Deterministic.** No result is a sum across threads: every reduction in the kernel
+  is a maximum, ties broken by the larger index, which no order of evaluation changes,
+  and there are no atomics. A pair's result is a function of its data alone — not of
+  the threadgroup width, the other pairs in its launch, or how its steps are split across
+  launches — so repeated fits, fits from many threads at once, and fits at any
+  `cache_size` that holds the largest pair's Gram are bit for bit the same. The host's
+  float64 gradient depends on the BLAS build, as §2.4's does.
+- **No shrinking.** The kernel takes every sample at every step, and so does the host's
+  finish: shrinking is a speed heuristic, the optimum and the full-set stopping test do
+  not depend on it, and `shrinking` changes nothing on this path.
+- **`n_iter_`** counts, per pair, the kernel's steps plus the host finish's, and
+  `max_iter` bounds their sum as it bounds the host loop; a pair solved again from scratch
+  reports the host loop's own count. A pair that exhausts its budget on the device is
+  reported as the host loop reports one — `fit_status_ = 1` and a `ConvergenceWarning` —
+  without testing the last iterate, as the host loop does not test it.
+- **Memory.** The pairs run in **waves** whose packed Grams fit together in the kernel
+  cache `cache_size` already sizes (capped by `Tuning.smo_kernel_cache_max_bytes` and
+  `smo_kernel_cache_fraction` of installed memory, as for the host loop's row cache), and
+  each pair's Gram must fit it alone — exactly the pairs the host loop would have
+  materialized — or the fit runs on the host loop. Building a wave's Grams takes
+  transients within `Tuning.distance_block_bytes`, the budget `kernel_matrix`'s own
+  blocks keep to. At 16 000 × 32 with 16 classes — 1.83 GiB of Grams in all — the fit
+  peaked at 332 MiB of device memory at the default `cache_size=200`, in ten waves,
+  against 1.97 GiB holding every pair at once, and took no longer (96 against 108 ms:
+  the one large buffer cost more to allocate than the waves cost to run in turn); the
+  host loop peaked at 18 MiB. Across four fits of 2–10 waves the default took 0.89–1.04×
+  the time of one wave. The buffers go when the fit returns, to MLX's buffer cache, which
+  the cache-release rule (`Tuning.mlx_cache_release_fraction`) empties after a fit that
+  grew it past its share of memory, as after any other; every wave of a fit uses one
+  buffer size, so a fit grows that cache by about what the host loop's own churn of tile
+  sizes does (1.26 against 1.03 GiB there).
+
+The kernel runs for three classes or more, the rbf kernel, a positive `max_iter`, work
+resolved to the GPU, MLX 0.32 or later and `Tuning.metal_kernels`, pairs of at most 4 096
+rows whose Grams fit the cache, and boxes the double-float state holds (`C_t · m` at most
+2⁴⁰, every `C_t` at least 2⁻¹⁰⁰); anything else runs the host loop, pair after pair, bit
+for bit as before. Unlike §2.1's kernel it needs no list of validated MLX releases:
+nothing it returns is trusted to match MLX, so a release that changed its behavior could
+cost time — pairs finished on the host — but never an answer.
+
+Measured against scikit-learn 1.9.0 and 1.7.2 (the same on both), over 21 configurations
+— 3 to 26 classes, C from 0.1 to 100, four `gamma` resolutions, random labels, low-rank
+and imbalanced data, balanced and explicit class weights, sample weights with zeros,
+`tol=1e-5`: decision values within 1.25e-3, labels and support-vector sets identical,
+each pair's dual objective within 6.3e-7 relative, KKT margins within 6.7e-4. Over 200
+random fits (`tests/parity/test_svc_ovo.py`, slow): within 1.9e-2 of the host loop's
+decision values and, on every tenth, 1.8e-2 of scikit-learn's, KKT margins within 8.9e-4,
+and no pair needed the host's finish.
 
 ## 3. Tolerances the test suite uses
 
@@ -447,10 +547,11 @@ no worse." Both are tested.
 | Linear-model **probabilities** | `atol=2e-3` on the fixed grid (n ≤ 5000, d ≤ 20) at default `tol`; on any converged problem at `tol=1e-6` | These inherit the coefficient error rather than being computed independently, so they cannot be tighter than the coefficients allow — and at default `tol` that error is where lbfgs stops, which a wide design sums over more features. Measured over the grid: 3e-4 typical, 1.34e-3 worst (multiclass with a 10× sample weight) at default `tol`; 6e-5–1.9e-4 at `tol=1e-6`. On 25 000 × 1 000, which 0.1.0a2's crossover sent to MLX: up to 4.9e-3 at default `tol`, where stock lbfgs and stock newton-cg differ from each other by as much, and 7.2e-5 at `tol=1e-6`. The objective assertion is what judges such a problem at default `tol` |
 | Linear **coefficients** | `atol=2e-3, rtol=5e-3` | Dominated by *where the solver stops*, not by arithmetic — and on a rank-deficient design only the penalty pins them down at all. Measured: 5e-4 typical, 1.15e-3 worst over the fixed grid |
 | **Objective value** at the solution | `rtol=1e-5` | The objective is far better conditioned than its argument — this is the assertion that actually catches a wrong solver. Measured: worst relative difference 2.9e-7 across every non-separable logistic case |
-| SVM **decision values** (PSD kernels) | `atol=2e-2, rtol=5e-3` | Dominated by the SMO stopping point, not by arithmetic: both solvers stop when the maximal KKT violation drops below the shared `tol` (default `1e-3`), and the dual variables still have freedom there. Measured worst 1.56e-2 on a ±4.5 value range (linear, C=10); rbf cases sit at 5e-7–7e-4 |
+| SVM **decision values** (PSD kernels) | `atol=2e-2, rtol=5e-3` | Dominated by the SMO stopping point, not by arithmetic: both solvers stop when the maximal KKT violation drops below the shared `tol` (default `1e-3`), and the dual variables still have freedom there. Measured worst 1.56e-2 on a ±4.5 value range (linear, C=10); rbf cases sit at 5e-7–7e-4, and 1.25e-3 on the GPU one-vs-one kernel's grid (§2.5). Multiclass one-vs-rest values count votes, so they are compared on the rows where no one-vs-one value changes sign |
 | SVM **decision values** (multiclass `kernel="sigmoid"`) | not asserted — see §3.2.1 | The sigmoid kernel is indefinite, so the dual is non-convex and two correct solvers reach different local optima. Measured 0.63 on the worst one-vs-one pair, and it does not shrink with `tol`. Binary sigmoid cases do meet the PSD tolerance above and are asserted at it |
 | SVM **support-vector sets** | ≤ 5% symmetric difference | Measured: counts agree essentially exactly (1311 vs 1311, 827 vs 827; worst disagreement one point out of 548). Which points sit exactly on the margin is genuinely ill-conditioned, so exact set equality is not something either solver promises |
-| SVM **KKT conditions** | margins within `2·tol` at mlxlearn's own solution | The assertion that does not appeal to scikit-learn at all, and the one that catches a solver agreeing with LIBSVM for the wrong reason. The stopping rule bounds every margin by `tol` in exact arithmetic; the second `tol` is the float32 kernel's. Measured worst 4.9e-4 (CPU device), 5.2e-4 (GPU), 7.9e-4 over a 72-configuration sweep |
+| SVM **KKT conditions** | margins within `2·tol` at mlxlearn's own solution | The assertion that does not appeal to scikit-learn at all, and the one that catches a solver agreeing with LIBSVM for the wrong reason. The stopping rule bounds every margin by `tol` in exact arithmetic; the second `tol` is the float32 kernel's. Measured worst 4.9e-4 (CPU device), 5.2e-4 (GPU), 7.9e-4 over a 72-configuration sweep; 6.7e-4 on the GPU one-vs-one kernel's grid and 8.9e-4 over its 200-fit soak (§2.5) |
+| SVM **dual objective** (rbf, each one-vs-one pair) | `rtol=1e-5`, on the curated multiclass grid | Better conditioned than the decision values, as the objective is for the linear models. Measured worst 6.3e-7 on the GPU one-vs-one kernel's grid of 21 configurations (§2.5). Not asserted on random draws: on two-feature problems at a large box the host loop itself is up to 3.7e-5 from LIBSVM's, and 30% apart in a support-vector set, so the soak holds the kernel to the host loop's model instead |
 
 **Coefficients are the weak assertion; objective value is the strong one.** For an
 ill-conditioned problem two solvers can reach very different coefficients that are equally

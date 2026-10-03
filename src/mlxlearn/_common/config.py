@@ -415,7 +415,10 @@ class Tuning:
     # 1000 x 256, which won (on separated blobs 1.28x-1.39x and 1.17x-1.21x;
     # 1000 x 256 on overlapping classes 1.09x-2.0x). This floor is on the *mean*
     # pair's work, (2n/K) * n_features, which ignores class imbalance by
-    # construction.
+    # construction. Every figure here is the host solver's: a multiclass rbf fit on the
+    # GPU now runs its pairs concurrently in one Metal kernel (SVC._solve_pairs_on_gpu),
+    # and neither this floor nor the two above has been recalibrated for it, so they
+    # route the fits they routed before.
     svc_min_pair_work: int = 384_000
     #
     # Patched mode sends only the rbf kernel to MLX, and reads C and cache_size
@@ -507,10 +510,12 @@ class Tuning:
     #: this is read from the process-wide default only (MLXLEARN_DIAGNOSTICS_CAPACITY,
     #: at import and on reset_config); tuning_context cannot resize it.
     diagnostics_capacity: int = 512
-    #: mlxlearn's own Metal kernels (``_kernels/_metal.py``): today the neighbor search's
-    #: fused distance-and-selection kernel. Off, the same work runs on MLX's built-in
-    #: operations, which give the same answers bit for bit on the MLX versions the
-    #: kernels are validated on. For tests and bisection only: MLXLEARN_METAL_KERNELS=0.
+    #: mlxlearn's own Metal kernels (``_kernels/_metal.py``): the neighbor search's fused
+    #: distance-and-selection kernel and SVC's one-vs-one SMO. Off, the neighbor search
+    #: runs on MLX's built-in operations, which give the same answers bit for bit on the
+    #: MLX versions its kernel is validated on, and SVC solves its pairs one after another
+    #: on the host solver, at the same optimum to within tol. For tests and bisection
+    #: only: MLXLEARN_METAL_KERNELS=0.
     metal_kernels: bool = True
 
     def __post_init__(self) -> None:

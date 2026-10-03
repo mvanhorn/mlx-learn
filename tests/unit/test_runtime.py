@@ -529,12 +529,17 @@ def test_mlx_guard_describes_an_allocation_failure_as_one():
     assert "bytes.." not in message
 
 
+#: Where each fit's MLX work is; a crash at any of them must raise. SVC's three-class
+#: fit runs its pairs in the one-vs-one kernel on the GPU, and the host loop elsewhere.
 _CRASH_SITES = {
-    "KNeighborsClassifier": "mlxlearn.neighbors._base.build_index",
-    "KNeighborsRegressor": "mlxlearn.neighbors._base.build_index",
-    "NearestNeighbors": "mlxlearn.neighbors._base.build_index",
-    "LogisticRegression": "mlxlearn.linear_model._logistic.solve_logistic",
-    "SVC": "mlxlearn.svm._classes.solve_c_svc",
+    "KNeighborsClassifier": ("mlxlearn.neighbors._base.build_index",),
+    "KNeighborsRegressor": ("mlxlearn.neighbors._base.build_index",),
+    "NearestNeighbors": ("mlxlearn.neighbors._base.build_index",),
+    "LogisticRegression": ("mlxlearn.linear_model._logistic.solve_logistic",),
+    "SVC": (
+        "mlxlearn.svm._classes.solve_c_svc",
+        "mlxlearn._kernels._ovo.PairSolver.solve",
+    ),
 }
 
 
@@ -548,7 +553,8 @@ def test_an_mlx_crash_raises_and_never_falls_back(monkeypatch, data, pair, layer
     def crash(*args, **kwargs):
         raise RuntimeError("simulated MLX failure")
 
-    monkeypatch.setattr(_CRASH_SITES[pair[0].__name__], crash)
+    for site in _CRASH_SITES[pair[0].__name__]:
+        monkeypatch.setattr(site, crash)
     model = _estimator(pair, layer)
     with mlxlearn.config_context(fallback_policy=policy), tuning_context(force_backend="mlx"):
         with pytest.raises(BackendExecutionError) as caught:

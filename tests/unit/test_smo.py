@@ -592,3 +592,99 @@ def test_multiclass_fit_prefetches_on_the_row_path(monkeypatch):
         small.decision_function(X[:300]), large.decision_function(X[:300]), atol=2e-2, rtol=5e-3
     )
     assert np.mean(small.predict(X) == large.predict(X)) >= 0.99
+
+
+# ------------------------------------------------------------- finishing elsewhere
+
+
+def _finish(y, K32, C, alpha, n_iter, **config):
+    return smo.finish_c_svc(
+        y, C, np.diag(K32).astype(np.float64), K32, alpha, n_iter,
+        SMOConfig(tol=TOL, **config),
+    )
+
+
+def test_a_solution_that_meets_the_stop_is_accepted_as_it_is():
+    """The host's own solution passes its own stop; the bias is read off the gradient
+    recomputed in float64, which agrees with the solve's incremental one."""
+    _, y, K32 = _problem(n=400)
+    C = np.full(400, 1.0)
+    done, _ = _solve(y, K32, C)
+    again = _finish(y, K32, C, done.alpha, done.n_iter)
+    assert again.converged and again.stop_reason == "converged"
+    np.testing.assert_array_equal(again.alpha, done.alpha)
+    assert again.n_iter == done.n_iter
+    assert abs(again.rho - done.rho) < 1e-12
+    assert again.max_kkt_violation < TOL
+
+
+@pytest.mark.parametrize("start", ["zero", "early", "perturbed"])
+def test_a_solution_that_fails_the_stop_is_finished_to_it(start):
+    """From α = 0, from a solve stopped early, and from a feasible perturbation of the
+    optimum: the warm-started loop reaches the same optimum, counting on from the
+    candidate's updates."""
+    _, y, K32 = _problem(n=500, seed=3)
+    K64 = K32.astype(np.float64)
+    C = np.full(500, 2.0)
+    done, _ = _solve(y, K32, C)
+    if start == "zero":
+        alpha, n_iter = np.zeros(500), 0
+    elif start == "early":
+        early, _ = _solve(y, K32, C, max_iter=done.n_iter // 3)
+        alpha, n_iter = early.alpha, early.n_iter
+    else:
+        alpha, n_iter = done.alpha.copy(), done.n_iter
+        free = np.flatnonzero((alpha > 0.1) & (alpha < 1.9))
+        i = next(t for t in free if y[t] > 0)
+        j = next(t for t in free if y[t] > 0 and t != i)
+        alpha[i] += 0.05
+        alpha[j] -= 0.05
+    finished = _finish(y, K32, C, alpha, n_iter)
+    assert finished.converged
+    assert finished.n_iter > n_iter
+    assert _kkt_violation(finished.alpha, y, C, K64) < TOL * 1.01
+    np.testing.assert_allclose(
+        _dual(finished.alpha * y, K64), _dual(done.alpha * y, K64), rtol=1e-6
+    )
+    assert abs(float(finished.alpha @ y)) < 1e-9
+
+
+def test_a_candidate_out_of_budget_is_reported_as_exhausted():
+    _, y, K32 = _problem(n=300)
+    C = np.full(300, 1.0)
+    early, _ = _solve(y, K32, C, max_iter=5)
+    finished = _finish(y, K32, C, early.alpha, 5, max_iter=5)
+    assert finished.stop_reason == "max_iter" and not finished.converged
+    assert finished.n_iter == 5
+    np.testing.assert_array_equal(finished.alpha, early.alpha)
+    assert finished.max_kkt_violation > TOL
+
+
+def test_a_non_finite_candidate_is_reported_for_a_fresh_solve():
+    _, y, K32 = _problem(n=200)
+    C = np.full(200, 1.0)
+    alpha = np.zeros(200)
+    alpha[3] = np.nan
+    finished = _finish(y, K32, C, alpha, 7)
+    assert finished.stop_reason == "non-finite" and not finished.converged
+
+
+def test_a_candidate_is_clipped_into_its_box():
+    """A double-float value a hair past its bound is the bound, in float64."""
+    _, y, K32 = _problem(n=300)
+    C = np.full(300, 1.0)
+    done, _ = _solve(y, K32, C)
+    nudged = done.alpha.copy()
+    nudged[done.alpha >= 1.0] += 1e-15
+    nudged[done.alpha <= 0.0] -= 1e-15
+    finished = _finish(y, K32, C, nudged, done.n_iter)
+    assert finished.alpha.min() >= 0.0 and finished.alpha.max() <= 1.0
+    np.testing.assert_array_equal(finished.alpha >= 1.0, done.alpha >= 1.0)
+
+
+def test_finishing_rejects_mismatched_sizes():
+    with pytest.raises(ValueError, match="agree in size"):
+        smo.finish_c_svc(
+            np.ones(3), np.ones(3), np.ones(3), np.ones((4, 4), np.float32), np.zeros(3), 0,
+            SMOConfig(),
+        )

@@ -9,11 +9,13 @@ to. Layer 1 never calls that fallback — ``_mlxlearn_allow_fallback`` is ``Fals
 so a capability mismatch raises.
 
 What is actually solved here is LIBSVM's C-SVC dual, exactly, by the SMO in
-``_solvers/smo.py``. There is no random-feature approximation, no subsampled
-training set and no ridge surrogate anywhere in this path. Those things make a
-different classifier; shipping one under this class's name would mean every
-accuracy number a user measured was measured on something other than what the
-name says.
+``_solvers/smo.py`` — or, for a multiclass rbf fit on the GPU, by the same SMO run for
+every one-vs-one pair at once in ``_kernels/_ovo.py``, each pair then held to the host
+solver's stop and finished there if it fails. There is no random-feature
+approximation, no subsampled training set and no ridge surrogate anywhere in this
+path. Those things make a different classifier; shipping one under this class's name
+would mean every accuracy number a user measured was measured on something other
+than what the name says.
 
 The three places where matching scikit-learn is fiddlier than it looks:
 
@@ -74,6 +76,7 @@ from .._common.validation import (
     validate_data,
     validate_float32_input,
 )
+from .._kernels import _ovo
 from .._kernels.kernels import (
     SUPPORTED_KERNELS,
     KernelBasis,
@@ -86,7 +89,7 @@ from .._kernels.kernels import (
     kernel_matrix,
     resolve_gamma,
 )
-from .._solvers.smo import SMOConfig, solve_c_svc
+from .._solvers.smo import SMOConfig, finish_c_svc, solve_c_svc
 from ..exceptions import (
     CapabilityError,
     InvalidInputError,
@@ -127,6 +130,21 @@ _DEFAULT_CACHE_SIZE = float(inspect.signature(_SkSVC.__init__).parameters["cache
 #: the box at C (:meth:`MLXSVCMixin._kernel_handoff`).
 _BOX_RTOL = 1e-9
 
+#: The largest ``C_t · m`` — a box times its pair's sample count, which bounds every
+#: gradient the pair's SMO can reach — the one-vs-one kernel is launched for. Its
+#: double-float state and float32 working-set key square gradient differences and
+#: divide them by quadratic coefficients as small as LIBSVM's ``tau``, 1e-12; a bound
+#: of 2⁴⁰ keeps that inside float32's range. Larger boxes run on the host solver, and
+#: so do boxes below 2⁻¹⁰⁰, whose double-float residual would leave float32's normal
+#: range, which the GPU flushes to zero.
+_OVO_MAX_BOX_ROWS = 2.0**40
+_OVO_MIN_BOX = 2.0**-100
+
+#: A dual variable counts as free, for :meth:`MLXSVCMixin._solve_pairs_on_gpu`'s bias
+#: rule, only this far inside its box, relative to the box: well above the residue a
+#: clipped update leaves in double-float (measured up to about 2⁻⁴², 2e-13).
+_OVO_FREE_MARGIN = 2.0**-32
+
 #: scikit-learn's message for a non-finite fitted model, verbatim so that code
 #: matching on it keeps working, plus what went wrong on the MLX path.
 _NON_FINITE_MODEL = (
@@ -161,6 +179,12 @@ def _libsvm_sample_weight(sample_weight, X: np.ndarray) -> np.ndarray | None:
             # NaN compares false and survives, for the validator to reject.
             sample_weight = np.where(raw < 0.0, 0.0, raw)
     return check_sample_weight(sample_weight, X, dtype=np.float64)
+
+
+def _has_free(alpha: np.ndarray, C: np.ndarray) -> bool:
+    """Whether any dual variable is free by more than :data:`_OVO_FREE_MARGIN` of its box."""
+    margin = _OVO_FREE_MARGIN * C
+    return bool(np.any((alpha > margin) & (alpha < C - margin)))
 
 
 def _is_none_or_balanced(class_weight) -> bool:
@@ -396,6 +420,12 @@ class MLXSVCMixin(BackendMixin):
         None of this is a property of the objective, which is solved correctly:
         the primal agrees with LIBSVM to 5.2e-07 relative and the KKT conditions
         hold on an independent check. See ``docs/benchmarks.md``.
+
+        Every figure above was measured on the host solver. A multiclass rbf fit on
+        the GPU now solves its pairs concurrently (:meth:`_solve_pairs_on_gpu`) — 2.1x
+        to 21x the host solver on the fits these rules send to MLX — and the rules have
+        not been recalibrated for it: they send to MLX exactly the fits they did
+        before, until a calibration on both scikit-learn versions moves them.
         """
         tuning = get_tuning()
 
@@ -583,6 +613,18 @@ class MLXSVCMixin(BackendMixin):
         effect at all and upward would mean a request for 32 GiB on an 8 GB
         laptop got granted.
         """
+        rows = self._kernel_cache_bytes() // (4 * max(n_samples, 1))
+        return int(max(2, min(max(n_samples, 2), rows)))
+
+    def _kernel_cache_bytes(self) -> int:
+        """The kernel memory a fit may hold at once: ``cache_size``, within the ceiling.
+
+        ``cache_size`` in bytes, capped by ``Tuning.smo_kernel_cache_max_bytes`` and
+        ``smo_kernel_cache_fraction`` of installed memory, and never below
+        ``smo_kernel_cache_min_bytes`` on a machine that will not report its memory.
+        It sizes the host solver's row cache (:meth:`_kernel_cache_rows`) and the
+        GPU one-vs-one solver's waves (:meth:`_solve_pairs_on_gpu`).
+        """
         tuning = get_tuning()
         budget = int(float(self.cache_size) * 1024 * 1024)
         ceiling = tuning.smo_kernel_cache_max_bytes
@@ -591,8 +633,7 @@ class MLXSVCMixin(BackendMixin):
             ceiling = min(ceiling, int(installed * tuning.smo_kernel_cache_fraction))
         # A machine that will not report its memory must still get a usable cache.
         ceiling = max(ceiling, tuning.smo_kernel_cache_min_bytes)
-        rows = min(budget, ceiling) // (4 * max(n_samples, 1))
-        return int(max(2, min(max(n_samples, 2), rows)))
+        return min(budget, ceiling)
 
     def _resolve_max_iter(self, n_samples: int) -> int:
         """Turn ``max_iter=-1`` into the concrete budget the solver needs.
@@ -722,10 +763,140 @@ class MLXSVCMixin(BackendMixin):
                     )
         return C_all
 
+    def _ovo_solver(self, class_rows, C_all, backend):
+        """The GPU one-vs-one solver for this fit, with its device, or ``None``.
+
+        ``(solver, device)`` when every pair can run in the kernel of
+        ``_kernels/_ovo.py``: three classes or more, the rbf kernel, a positive
+        ``max_iter``, work resolved to the GPU on an MLX release custom kernels may
+        run on and ``Tuning.metal_kernels`` on (:func:`~._kernels._ovo.pair_solver`),
+        every pair of at most :data:`~._kernels._ovo.MAX_PAIR_ROWS` samples whose
+        Gram fits the kernel cache (:meth:`_kernel_cache_bytes`) — the pairs the host
+        solver would have materialized — and boxes the kernel's state can hold
+        (:data:`_OVO_MAX_BOX_ROWS`). Anything else is ``None``, and the host solver
+        runs every pair, as before. The kernel compiles here, last, so a fit the
+        other rules refuse never builds it.
+        """
+        if len(class_rows) < 3 or self.kernel != "rbf" or self.max_iter == 0:
+            return None
+        device = inference_device(backend)
+        if device != "gpu":
+            return None
+        counts = sorted(rows.shape[0] for rows in class_rows)
+        largest = counts[-1] + counts[-2]
+        if largest > _ovo.MAX_PAIR_ROWS or 4 * largest * largest > self._kernel_cache_bytes():
+            return None
+        box = C_all[C_all > 0.0]
+        if not (box.min() >= _OVO_MIN_BOX and box.max() * largest <= _OVO_MAX_BOX_ROWS):
+            return None
+        solver = _ovo.pair_solver(device)
+        return None if solver is None else (solver, device)
+
+    def _solve_pairs_on_gpu(self, class_rows, pairs, C_all, backend, problem):
+        """Every one-vs-one subproblem at once, on the GPU; ``None`` where it cannot run.
+
+        The pairs run in the kernel of ``_kernels/_ovo.py``, in waves whose Grams fit
+        :meth:`_kernel_cache_bytes` together, and every pair's result is held to the
+        host solver's stop by :func:`~._solvers.smo.finish_c_svc`: gradient
+        recomputed in float64, full-set KKT test, and the host loop, warm-started,
+        finishing a pair that fails it. Two kinds of pair are solved again from
+        scratch by :meth:`_solve_pair`, as every pair is without the kernel: one whose
+        state went non-finite on the device, and one with no free dual variable —
+        every one at a bound, up to rounding. Such a pair's bias is not determined
+        by the problem: any value in an interval is optimal, and LIBSVM reads it off
+        whichever sample its own rounding left a hair inside a bound. Measured on a
+        pair of a 9-class fit at C = 0.19 with balanced class weights: LIBSVM and the
+        host loop took the bias, 0.46, from a sample 3.5e-15 below its box, and the
+        double-float state, whose rounding left a different sample 4e-14 below its
+        box, gave -0.38 — two KKT points, decision values 0.85 apart. The host loop
+        rounds as LIBSVM does, so it gives LIBSVM's. Returns one
+        :class:`~._solvers.smo.SMOState` per pair, in ``pairs``' order, and records
+        on the fit's event how many pairs the kernel solved, the host finished, and
+        :meth:`_solve_pair` solved again, for each reason.
+
+        No shrinking: the kernel and its finish take every sample at every step, so
+        ``shrinking`` changes nothing here. It is a speed heuristic of the host loop,
+        and neither the optimum nor the stopping test depends on it.
+        """
+        plan = self._ovo_solver(class_rows, C_all, backend)
+        if plan is None:
+            return None
+        solver, device = plan
+        spec = problem.basis.spec
+        rows = _ovo.sorted_rows(problem.X32, class_rows, device)
+        order = np.concatenate(class_rows)
+        k_diag = kernel_diagonal(spec, rows.host)
+        box = C_all[order]
+        sizes, boxes, diagonals, budgets, members = [], [], [], [], []
+        for i, j in pairs:
+            s_i, n_i, s_j, n_j = rows.pair(i, j)
+            sorted_index = np.concatenate([np.arange(s_i, s_i + n_i), np.arange(s_j, s_j + n_j)])
+            sizes.append(n_i + n_j)
+            boxes.append(box[sorted_index])
+            diagonals.append(k_diag[sorted_index])
+            budgets.append(self._resolve_max_iter(n_i + n_j))
+            members.append(n_i)
+        width = _ovo.threadgroup_width(max(sizes))
+        tol = float(self.tol)
+        states: list = [None] * len(pairs)
+        finished = non_finite = no_free = launches = 0
+        bounds = _ovo.waves(sizes, self._kernel_cache_bytes())
+        entries = np.asarray(sizes, dtype=np.int64) ** 2
+        capacity = max(int(entries[start:end].sum()) for start, end in bounds)
+        for start, end in bounds:
+            wave = solver.solve(
+                spec, rows, pairs[start:end], boxes[start:end], diagonals[start:end],
+                budgets[start:end], tol=tol, width=width, device=device, capacity=capacity,
+            )
+            launches += wave.launches
+            for k in range(start, end):
+                at = k - start
+                if wave.stop[at] == _ovo.STOP_NON_FINITE:
+                    non_finite += 1
+                    continue
+                config = SMOConfig(
+                    tol=tol, max_iter=budgets[k], cache_rows=max(2, sizes[k]), shrinking=False
+                )
+                y_pair = np.where(np.arange(sizes[k]) < members[k], 1.0, -1.0)
+                state = finish_c_svc(
+                    y_pair, boxes[k], diagonals[k], wave.grams[at], wave.pair_alpha(at),
+                    int(wave.n_iter[at]), config,
+                )
+                if state.stop_reason == "non-finite":
+                    non_finite += 1
+                elif not _has_free(state.alpha, boxes[k]):
+                    no_free += 1
+                else:
+                    finished += int(state.n_iter != wave.n_iter[at])
+                    states[k] = state
+            # The wave's device buffers go with it, before anything else is built.
+            del wave
+            for k in range(start, end):
+                if states[k] is None:
+                    i, j = pairs[k]
+                    index = np.concatenate([class_rows[i], class_rows[j]])
+                    states[k] = self._solve_pair(
+                        np.ascontiguousarray(problem.X32[index]),
+                        np.where(np.arange(sizes[k]) < members[k], 1.0, -1.0),
+                        C_all[index], spec, backend,
+                    )
+        self._amend_fit_event(
+            ovo_kernel_pairs=len(pairs),
+            ovo_host_finished=finished,
+            ovo_resolved_non_finite=non_finite,
+            ovo_resolved_no_free=no_free,
+            ovo_waves=len(bounds),
+            ovo_launches=launches,
+        )
+        return states
+
     def _fit_ovo(self, X64, y_encoded, C_all, backend, problem) -> None:
         """Fit every one-vs-one subproblem and assemble LIBSVM's model layout.
 
-        ``C_all`` is :meth:`_sample_box`'s per-sample box.
+        ``C_all`` is :meth:`_sample_box`'s per-sample box. On the GPU the pairs run
+        concurrently where the one-vs-one kernel serves the fit
+        (:meth:`_solve_pairs_on_gpu`); otherwise, and always elsewhere, one after
+        another on the host solver.
         """
         n_samples, n_features = X64.shape
         n_classes = int(len(self.classes_))
@@ -752,6 +923,7 @@ class MLXSVCMixin(BackendMixin):
         violation = np.empty(n_pairs, dtype=np.float64)
         fit_status = 0
         exhausted_budget = 0
+        solved = self._solve_pairs_on_gpu(class_rows, pairs, C_all, backend, problem)
 
         for k, (i, j) in enumerate(pairs):
             rows_i = class_rows[i]
@@ -760,9 +932,13 @@ class MLXSVCMixin(BackendMixin):
             y_pair = np.concatenate(
                 [np.ones(rows_i.shape[0]), -np.ones(rows_j.shape[0])]
             )
-            state = self._solve_pair(
-                np.ascontiguousarray(X32[index]), y_pair, C_all[index], compute_spec, backend
-            )
+            if solved is None:
+                state = self._solve_pair(
+                    np.ascontiguousarray(X32[index]), y_pair, C_all[index], compute_spec,
+                    backend,
+                )
+            else:
+                state = solved[k]
             if state.stop_reason == "non-finite":
                 # The solver saw an infinite or NaN kernel value or gradient, so
                 # there is no model to return; see the backstop below.
@@ -1009,13 +1185,15 @@ class SVC(MLXSVCMixin, _SkSVC):
         linear kernel does not read it, so ``gamma=0.0`` is accepted there.
     coef0 : float, default=0.0
     shrinking : bool, default=True
-        LIBSVM's shrinking heuristic, honored: samples pinned at a bound that
-        cannot form a violating pair are set aside periodically, so iterations
-        run over the active set only, and the full gradient is rebuilt before
-        the solver may stop. The stopping test always covers every sample, so
-        the optimum is the same either way. As in LIBSVM, the path to it can
-        differ within ``tol`` — the support-vector set at the margin and the
-        last digits of the decision values can move.
+        LIBSVM's shrinking heuristic, honored by the host solver: samples pinned
+        at a bound that cannot form a violating pair are set aside periodically,
+        so iterations run over the active set only, and the full gradient is
+        rebuilt before the solver may stop. The stopping test always covers every
+        sample, so the optimum is the same either way. As in LIBSVM, the path to
+        it can differ within ``tol`` — the support-vector set at the margin and
+        the last digits of the decision values can move. The GPU's one-vs-one
+        kernel (see Notes) does not shrink, whatever this says: it is a speed
+        heuristic, and nothing about the optimum or the stop depends on it.
     probability : bool, default=False
         ``True`` is not implemented; see Notes. On scikit-learn 1.9, where the
         parameter is deprecated and defaults to the ``"deprecated"`` sentinel,
@@ -1045,6 +1223,11 @@ class SVC(MLXSVCMixin, _SkSVC):
         Under ``patch_sklearn()`` a ``cache_size`` below the default of 200 hands
         the fit to scikit-learn: rows a smaller cache cannot hold are evaluated on
         demand, a device call at a time, and LIBSVM was faster there.
+
+        On the GPU's one-vs-one kernel (see Notes) it bounds the pairs' Grams held
+        on the device at once: pairs run in waves whose Grams fit it together, and
+        any value that holds the largest pair's Gram gives the same model, bit for
+        bit.
     class_weight : dict or "balanced", default=None
     verbose : bool, default=False
         Accepted and ignored.
@@ -1055,7 +1238,8 @@ class SVC(MLXSVCMixin, _SkSVC):
         Python, and uncapped it would turn a fit scikit-learn finishes in a minute
         into hours. A fit that stops on the budget sets ``fit_status_=1`` and names
         the budget in its ConvergenceWarning; pass a larger explicit ``max_iter``
-        to keep going.
+        to keep going. The GPU's one-vs-one kernel spends the same budget per pair,
+        its steps and the host's finish together.
     decision_function_shape : {"ovo", "ovr"}, default="ovr"
         Read at call time, not frozen at fit time, matching scikit-learn. Ignored
         for two classes, which always return a 1-D decision function.
@@ -1077,7 +1261,8 @@ class SVC(MLXSVCMixin, _SkSVC):
     intercept_ : ndarray of shape (n_classes * (n_classes - 1) / 2,), float64
     class_weight_ : ndarray of shape (n_classes,), float64
     n_iter_ : ndarray of shape (n_pairs,), int32
-        SMO updates performed per one-vs-one subproblem.
+        SMO updates performed per one-vs-one subproblem: on the GPU's one-vs-one
+        kernel, its steps plus any the host took to finish the pair.
     fit_status_ : int
         ``0`` if every one-vs-one subproblem converged, ``1`` if any hit
         ``max_iter`` — which, as in scikit-learn, also raises a
@@ -1110,6 +1295,21 @@ class SVC(MLXSVCMixin, _SkSVC):
     read the raw inner product, and data whose variation it cannot resolve in
     float32 — a large offset with a small spread, for ``linear`` and ``poly`` —
     is refused. See ``docs/fp32_policy.md`` §2.4.
+
+    **Multiclass fits on the GPU.** With three classes or more, the rbf kernel and
+    a fit resolved to the GPU, every one-vs-one pair is solved at once, in a Metal
+    kernel of mlxlearn's own — one threadgroup per pair, the whole working set at
+    every step — rather than pair after pair by the host solver. Its dual variables
+    and gradient are double-float, about 48 bits, and it ranks working-set
+    candidates in float32, so its path can part from the host solver's where two
+    candidates tie that closely; each pair's result is therefore held to the host
+    solver's stop — the gradient recomputed in float64, the full-set KKT test — and
+    finished by the host solver when it fails. A pair with no free dual variable,
+    whose bias LIBSVM takes from its own rounding, is solved again by the host
+    solver, as is one that went non-finite. The fit's diagnostics event counts
+    them (``ovo_*`` in ``fit_event_.extra``). Pairs of more than 4 096 rows, or
+    whose Gram does not fit ``cache_size``, and MLX 0.31, keep the host solver for
+    every pair. See ``docs/fp32_policy.md`` §2.5.
 
     **Where inference runs.** A ``predict`` or ``decision_function`` batch of at most
     2²⁵ query rows × support vectors × features is evaluated on the host, in NumPy

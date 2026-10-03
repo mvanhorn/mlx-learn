@@ -242,9 +242,10 @@ any `*.random.seed` — MLX's, NumPy's or the standard library's — anywhere in
 ## mlxlearn's own Metal kernels
 
 `mx.fast.metal_kernel` compiles a Metal source string at run time, so the wheel stays
-pure Python. One kernel ships: the neighbor search's fused tile and selection
-(`_kernels/_topk.py`). Every kernel goes through `_kernels/_metal.py`, which holds these
-rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shipped.
+pure Python. Two kernels ship: the neighbor search's fused tile and selection
+(`_kernels/_topk.py`), and SVC's one-vs-one SMO, every pair of a multiclass rbf fit in one
+launch (`_kernels/_ovo.py`). Every kernel goes through `_kernels/_metal.py`, which holds
+these rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shipped.
 
 - **The gate is the resolved device, and MLX 0.32.** `_metal.kernels_enabled(device)` takes
   the `"gpu"` or `"cpu"` the caller resolved and passes its built-in path — never MLX's
@@ -262,6 +263,12 @@ rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shippe
   MLX picks for a shape can change in one — keeps MLX's own selection until someone runs
   them there and adds it. A run-time self-test does not replace the list: the behaviors
   depend on the shapes, which a test small enough for a first query does not reach.
+  **A kernel whose every answer the host verifies needs only the gate.** The one-vs-one
+  SMO keeps its state in double-float, which no MLX operation reproduces, so nothing it
+  returns is trusted: every pair is held to the host solver's float64 stop and finished
+  there if it fails (`smo.finish_c_svc`, `docs/fp32_policy.md` §2.5). A release that
+  changed its behavior could cost time, never an answer, so it runs on any MLX the
+  gate admits.
 - **`#pragma METAL fp contract(off)` first** (`_metal.PRELUDE`, prepended by
   `_metal.metal_kernel`). Metal's default mode fuses `a*b + c` written as one expression
   into an fma, which rounds once where MLX rounds twice; `math_mode` is pinned to
@@ -269,7 +276,10 @@ rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shippe
   `metal::precise::` for `exp`, `log`, `sqrt` and `rsqrt`: on 0.32 the bare names are the
   fast approximations. Use no float atomics, merge in a fixed order, and call
   `simd_min`/`simd_max` on 32-bit values only — Apple GPUs reduce a 64-bit one through
-  float32.
+  float32. Reduce with maxima where you can: a maximum with ties broken by index is the
+  same in any order, which is what makes the one-vs-one kernel's pairs independent of
+  their threadgroup width and launch. `fma` appears only where a kernel means it — the
+  exact product error of a double-float multiply.
 - **Inputs of at least eight elements** (`_metal.pad_min8`); sizes travel in one int32
   array of eight (`_metal.int_params`), never as template values. MLX declares a shorter
   input `constant`, which compiles a second variant of the source. Sources are ASCII and
@@ -286,10 +296,26 @@ rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel shippe
   compile once; a kernel that does not build (MLX raises `RuntimeError`) or answers
   wrongly is not used in that process. That narrow `except` is a capability probe on
   fixed data, like `gpu_available()`, never a guard around a query's own work.
+- **Launches stay short and bounded.** A kernel that iterates (the one-vs-one SMO) runs
+  a step budget per launch — 2 048 steps first, then about a quarter second's worth by
+  the last launch's time per step — and the host relaunches with the state on the device,
+  so no command buffer nears the GPU watchdog; every launch advances or stops what it
+  runs, a pair it neither advanced nor stopped is the host's to finish, and a hard
+  launch count backs both.
+- **Device memory has a budget the documentation already promises.** The one-vs-one
+  kernel holds every pair's Gram it solves at once, so it solves them in **waves** whose
+  packed Grams fit `cache_size` (the kernel cache a fit already sizes, within the
+  `Tuning.smo_kernel_cache_*` ceiling), builds them in groups whose transients fit
+  `Tuning.distance_block_bytes`, and gives every wave of a fit one buffer size, so MLX's
+  buffer cache reuses it. The buffers are locals, freed when the fit returns, and the
+  existing cache-release rule (`release_mlx_cache`) applies on the way out.
 - **Tests prove which path ran**, by spying on the kernel's launches, and compare its
-  answers with the switch off bit for bit — indices, distance bits and diagnostics counts
-  (`tests/unit/test_fused_selection.py`). On MLX 0.31, the minimum-versions job's, a test
-  checks that no kernel object is ever built.
+  answers with the switch off — bit for bit where the kernel promises identity: indices,
+  distance bits and diagnostics counts (`tests/unit/test_fused_selection.py`); to the
+  host solver and to scikit-learn at the `docs/fp32_policy.md` §3 tolerances where it
+  promises an optimum, with every gate miss bit for bit the host loop
+  (`tests/unit/test_ovo_kernel.py`, `tests/parity/test_svc_ovo.py`). On MLX 0.31, the
+  minimum-versions job's, tests check that no kernel object is ever built.
 
 ## Compliance
 
