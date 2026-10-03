@@ -543,7 +543,7 @@ def minimize(
 
     for _ in range(config.max_iter):
         direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
-        gtd = float(grad @ direction)
+        gtd = _dot(grad, direction)
         if not gtd < 0.0 or not math.isfinite(gtd):
             # The stored curvature no longer describes this objective — reset to
             # (preconditioned) steepest descent rather than taking a step that
@@ -552,7 +552,7 @@ def minimize(
             y_history.clear()
             rho_history.clear()
             direction = _two_loop(grad, s_history, y_history, rho_history, diagonal)
-            gtd = float(grad @ direction)
+            gtd = _dot(grad, direction)
 
         # Unit for a quasi-Newton direction. With no curvature pairs — the first
         # (steepest-descent) iteration — the direction's length is arbitrary, and the
@@ -566,7 +566,7 @@ def minimize(
         if s_history:
             t_init = 1.0
         else:
-            d_l2 = float(np.sqrt(direction @ direction))
+            d_l2 = float(np.sqrt(_dot(direction, direction)))
             t_init = 1.0 / d_l2 if d_l2 > 0.0 and math.isfinite(1.0 / d_l2) else 1.0
 
         def probe(t: float, _x=x, _d=direction):
@@ -576,7 +576,7 @@ def minimize(
             if np.array_equal(x_t, _x):
                 return None
             f_t, g_t = evaluate(x_t)
-            return x_t, f_t, g_t, float(g_t @ _d)
+            return x_t, f_t, g_t, _dot(g_t, _d)
 
         search = _LineSearch(probe, objective, gtd, config)
         step = search.run(t_init)
@@ -595,8 +595,8 @@ def minimize(
 
         s = step.x - x
         y = step.g - grad
-        ys = float(s @ y)
-        if ys > config.min_curvature * math.sqrt(float(s @ s)) * math.sqrt(float(y @ y)):
+        ys = _dot(s, y)
+        if ys > config.min_curvature * math.sqrt(_dot(s, s)) * math.sqrt(_dot(y, y)):
             s_history.append(s)
             y_history.append(y)
             rho_history.append(1.0 / ys)
@@ -647,23 +647,39 @@ def _two_loop(grad, s_history, y_history, rho_history, diagonal=None):
     for s, y, rho in zip(
         reversed(s_history), reversed(y_history), reversed(rho_history), strict=True
     ):
-        alpha = rho * float(s @ q)
+        alpha = rho * _dot(s, q)
         alphas.append(alpha)
         q -= alpha * y
 
     y_last = y_history[-1]
     if diagonal is None:
-        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ y_last), 1e-300))
+        gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, y_last), 1e-300))
         r = gamma * q
     else:
         y_scaled = diagonal * y_last
-        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ y_scaled), 1e-300))
+        gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, y_scaled), 1e-300))
         r = gamma * (diagonal * q)
 
     for s, y, rho, alpha in zip(
         s_history, y_history, rho_history, reversed(alphas), strict=True
     ):
-        beta = rho * float(y @ r)
+        beta = rho * _dot(y, r)
         r += s * (alpha - beta)
 
     return -r
+
+
+def _dot(a: np.ndarray, b: np.ndarray) -> float:
+    """``a @ b`` as a Python float, its floating-point flags not reported.
+
+    NumPy 2.2 on macOS raised divide-by-zero, overflow and invalid-value warnings
+    from these products once the vectors reached about 900 entries — on every
+    iteration of a wide fit — with finite operands and a finite result: flags its
+    BLAS left set. A product that really is not finite — a gradient from ``fun``
+    that was not, or a direction that ran away — is found without the flag: a slope
+    that is not finite resets the direction, a curvature pair that is not finite is
+    skipped, and a ``max|g|`` that is not finite never meets ``tol``, so the run
+    stops unconverged with it in ``grad_max_abs``. A NaN raises no flag anyway.
+    """
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        return float(a @ b)

@@ -649,7 +649,10 @@ class _RbfRefiner:
             lo, hi = int(first[r]), int(last[r])
             cols = self.order[lo:hi]
             if g * k64 * (left_sq[r] + self.sq[hi - 1]) <= _U:
-                dots = self.rows[lo:hi] @ left64[r]
+                # Float32 rows, widened: their products cannot overflow float64, so
+                # a flag NumPy's BLAS raises here is spurious (smo._gradient).
+                with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                    dots = self.rows[lo:hi] @ left64[r]
                 squared = np.maximum(left_sq[r] + self.sq[lo:hi] - 2.0 * dots, 0.0)
                 tile[r, cols] = np.exp(-g * squared)
                 continue
@@ -967,7 +970,12 @@ def _contract_tile(tile, weights: np.ndarray, out: np.ndarray, refine=None) -> N
         refine(host)
     for start in range(0, host.shape[0], _HOST_CONTRACT_ROWS):
         stop = start + _HOST_CONTRACT_ROWS
-        out[start:stop] = host[start:stop].astype(np.float64) @ weights
+        rows = host[start:stop].astype(np.float64)
+        # A flag NumPy's BLAS raises on a finite tile is spurious (smo._gradient); a
+        # tile that overflowed — a poly power — leaves these values non-finite, for
+        # the caller's finiteness check to report.
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out[start:stop] = rows @ weights
 
 
 def _combine_pipelined(
@@ -1052,7 +1060,11 @@ def _host_tile(
     — so only the BLAS's rounding of the inner products differs. Returns a
     writable float32 array.
     """
-    dot = left32 @ right32.T
+    # Within check_query_range's bound no partial sum overflows, so a flag NumPy's
+    # BLAS raises here is spurious (smo._gradient) — and the device's product, which
+    # this one stands in for, raises none.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        dot = left32 @ right32.T
     if spec.kernel == "linear":
         return dot
     if spec.kernel == "rbf":

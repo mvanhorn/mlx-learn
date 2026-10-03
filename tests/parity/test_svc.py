@@ -541,6 +541,45 @@ def test_rbf_on_tight_clusters_far_apart_matches_scikit_learn(backend):
     np.testing.assert_array_equal(mlx.predict(X), ref.predict(X))
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_fit_and_inference_raise_no_floating_point_warnings(backend, monkeypatch):
+    """NumPy 2.2's BLAS on macOS left floating-point flags set on finite products, and
+    the rbf refinement, the host's contraction of each device tile and the host tiles
+    of a small batch warned on every fit and every call.
+
+    The clusters of the test above, whose entries are refined at fit and at
+    inference alike; a count, not a record of the tiles, says the refinement ran.
+    """
+    import mlxlearn._kernels.kernels as kernels_module
+
+    refine = kernels_module._RbfRefiner.__call__
+    refinements = 0
+
+    def counted(self, tile, left):
+        nonlocal refinements
+        refinements += 1
+        return refine(self, tile, left)
+
+    monkeypatch.setattr(kernels_module._RbfRefiner, "__call__", counted)
+    rng = np.random.default_rng(0)
+    centers = rng.uniform(-100.0, 100.0, size=(20, 64))
+    cluster = rng.integers(0, 20, 1200)
+    X = centers[cluster] + 0.05 * rng.standard_normal((1200, 64))
+    y = (cluster % 2) ^ (rng.random(1200) < 0.2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        model = _fit(backend, X, y, gamma=1.0 / (2 * 64 * 0.05**2))
+        assert refinements > 0
+        # Device tiles, then the host's: svc_host_inference_work picks the path.
+        for work, compute in ((0, None), (2**62, "numpy-float32")):
+            refinements = 0
+            with tuning_context(svc_host_inference_work=work):
+                model.predict(X[:300])
+                model.decision_function(X[:300])
+            assert get_backend_diagnostics()[-1].extra.get("compute") == compute
+            assert refinements > 0
+
+
 POLY_OFFSET = {"kernel": "poly", "degree": 3, "coef0": 1.0, "gamma": "auto", "max_iter": 20_000}
 
 

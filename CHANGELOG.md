@@ -249,6 +249,16 @@ come first under **Changed**.
   scikit-learn 1.9, where the stock class advertises array-API support.
 - An internal helper, `as_float32(copy=True)`, returned an alias for `np.matrix`,
   `np.memmap`, pandas and `__array__` inputs.
+- On NumPy 2.2 on macOS, `LogisticRegression` and `SVC` no longer warn "divide by zero",
+  "overflow" or "invalid value encountered in matmul" on finite data: the Accelerate BLAS
+  left those flags set after products whose results were finite, on every iteration of
+  a wide `LogisticRegression` fit and on `SVC`'s rbf refinement, `predict` and
+  `decision_function`, so a filter that escalates `RuntimeWarning` failed them. Only the
+  products are silenced, and a result that really is not finite is still reported
+  without the flag: by `SVC`'s finiteness checks, and by a `LogisticRegression` fit that
+  stops unconverged with a `ConvergenceWarning`. `LogisticRegression`'s inference is
+  scikit-learn's own code, and warns as stock scikit-learn does. NumPy 2.5 raises none of
+  them.
 
 #### Runtime: configuration, devices, diagnostics
 
