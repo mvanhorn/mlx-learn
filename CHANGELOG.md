@@ -985,12 +985,11 @@ come first under **Changed**.
   between-class variance along some direction is five times the within-class variance
   or more, where the fit ends far from the curvature it starts with (ten-class digits:
   35-42 evaluations became 65-116 without that limit). It serves 2 to 1 024 features on
-  both MLX devices
-  and MLX 0.31, with no kernel of its own: the model is built on the host, on one BLAS
-  thread, while the device computes the first evaluation, and the device graph and the
-  stopping test are the diagonal path's — so a fit it turns away is that path bit for
-  bit. Every fit's `fit_event_.extra` says which path it took and why
-  (`preconditioner`, `preconditioner_reason`). Private switch:
+  both MLX devices and MLX 0.31, with no kernel of its own: the model is built on the
+  host, on one BLAS thread, while the device computes the first evaluation, and the
+  device graph and the stopping test are the diagonal path's — so a fit it turns away is
+  that path bit for bit. Every MLX fit's `fit_event_.extra` says which path it took and
+  why (`preconditioner`, `preconditioner_reason`). Private switch:
   `MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0`.
 
 ### Removed

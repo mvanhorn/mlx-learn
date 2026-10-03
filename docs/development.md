@@ -33,12 +33,13 @@ The layering is enforced, not merely described:
   constructing an estimator. SciPy and threadpoolctl, scikit-learn's own dependencies,
   are imported only inside the functions that use them; a switch a solver honors, such
   as `LogisticRegression`'s dense preconditioner (`Tuning.lbfgs_dense_preconditioner`),
-  is a field of its config, which the estimator fills from `get_tuning()`. `_kernels` may read `get_tuning()` for block sizes, which are
-  private typed knobs, not user configuration. The gate is static, so an indirect read —
-  `inference_device(backend)` or `use_device(None)` resolving the configured device — is
-  still on the reviewer. Neither layer makes one: solvers pass their config's device
-  explicitly, and an estimator resolves its device with `inference_device()` and passes it
-  to the kernels and the neighbor index as `device=`.
+  is a field of its config, which the estimator fills from `get_tuning()`. `_kernels` may
+  read `get_tuning()` for block sizes, which are private typed knobs, not user
+  configuration. The gate is static, so an indirect read — `inference_device(backend)` or
+  `use_device(None)` resolving the configured device — is still on the reviewer. Neither
+  layer makes one: solvers pass their config's device explicitly, and an estimator
+  resolves its device with `inference_device()` and passes it to the kernels and the
+  neighbor index as `device=`.
 - A `sklearn._*` import outside `patching/` fails CI. Inside `patching/` it must be on an
   explicit allowlist in `tools/compliance.py`, which is currently empty.
 - Layer 1 raises on a capability mismatch. Layer 2 falls back. The whole difference is
