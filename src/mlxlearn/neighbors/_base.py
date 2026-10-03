@@ -174,31 +174,38 @@ class MLXNeighborsMixin(BackendMixin):
         against stock scikit-learn with every MLX call made after the GPU has
         idled — as the benchmark's are, and as a call made after other work is.
 
-        **Narrow data** — fewer than ``knn_min_features`` (64) features — goes to
-        scikit-learn at any size. Up to 15 features that is mostly its KD-tree:
-        with ``algorithm="auto"`` scikit-learn builds one whenever there are at most
-        15 features, ``n_neighbors < n_samples // 2`` and the metric is one the tree
+        **Narrow data** — fewer than ``knn_min_features`` (16) features — goes to
+        scikit-learn at any size. Mostly that is its KD-tree: with
+        ``algorithm="auto"`` scikit-learn builds one whenever there are at most 15
+        features, ``n_neighbors < n_samples // 2`` and the metric is one the tree
         supports, and the tree answered a single row faster than MLX at 2-8
         features at every size measured (0.13x-0.43x for MLX), and at 12 features up
         to 65 536 rows; at 2-5 features it won every batch. Those fits are recorded
         as ``"tree-wins"``. The rest go to scikit-learn's brute force, recorded as
-        ``"below-crossover"``: at 2-8 features it answered 16-query batches faster
-        than MLX at every size measured up to 524 288 rows (0.59x-0.88x on one
-        version or both), and at 16-48 features, even at a million rows, some batch
-        lost on one version or both — 16 queries at 0.73x-0.84x, 1024 at
-        0.62x-0.79x — on Gaussian, clustered or uniform data.
+        ``"below-crossover"``: at 2 features it answered some batch faster than MLX
+        at every size measured, up to 2 097 152 rows, and at 8 features up to
+        131 072 rows (0.62x-0.91x on one version or both). The floor stood at 64
+        features until the first pass selected its candidates with the fused kernel
+        (:mod:`mlxlearn._kernels._topk`): at 16-48 features and a million rows
+        batches of 16 and 1 024 queries had lost (0.62x-0.84x); with it, every
+        batch won or tied there on both versions, at k = 1-50 and on every law of
+        data the fit-time probe passes (1.26x at worst).
 
         **Everything narrower than** ``knn_wide_features`` (256) needs at least
         ``knn_narrow_min_samples`` rows (1 000 000). An idled GPU runs a call of a
         few milliseconds' work up to two or three times slower than a busy one, so on
         a mid-size batch MLX loses to a stock search that costs about as much: at
-        16-128 features a batch of 8-512 queries lost on one version or both at 42
-        of the 50 sizes measured below 1 000 000 rows (down to 0.44x), 400 000 rows
-        at 64 and 96 features among them; from 1 000 000 rows at 64-128 features
-        every batch of 1-1024 queries won or tied on both, on all three kinds of
-        data (0.94x at worst). At 256 features the stock search costs enough that
-        every batch won or tied from 12 000 rows. These fits are recorded as
-        ``"below-crossover"``.
+        16-128 features a batch of 1-128 queries lost on one version or both at 27
+        of the 50 sizes measured below 1 000 000 rows (down to 0.55x), all of them
+        at 180 000 rows or fewer. From 262 144 rows the dense grid's batches won,
+        but below 2**22 (query row, training row) pairs a query runs MLX's own
+        selection, and the largest such batch lost at 262 144 x 16 (15 queries,
+        0.90x) and only tied at 400 000 rows; and below a million rows nothing but
+        Gaussian data at k = 10 was measured. From 1 000 000 rows at 16-128
+        features every batch of 1-4096 queries won or tied on both versions, at
+        every k up to 50 and on every law the fit-time probe passes. At 256 features the stock search costs enough
+        that every batch won or tied from 33 000 rows, the first size the work
+        floor lets through. These fits are recorded as ``"below-crossover"``.
 
         **Everything from** ``knn_wide_features`` **features** needs at least
         ``knn_wide_min_samples`` rows (8 192). Right after a stock query, whose
@@ -211,13 +218,13 @@ class MLXNeighborsMixin(BackendMixin):
         ``knn-batches``). The size floors alone send these fits to MLX from about
         1 500 features. Recorded as ``"below-crossover"``.
 
-        What the rules give up is real: batches of 1024 queries and more rarely
-        lose below 256 features at these sizes (up to 4.3x), and on Gaussian data,
+        What the rules give up is real: batches of 1024 queries and more never
+        lost below 256 features at these sizes (2.0x-15x), and on Gaussian data,
         a KD-tree's worst case, the MLX scan answers 256 queries many times faster
         than the tree from 8 features. Imported directly, the estimator searches on
         MLX regardless, which is what a workload known to query in large batches
-        should do. See ``docs/benchmarks.md``, tables ``knn``, ``knn-narrow`` and
-        ``knn-tree``.
+        should do. See ``docs/benchmarks.md``, tables ``knn``, ``knn-boundary``,
+        ``knn-narrow`` and ``knn-tree``.
 
         A fit wide or tall enough for MLX is then held to the measured range of
         ``n_neighbors`` (:meth:`_neighbors_handoff`).
@@ -352,7 +359,7 @@ class MLXNeighborsMixin(BackendMixin):
         brute force from ``knn_wide_features`` features, and at a million rows and
         16 or 32 features lost batches of 16 queries and, of counts, of 256 and
         1 024 (0.53x-0.85x). Narrower than ``knn_wide_features`` it goes to
-        scikit-learn too — conservatively at 64-255 features, where it was not
+        scikit-learn too — conservatively at 33-255 features, where it was not
         measured on MLX.
 
         Recorded as ``"data-probe"``. Only patched mode acts on this, as on the

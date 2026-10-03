@@ -352,10 +352,18 @@ def test_smoke_lands_on_both_sides_of_every_mlx_threshold():
         for c, r in knn
     )
     assert any(r == "handoff:tree-wins" for _, r in knn)
-    # Too narrow for MLX whatever the rows, past the widths a KD-tree takes.
+    # Too narrow for MLX whatever the rows, where scikit-learn would build no tree;
+    # and, from that width, tall enough for MLX.
     assert any(
         r == "handoff:below-crossover"
-        and 16 <= c.n_features < tuning.knn_min_features
+        and c.n_features < tuning.knn_min_features
+        and c.option("sklearn_algorithm") == "brute"
+        and c.n_samples >= tuning.knn_narrow_min_samples
+        for c, r in knn
+    )
+    assert any(
+        r == "mlx"
+        and c.n_features == tuning.knn_min_features
         and c.n_samples >= tuning.knn_narrow_min_samples
         for c, r in knn
     )

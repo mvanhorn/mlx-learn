@@ -220,6 +220,11 @@ _PROBE_CONTROLS = 8
 #: Batch sizes of the `knn-probe` grid: those a few uncertified rows in a hundred lose.
 _PROBE_QUERIES = (16, 32, 64, 128, 256)
 
+#: (query row, training row) pairs from which a neighbor query's first pass selects with
+#: the fused kernel (mlxlearn._kernels.distance._FUSED_MIN_PAIRS); below, MLX's own
+#: selection runs. The `knn-boundary` grid times the largest batch below it.
+_FUSED_MIN_PAIRS = 1 << 22
+
 #: Batch sizes of the `knn-query-k` grid, and those it times the first large-k query at.
 _QUERY_K_BATCHES = (1, 16, 64, 256, 1_024)
 _QUERY_K_FIRST = (1, 64, 1_024)
@@ -532,15 +537,30 @@ GRIDS: dict[str, Grid] = {
         ),
         layout="knn-data",
     ),
+    "knn-boundary": Grid(
+        "Neighbor queries on MLX against stock brute force between the `knn` grid's 262 144 "
+        "and 1 000 000 rows, at 16, 48 and 128 features, Gaussian data: the largest batch "
+        "whose query rows times training rows stay below 2²², which MLX's own selection "
+        "answers instead of the fused kernel — 15, 10 and 6 queries — beside 8. At 262 144 "
+        "rows the `knn` grid's batches of 8 and 16 straddle it: the "
+        "`knn_narrow_min_samples` rule.",
+        tuple(
+            Point("knn", n, d, tuple(sorted({-(-_FUSED_MIN_PAIRS // n) - 1, 8})))
+            for n in (262_144, 400_000, 600_000)
+            for d in (16, 48, 128)
+        ),
+        layout="knn-q",
+    ),
     "knn-k": Grid(
         "Neighbor queries on MLX against stock brute force at k = 1-200 (the other grids "
-        "use k = 10), every batch size from 1 to 4096: at the narrow corner of the size "
-        "rules and on short, wide training sets up to 4 096 features — the "
-        "`knn_max_neighbors` rule.",
+        "use k = 10), every batch size from 1 to 4096: at a million rows and more from 16 "
+        "to 128 features, and on short, wide training sets up to 4 096 features — the "
+        "`knn_max_neighbors` rule, and k for the `knn_min_features` rule.",
         tuple(
             point
             for shapes, ks in (
-                (((1_000_000, 64), (1_000_000, 96), (1_000_000, 128), (1_600_000, 64)),
+                (((1_000_000, 16), (1_000_000, 32), (1_000_000, 48), (1_600_000, 32),
+                  (1_000_000, 64), (1_000_000, 96), (1_000_000, 128), (1_600_000, 64)),
                  (1, 5, 10, 50, 100, 200)),
                 (((24_000, 256), (100_000, 256), (8_192, 1_024), (6_000, 2_048), (4_096, 2_048),
                   (4_096, 3_072), (4_096, 4_096)),
@@ -560,16 +580,17 @@ GRIDS: dict[str, Grid] = {
         "Neighbor queries on MLX against stock brute force on data with mild structure — "
         "rows repeated about twice, one column on 100 times the scale of the rest, 100 "
         "clusters of std 0.4 and 0.5 — beside Gaussian data, at shapes on and near the "
-        "size floors, every batch size from 1 to 4096: few enough rows go uncertified "
-        "that most of a 16-64-query batch is not, and most batches still hold one. "
-        "`probe` is what the fit-time probe found: the `knn_probe_max_uncertified` rule.",
+        "size floors and at a million rows from 16 features, every batch size from 1 to "
+        "4096: few enough rows go uncertified that most of a 16-64-query batch is not, and "
+        "most batches still hold one. `probe` is what the fit-time probe found: the "
+        "`knn_probe_max_uncertified` rule, and data for the `knn_min_features` rule.",
         tuple(
             point
             for data in ("gauss", "dup2", "scaled100", "blobs0.5", "blobs0.4")
             for point in _knn_points(
                 [(24_000, 256), (30_000, 256), (65_536, 256), (100_000, 256), (12_000, 512),
                  (50_000, 512), (16_384, 768), (8_192, 1_024), (4_096, 2_048),
-                 (1_000_000, 64)],
+                 (1_000_000, 16), (1_000_000, 32), (1_000_000, 48), (1_000_000, 64)],
                 DENSE_QUERIES,
                 max_work=1.2e11,
                 data=data,
