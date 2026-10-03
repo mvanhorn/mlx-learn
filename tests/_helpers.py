@@ -193,6 +193,13 @@ def logistic_data(law, n, d, n_classes=2, seed=0):
     ``breast_cancer``: scikit-learn's, in raw units, upsampled with 5% jitter when
     ``n`` exceeds their size; ``digits`` relabels ``digit % K`` (``digit >= 5`` for
     two classes) and has ``d = 64``, ``breast_cancer`` ``d = 30``.
+
+    Laws a sample of the rows reads wrong: ``rare``, 16 AR(0.9) numerics beside one
+    categorical of ``d − 16`` Zipf(1.5)-distributed levels, one-hot, each level shifting
+    the logits — at 60 000 rows the rarest levels have a handful of rows, or none;
+    ``twosource``, AR(0.99) rows followed by as many N(0, I) rows, in that order; and
+    ``dominant``, AR(0.9) features with the first in units of 1e8, a timestamp's or a
+    currency's scale beside unit columns.
     """
     rng = np.random.default_rng(seed)
     if law == "iso":
@@ -222,6 +229,26 @@ def logistic_data(law, n, d, n_classes=2, seed=0):
         return X, _linear_labels((X - X.mean(0)) / (X.std(0) + 1e-12), n_classes, rng)
     if law == "random":
         return _ar_features(n, d, 0.9, rng), rng.integers(0, n_classes, size=n)
+    if law == "rare":
+        levels = d - 16
+        numeric = _ar_features(n, 16, 0.9, rng)
+        share = 1.0 / np.arange(1, levels + 1) ** 1.5
+        level = rng.choice(levels, size=n, p=share / share.sum())
+        T = 1 if n_classes == 2 else n_classes
+        raw = numeric @ rng.normal(size=(16, T)) / 4.0 + rng.normal(size=(levels, T))[level]
+        X = np.hstack([numeric, np.eye(levels)[level]])
+        if n_classes == 2:
+            return X, (raw[:, 0] + rng.logistic(size=n) > 0).astype(int)
+        return X, (raw + rng.gumbel(size=(n, T))).argmax(axis=1)
+    if law == "twosource":
+        head = n // 2
+        X = np.vstack([_ar_features(head, d, 0.99, rng), rng.normal(size=(n - head, d))])
+        return X, _linear_labels(X, n_classes, rng)
+    if law == "dominant":
+        X = _ar_features(n, d, 0.9, rng)
+        y = _linear_labels(X, n_classes, rng)
+        X[:, 0] *= 1e8
+        return X, y
     if law == "blobs":
         y = rng.integers(0, n_classes, size=n)
         return rng.normal(scale=2.0, size=(n_classes, d))[y] + rng.normal(size=(n, d)), y
@@ -249,10 +276,11 @@ def logistic_newton_oracle(X, y, n_classes, *, C=1.0, sample_weight=None, fit_in
     """The penalized logistic optimum in float64 by damped Newton: ``(coef, intercept)``.
 
     scikit-learn's objective (the binary one for two classes, the unconstrained
-    multinomial otherwise), with minimum-norm steps where the Hessian is singular —
-    the multinomial's sum over classes, an unpenalized intercept. The independent
-    reference the preconditioner's parity tests measure "closer to the optimum"
-    against: written from the definitions, not from either solver.
+    multinomial otherwise), with minimum-norm steps, in the metric of the Hessian's
+    diagonal, where the Hessian is singular — the multinomial's sum over classes, an
+    unpenalized intercept. The independent reference the preconditioner's parity
+    tests measure "closer to the optimum" against: written from the definitions, not
+    from either solver.
     """
     X = np.asarray(X, dtype=np.float64)
     n = X.shape[0]
@@ -303,7 +331,14 @@ def logistic_newton_oracle(X, y, n_classes, *, C=1.0, sample_weight=None, fit_in
     for _ in range(max_iter):
         if np.max(np.abs(g)) < tol:
             break
-        step = np.linalg.lstsq(hessian(prob), -g, rcond=1e-13)[0]
+        H = hessian(prob)
+        # Each step is solved in the metric of the Hessian's diagonal, one scale per
+        # feature shared by the classes. Unscaled, a column in units of 1e8 put every
+        # other direction below the solve's cutoff and the oracle never moved them
+        # (J 1.017 where both mlxlearn paths reached 0.660); a scale per class would
+        # let the steps drift along the sum over the classes, which they never enter.
+        scale = np.tile(np.sqrt(np.maximum(np.diag(H).reshape(T, p).mean(axis=0), 1e-300)), T)
+        step = np.linalg.lstsq(H / np.outer(scale, scale), -g / scale, rcond=1e-13)[0] / scale
         t, slope = 1.0, float(g @ step)
         while True:
             f_new, g_new, prob_new = value_grad(theta + t * step)

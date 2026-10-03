@@ -330,6 +330,32 @@ def test_a_deferred_dense_preconditioner_of_the_wrong_type_is_an_error():
         minimize(fun, mx.zeros((16,)), LBFGSConfig(), dense_preconditioner=lambda: np.ones(16))
 
 
+def test_a_dense_operator_whose_search_fails_falls_back_to_the_diagonal():
+    """An operator whose Newton step is 1e30 times too long: the line search, 32
+    evaluations long, cannot shrink it to any decrease, and the run would stop on a
+    line-search failure far from the minimizer. It leaves the operator instead, starts
+    again from the same point as the diagonal path would, and converges there."""
+    scale = np.array([4.0, 1.0, 1.0, 9.0])
+    fun = _quadratic(scale)
+    x0 = mx.array([1.0, 1.0, -2.0, 0.5])
+    config = LBFGSConfig(tol=1e-6)
+    wrong = DensePreconditioner(lambda v: 1e30 * v)
+
+    state = minimize(fun, x0, config, preconditioner=1.0 / scale, dense_preconditioner=wrong)
+
+    assert state.fallback and state.converged and state.stop_reason == "gtol"
+    assert state.preconditioner == "diagonal"
+    np.testing.assert_allclose(np.asarray(state.x), np.zeros(4), atol=1e-5)
+
+
+def test_a_dense_run_that_converges_never_falls_back():
+    fun, A, _ = _correlated_quadratic()
+    state = minimize(fun, mx.zeros((16,)), LBFGSConfig(tol=1e-4), dense_preconditioner=(
+        DensePreconditioner(lambda v: np.linalg.solve(A, v))
+    ))
+    assert state.converged and state.preconditioner == "dense" and not state.fallback
+
+
 def test_the_callback_sees_every_accepted_iterate():
     seen = []
     state = minimize(

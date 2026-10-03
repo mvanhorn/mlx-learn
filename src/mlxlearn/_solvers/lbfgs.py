@@ -91,6 +91,15 @@ The operator may be *deferred*: a zero-argument callable, resolved once, after t
 first evaluation of ``fun``, and only if the run is going to take a step. A caller
 whose model is built from the data can then build it while the device computes that
 first evaluation, instead of before it.
+
+A model can be wrong where its caller could not see it. So a run on the operator
+that would stop without converging — a failed line search, or the stall that ends a
+run on the float32 floor — while ``max|g|`` is still above what float32 resolves
+(:data:`GRADIENT_RESOLUTION`) does not stop: it leaves the operator, clears the
+curvature pairs gathered under it, and searches again from the same point as a run
+given only ``preconditioner`` would start. It *falls back*, once, and says so
+(:attr:`LBFGSState.fallback`). A run that converges, reaches the floor, or uses up
+``max_iter`` on the operator is unchanged by it.
 """
 
 from __future__ import annotations
@@ -231,9 +240,14 @@ class LBFGSState:
         ``max|gradient|`` at ``x0``, the scale :data:`GRADIENT_RESOLUTION` is
         relative to.
     preconditioner : str
-        The initial inverse Hessian the iterations started from: ``"identity"``,
+        The initial inverse Hessian the iterations ended on: ``"identity"``,
         ``"diagonal"`` or ``"dense"``. A run that took no step reports the one it
-        was given before any deferred operator was resolved.
+        was given before any deferred operator was resolved, and one that left a
+        dense operator (``fallback``) the one it left it for.
+    fallback : bool
+        Whether the run left a dense operator for ``preconditioner``: it would have
+        stopped above the float32 floor without converging, and went on from the
+        same point without the operator instead (module docstring).
     """
 
     x: Any
@@ -245,6 +259,7 @@ class LBFGSState:
     stop_reason: str
     initial_grad_max_abs: float = math.nan
     preconditioner: str = "identity"
+    fallback: bool = False
 
     @property
     def at_resolution_floor(self) -> bool:
@@ -524,7 +539,8 @@ def minimize(
         ``preconditioner`` when there is one. A zero-argument callable is resolved
         once, after the first evaluation of ``fun`` and only if the run takes a
         step, and returns a :class:`DensePreconditioner` or ``None``; ``None`` keeps
-        ``preconditioner``.
+        ``preconditioner``. A run that fails on the operator above the float32 floor
+        falls back to ``preconditioner`` (module docstring).
 
     Returns
     -------
@@ -564,6 +580,7 @@ def minimize(
                 "dense" if dense is not None
                 else "diagonal" if diagonal is not None else "identity"
             ),
+            fallback=fallback,
         )
 
     x = np.asarray(x0, dtype=np.float32).astype(np.float64).reshape(-1)
@@ -579,6 +596,7 @@ def minimize(
             diagonal = None
     dense = None
     deferred = None
+    fallback = False
     if isinstance(dense_preconditioner, DensePreconditioner):
         dense = dense_preconditioner
     elif dense_preconditioner is not None:
@@ -611,7 +629,20 @@ def minimize(
     reference_objective = objective
     stalled = 0
 
-    for _ in range(config.max_iter):
+    def unresolved() -> bool:
+        """Whether ``max|g|`` is still above what float32 resolves (``at_resolution_floor``)."""
+        return grad_max > GRADIENT_RESOLUTION * initial_grad_max
+
+    def leave_dense() -> None:
+        """Fall back (module docstring): the curvature pairs gathered under the dense
+        operator go with it, and the next search starts as the diagonal path's first."""
+        s_history.clear()
+        y_history.clear()
+        rho_history.clear()
+
+    # Every pass either accepts a step, returns, or — once at most — leaves the dense
+    # operator and tries again from the same point, so this counts accepted steps.
+    while n_iter < config.max_iter:
         direction = _two_loop(grad, s_history, y_history, rho_history, diagonal, dense)
         gtd = float(grad @ direction)
         if not gtd < 0.0 or not math.isfinite(gtd):
@@ -660,7 +691,12 @@ def minimize(
             # the iteration count as if work had been done. Which kind of stall it
             # is depends on what the slope predicted: a decrease already below the
             # objective's resolution is the float32 floor, anything larger is a
-            # genuine failure — typically a gradient inconsistent with the value.
+            # genuine failure — typically a gradient inconsistent with the value. On a
+            # dense operator, above the floor, it is the operator that failed: fall back.
+            if dense is not None and unresolved():
+                leave_dense()
+                dense, fallback, stalled = None, True, 0
+                continue
             predicted = abs(gtd) * t_init
             floor = predicted <= config.objective_noise * abs(objective)
             return finish("float32-floor" if floor else "line-search-failure")
@@ -696,6 +732,10 @@ def minimize(
             else:
                 stalled += 1
                 if stalled >= config.stall_iterations:
+                    if dense is not None and unresolved():
+                        leave_dense()
+                        dense, fallback, stalled = None, True, 0
+                        continue
                     return finish("float32-floor")
 
     return finish("max_iter")

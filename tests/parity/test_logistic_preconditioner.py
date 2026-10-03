@@ -15,8 +15,17 @@ close to the float64 optimum (:func:`tests._helpers.logistic_newton_oracle`) as 
 scikit-learn and the diagonal path are — the arbiter neither solver can grade itself
 by. Every case also asserts which path ran.
 
+The grid includes the data a sample of the rows reads wrong — rare one-hot levels,
+rows ordered by source or by label, one column on a scale of its own, a few rows
+carrying most of the weight — where the model, built from at most 8 192 rows, once
+stepped orders of magnitude too far or read the separation of the data's head alone.
+No case here is separable in §3.3's sense: separable classes never reach the dense
+path, because the separation limit turns them away, and those cases assert that the
+diagonal path ran, bit for bit.
+
 The default run takes a fast subset; ``pytest -m slow`` the whole grid, and the
-routed-size cells, among them the ten-class digits the gate turns away.
+routed-size cells, among them the ten-class digits the gate turns away and the laws
+a sample reads wrong at ``C`` from 1 to ``inf``.
 """
 
 from __future__ import annotations
@@ -41,8 +50,6 @@ OBJECTIVE_RTOL = 1e-5
 COEF_ATOL, COEF_RTOL = 2e-3, 5e-3
 PROBA_ATOL = 2e-3
 MIN_AGREEMENT = 0.995
-#: §3.3: on separable data the objective is compared by its absolute gap.
-SEPARABLE_ATOL = 1e-4
 
 
 @dataclass(frozen=True)
@@ -55,9 +62,9 @@ class Case:
     C: float = 1.0
     tol: float = 1e-4
     fit_intercept: bool = True
-    weights: str = ""  # "", "sample" or "class"
-    expect: str = "correlated"  # the preconditioner_reason the gate must give
-    separable: bool = False
+    weights: str = ""  # "", "sample", "class", "heavy" or "heavy-many"
+    order: str = ""  # "" or "label": the rows sorted by class
+    expect: str = "correlated"  # the preconditioner_reason the fit must report
 
     def __str__(self) -> str:
         return self.name
@@ -75,10 +82,17 @@ FAST = [
     Case("colscale-K3-tol6", "colscale", 10000, 16, K=3, tol=1e-6),
     Case("breast_cancer", "breast_cancer", 569, 30),
     Case("digits-K3", "digits", 1797, 64, K=3),
-    Case("digits-K10", "digits", 1797, 64, K=10, expect="separated", separable=True),
-    Case("blobs-K3", "blobs", 10000, 16, K=3, expect="uncorrelated", separable=True),
-    Case("blobsar-K3", "blobsar", 10000, 16, K=3, expect="separated", separable=True),
+    Case("digits-K10", "digits", 1797, 64, K=10, expect="separated"),
+    Case("blobs-K3", "blobs", 10000, 16, K=3, expect="uncorrelated"),
+    Case("blobsar-K3", "blobsar", 10000, 16, K=3, expect="separated"),
     Case("iso-binary", "iso", 10000, 32, expect="uncorrelated"),
+    # Data a sample of the rows reads wrong, at sizes where it is a sample.
+    Case("rare-binary-C1e4", "rare", 12000, 116, C=1e4),
+    Case("twosource-K3-16383", "twosource", 16383, 16, K=3),
+    Case("digits-K3-label-sorted-16383", "digits", 16383, 64, K=3, order="label"),
+    Case("blobsar-binary-label-sorted-16383", "blobsar", 16383, 32, order="label",
+         expect="separated"),
+    Case("dominant-K3", "dominant", 10000, 16, K=3),
 ]
 
 FULL = [
@@ -112,22 +126,23 @@ FULL = [
     Case("breast_cancer-tol6", "breast_cancer", 569, 30, tol=1e-6),
     Case("digits-binary-upsampled", "digits", 20000, 64),
     Case("digits-K3-upsampled-tol6", "digits", 20000, 64, K=3, tol=1e-6),
-    Case("blobs-K10-tol6", "blobs", 10000, 16, K=10, tol=1e-6, expect="uncorrelated",
-         separable=True),
-    Case("blobsar-K10-tol6", "blobsar", 10000, 16, K=10, tol=1e-6, expect="separated",
-         separable=True),
-    Case("blobsar-K5-C1e4", "blobsar", 10000, 32, K=5, C=1e4, expect="separated",
-         separable=True),
-    Case("blobsar-binary", "blobsar", 10000, 32, expect="separated", separable=True),
+    Case("blobs-K10-tol6", "blobs", 10000, 16, K=10, tol=1e-6, expect="uncorrelated"),
+    Case("blobsar-K10-tol6", "blobsar", 10000, 16, K=10, tol=1e-6, expect="separated"),
+    Case("blobsar-K5-C1e4", "blobsar", 10000, 32, K=5, C=1e4, expect="separated"),
+    Case("blobsar-binary", "blobsar", 10000, 32, expect="separated"),
     Case("iso-K3-tol6", "iso", 10000, 16, K=3, tol=1e-6, expect="uncorrelated"),
+    Case("twosource-binary-12000", "twosource", 12000, 16),
+    Case("dominant-binary-Cinf", "dominant", 10000, 16, C=math.inf),
+    Case("ar90-K3-heavy-weights", "ar90", 10000, 16, K=3, weights="heavy", expect="separated"),
+    Case("ar90-K3-heavy-many-weights", "ar90", 10000, 16, K=3, weights="heavy-many"),
 ]
 
 #: Sizes patched dispatch sends to MLX: multinomial from 60 000 rows, binary from
 #: 200 000 at up to 64 features. The ten-class digits are the cells the gate's
 #: separation limit was set for (35-42 evaluations became 65-116 without it).
 ROUTED = [
-    Case("digits-K10-60000", "digits", 60000, 64, K=10, expect="separated", separable=True),
-    Case("digits-K10-200000", "digits", 200000, 64, K=10, expect="separated", separable=True),
+    Case("digits-K10-60000", "digits", 60000, 64, K=10, expect="separated"),
+    Case("digits-K10-200000", "digits", 200000, 64, K=10, expect="separated"),
     Case("digits-K3-60000", "digits", 60000, 64, K=3),
     Case("ar90-K10-60000", "ar90", 60000, 64, K=10),
     Case("lowrank20-K3-60000", "lowrank20", 60000, 64, K=3),
@@ -135,6 +150,22 @@ ROUTED = [
     Case("ar99-binary-200000", "ar99", 200000, 16),
     Case("colscale-binary-200000", "colscale", 200000, 64),
     Case("breast_cancer-200000", "breast_cancer", 200000, 30),
+    Case("twosource-K3-65535", "twosource", 65535, 16, K=3),
+    Case("digits-K3-label-sorted-65535", "digits", 65535, 64, K=3, order="label"),
+]
+
+#: The laws a sample of the rows reads wrong, at routed sizes and C from 1 to inf: rare
+#: one-hot levels (16 numerics, 200 Zipf levels), one column in units of 1e8, and a few
+#: rows of 60 000 carrying most of the weight.
+ROUTED_SAMPLED = [
+    Case(f"{name}-C{C:g}", law, 60000, d, K=3, C=C, weights=weights, expect=expect)
+    for name, law, d, weights, expect in (
+        ("rare-K3-60000", "rare", 216, "", "correlated"),
+        ("dominant-K3-60000", "dominant", 16, "", "correlated"),
+        ("ar90-K3-60000-heavy-weights", "ar90", 16, "heavy", "separated"),
+        ("ar90-K3-60000-heavy-many-weights", "ar90", 16, "heavy-many", "correlated"),
+    )
+    for C in (1.0, 100.0, 1e4, math.inf)
 ]
 
 
@@ -145,6 +176,27 @@ def _data(case: Case):
         sw = np.random.default_rng(1).exponential(size=len(y)) + 0.05
     elif case.weights == "class":
         cw = "balanced"
+    elif case.weights.startswith("heavy"):
+        # A few rows carry most of the weight, and the curvature is mostly theirs: a
+        # sample of 8 192 spread over the rows would mostly miss them, so it is spread
+        # over the weight. Ten of them, unlike the rest, with 90% of it make the
+        # weighted classes nearly separable — ten points in sixteen dimensions — and
+        # the separation limit turns that fit away; three hundred of the data's own
+        # rows, three times as far out, with 75% of it do not.
+        count, share = (10, 0.9) if case.weights == "heavy" else (300, 0.75)
+        rng = np.random.default_rng(2)
+        heavy = rng.choice(len(y), size=count, replace=False)
+        X = X.copy()
+        if case.weights == "heavy":
+            X[heavy] = 3.0 * rng.normal(size=(count, X.shape[1]))
+        else:
+            X[heavy] *= 3.0
+        sw = np.ones(len(y))
+        sw[heavy] = share / (1.0 - share) * (len(y) - count) / count
+    if case.order == "label":
+        order = np.argsort(y, kind="stable")
+        X, y = X[order], y[order]
+        sw = None if sw is None else sw[order]
     return X, y, sw, cw
 
 
@@ -214,7 +266,7 @@ def _assert_policy(case, X, y, sw, cw, *, device="gpu"):
     assert extra["preconditioner_reason"] == case.expect, extra
     assert extra["preconditioner"] == ("dense" if case.expect == "correlated" else "diagonal")
     assert diagonal.fit_event_.extra["preconditioner_reason"] == "disabled"
-    if case.expect != "correlated":
+    if case.expect not in ("correlated", "fallback"):
         # The gate turned it away: the diagonal path, bit for bit.
         np.testing.assert_array_equal(model.coef_, diagonal.coef_)
         np.testing.assert_array_equal(model.intercept_, diagonal.intercept_)
@@ -301,6 +353,12 @@ def test_preconditioned_fits_meet_the_policy_full_grid(case):
 @pytest.mark.slow
 @pytest.mark.parametrize("case", ROUTED, ids=str)
 def test_preconditioned_fits_meet_the_policy_at_routed_sizes(case):
+    _assert_policy(case, *_data(case))
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("case", ROUTED_SAMPLED, ids=str)
+def test_fits_a_sample_reads_wrong_meet_the_policy_at_routed_sizes(case):
     _assert_policy(case, *_data(case))
 
 

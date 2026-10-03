@@ -193,9 +193,13 @@ freed array whose address was reused produced predictions computed on the wrong 
 silently. Everything cached lives on the fitted estimator and dies with it. What a process
 may keep is a description of itself, keyed on nothing a fit passes in: the compiled Metal
 kernels (below), the host thread pool (`_common/host.py`), and the BLAS pools that
-`LogisticRegression`'s dense-preconditioner plan holds to one thread while it runs
-(`_solvers/logistic.py`), with the lock that stops two plans on two threads from
-restoring the thread count out of order.
+`LogisticRegression`'s dense-preconditioner plan holds to one thread while it builds its
+model (`_solvers/logistic.py`), with the lock that stops two plans on two threads from
+restoring the thread count out of order. That limit is process-wide, and the lock orders
+mlxlearn's plans only: another thread's threadpoolctl limit that begins inside one and
+ends after it restores the plan's single thread when it ends. So the plan takes it only
+around the model, which only a fit the gate admits builds, and not at all where every
+pool already runs one thread or where there is no pool to limit (Accelerate).
 
 **No aliasing of a caller's array.** `fit` copies. An estimator that holds a view of the
 caller's buffer changes its own predictions when the caller mutates their array.

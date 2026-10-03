@@ -323,13 +323,15 @@ The second pays where features are correlated, which ten curvature pairs learn s
 and costs where classes are nearly separable: the fit ends confident, with a curvature
 that is a small and differently shaped fraction of the zero-start one, and there it took
 more evaluations than the diagonal and stopped at a higher objective. So a **gate**
-decides, in two stages, on the host. The first reads at most 1 024 strided rows of the
-first 256 features and asks for curvature the diagonal leaves to the pairs: a mean
-squared within-class correlation above 0.01, a Cholesky-pivot condition estimate of the
-within-class correlations (64 columns, its sampling floor divided out) above 1.5, or a
-spread above 20 in the curvature the coordinates show after the diagonal. Only then is
-the model built, from `min(n, max(8 192, 4·d))` strided rows, and asked how separable the
-classes are in its own metric: the largest eigenvalue λ of `W⁻¹B`, between- over
+decides, in two stages, on the host. The first reads at most 1 024 rows of the first 256
+features, spread evenly over all the rows — over their cumulative weight when there are
+sample weights, so that each drawn row stands for the same weight — and asks for
+curvature the diagonal leaves to the pairs: a mean squared within-class correlation
+above 0.01, a Cholesky-pivot condition estimate of the within-class correlations (64
+columns, its sampling floor divided out) above 1.5, or a spread above 20 in the
+curvature the coordinates show after the diagonal. Only then is the model built, from
+`min(n, max(8 192, 4·d))` rows spread the same way, and asked how separable the classes
+are in its own metric: the largest eigenvalue λ of `W⁻¹B`, between- over
 within-class scatter along the most separating direction, read from the eigenvalues
 `λ/(1 + λ)` of the class means' scatter against the model's curvature. At `λ ≥ 5` —
 two classes 2√5 within-class deviations apart, overlapping by about 1% — the fit keeps
@@ -337,25 +339,62 @@ the diagonal. The penalty enters through the model, so a strongly regularized fi
 which cannot become confident, reads as less separable. Designs of one feature or more
 than 1 024 keep the diagonal too.
 
+**What a sample misses.** Rows taken at a stride from the start of the data never saw
+its tail — up to half of it just below twice the sample's size — and on data ordered by
+source or by label the gate read only the head: at 16 383 rows a label-sorted, nearly
+separable problem read λ = 0.04 for 34 and was admitted, and AR(0.99) rows followed by
+as many independent ones took 48 evaluations where in random order they took 9. Spread
+over every row, both read the same either way. Weighted rows spread by row were missed
+when few: ten rows of 60 000 carrying 90% of the weight left the model without most of
+the curvature (164 evaluations to the diagonal's 30, and a stop 1.9e-4 above the
+optimum); drawn by weight, they are 90% of the sample, and those classes — ten points
+in sixteen dimensions — read as nearly separable. And no sample of 8 192 rows sees what
+is rare in 60 000: a one-hot level of a handful of rows has a curvature of about `c·p`,
+which the sample reads as `c·p²`, the centering's, or not at all, and the model's step
+along it was orders of magnitude too long. With 100-200 Zipf levels beside AR(0.9)
+numerics, 20 000-60 000 rows and `C` from 100 to `inf`, the dense path took 140-1 667
+evaluations, and four fits of five ended on a line-search failure or a stall, up to 90%
+above the optimum, where the diagonal path converged in 161-1 105. So one more pass over
+every row computes each feature's weighted second moment, and a feature the sample reads
+at less than half of it gets the whole design's curvature instead: the same five took
+14-21 evaluations and converged at the optimum.
+
 **Numerics.** The model is accumulated in float64 up to 256 features and in float32
 above, from the float32 design the device holds; rows whose norm exceeds three times the
 median count as if they had it (on heavy-tailed features a handful of rows would be the
-whole model, and those rows carry almost no curvature near the optimum); a ridge of 1e-10
-of the mean curvature (1e-6, then 1e-4, for a float32 sample) keeps `C = inf` and
-rank-deficient designs factorizable; a feature whose Cholesky pivot is below 1e-6 of its
-variance (1e-3 in float32) is an exact dependency — one-hot blocks beside an intercept —
-and gets the mean curvature, since `1/ridge` there would amplify the gradient's float32
-rounding (‖coef‖ = 1 260 against 16.7 on one-hot data at `C = inf` without it); and `H₀`
-is the explicit inverse of the factorization. All of it runs on the host while the
-device computes the first evaluation, with the host's BLAS on one thread (on a stack
-whose NumPy and SciPy each ship an OpenBLAS — NumPy 1.23 and SciPy 1.10 — a plan of
-4 ms otherwise took a median 0.28 s). The device graph and every stopping rule are the
-diagonal path's, and a fit the gate turns away is the diagonal path bit for bit.
-`fit_event_.extra` records `preconditioner` (`"dense"` or `"diagonal"`),
-`preconditioner_reason` (`"correlated"`, or why not: `"uncorrelated"`, `"separated"`,
-`"width"`, `"disabled"`, `"non-finite"`, `"not-positive-definite"`, `"no-step"`) and
-`n_fev`. `MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0` (`Tuning.lbfgs_dense_preconditioner`)
-turns it off, for tests and bisection.
+whole model, and those rows carry almost no curvature near the optimum), in the sample
+and in the pass over every row alike; a ridge of 1e-10 of each feature's own curvature
+(1e-6, then 1e-4, for a float32 sample), and never less than of the curvatures'
+geometric mean, keeps `C = inf` and rank-deficient designs factorizable — relative to
+their mean, as it first was, one column in units of 1e8 swamped every other feature, the
+separation read 0.005 for 1.05, and the fit stopped on `max_iter` 1.4% to 4.6% above
+the optimum; the geometric mean keeps a constant column, which centering in float64
+leaves a residue of 1e-13 collinear with the intercept, from a step of its own; a
+feature whose Cholesky pivot is below 1e-6 of its variance (1e-3 in float32) is an exact
+dependency — one-hot blocks beside an intercept — and gets the mean curvature, since
+`1/ridge` there would amplify the gradient's float32 rounding (‖coef‖ = 1 260 against
+16.7 on one-hot data at `C = inf` without it); and `H₀` is the explicit inverse of the
+factorization. All of it runs on the host while the device computes the first
+evaluation. The model's products and factorizations run with the host's BLAS on one
+thread (on a stack whose NumPy and SciPy each ship an OpenBLAS — NumPy 1.23 and SciPy
+1.10 — a plan of 4 ms otherwise took a median 0.28 s): a process-wide limit, so it is
+held only around the model, only where a pool runs more than one thread, and one plan at
+a time. Another thread's own threadpoolctl limit that begins inside it and ends after it
+still restores its single thread when it ends — the gate, which every fit runs, holds
+none. The device graph and every stopping rule are the diagonal path's, and a fit the
+gate turns away is the diagonal path bit for bit.
+
+**When the model is wrong anyway.** A run on it that would stop above the float32
+floor without converging — a failed line search, or the stall that otherwise ends a run
+on the floor — leaves it instead, with the curvature pairs gathered under it, and goes
+on from the same point as the diagonal path starts. It falls back once, and only above
+the floor: a run that converges, reaches the floor or uses up `max_iter` on the model is
+unchanged. `fit_event_.extra` records `preconditioner` (`"dense"`, or `"diagonal"` for
+the path the fit ended on), `preconditioner_reason` (`"correlated"`, `"fallback"`, or
+why not: `"uncorrelated"`, `"separated"`, `"width"`, `"disabled"`, `"non-finite"`,
+`"not-positive-definite"`, `"no-step"`) and `n_fev`.
+`MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0` (`Tuning.lbfgs_dense_preconditioner`) turns it
+off, for tests and bisection.
 
 **What it changes, measured.** The gate was calibrated on objective evaluations, which
 do not depend on the machine: 582 fits over 23 data laws — isotropic, AR(0.5/0.9/0.99),
@@ -364,31 +403,39 @@ features, overlapping, nearly separable and separable blobs, random and noisy la
 raw and standardized digits (2-10 classes, 600-200 000 rows) and breast cancer — at
 2-20 classes, 569-200 000 rows, 16-256 features, `C` from 1e-4 to `inf`, `tol` 1e-4
 and 1e-6, sample and class weights and `fit_intercept=False`, each against a float64
-Newton solution and scikit-learn 1.9. The dense path ran on 348 fits and took 13 327
-evaluations where the diagonal took 59 313 (median 5.1× fewer; 4.9× on the 223 fits at
-sizes patched dispatch routes). It took more on 6: +27 at `tol=1e-6` on column-scaled
-data, where that `tol` is below the float32 floor — the dense run ended at the float64
-optimum (8.6e-16 relative, against the diagonal's 1.1e-8 and a stall above the floor)
-and spent its last 80 evaluations in line searches at the floor; +12 of 1 154 on Cauchy
-features, both runs stopping on `max_iter`; and +1 to +4 on four fits of 9-91
-evaluations. Without the separation limit, ten-class digits at 20 000-200 000 rows took
-65-116 evaluations where the diagonal took 35-42.
+Newton solution and scikit-learn 1.9. The dense path ran on 348 fits and took 13 694
+evaluations where the diagonal took 59 313 (median 4.9× fewer; 4.75× on the 223 fits at
+sizes patched dispatch routes); 12 of them fell back. It took more on 4: +12 at
+`tol=1e-6` on column-scaled data, where that `tol` is below the float32 floor and both
+runs ended on the floor, the dense one 1.1e-8 lower relative, and +1 to +4 on three fits
+of 9-24 evaluations. Without the separation limit, ten-class digits at 20 000-200 000
+rows took 65-116 evaluations where the diagonal took 35-42. The corrections to what a
+sample misses, the ridge and the fallback cost the grid 367 evaluations against the model
+as first integrated (13 327), which admitted the same 348 fits: they are for data the
+grid did not cover. On 168 fits of such data — 100-200 Zipf one-hot levels at
+20 000-200 000 rows, rows ordered by source, by label or with a differently scaled tail
+at 12 000-65 535 rows, one column in units of 1e6-1e8, ten rows carrying 90% of the
+weight, a constant column, each at `C` from 1 to `inf` — the dense path ran on 124 and
+took 2 937 evaluations where the diagonal took 22 471, more on none, never stopped at a
+higher objective, and converged wherever the diagonal did. The 44 it turned away are
+separable classes sorted by label and the heavy weights, which make the weighted classes
+nearly separable.
 
 The objective and the stopping test are unchanged, but on an ill-conditioned problem at
 the default `tol` a different path stops at a different point. Of the 335 fits the dense
-path ran on non-separable data, 308 stopped closer to the float64 optimum than the
-diagonal path did (median relative gap 9.0e-8 against 2.1e-6). Of the 307 on which both
-it and scikit-learn converged, 9 missed scikit-learn's objective by more than §3's
+path ran on non-separable data, 302 stopped closer to the float64 optimum than the
+diagonal path did (median relative gap 7.0e-8 against 2.1e-6). Of the 308 on which both
+it and scikit-learn converged, 11 missed scikit-learn's objective by more than §3's
 `rtol=1e-5`, against 25 of the same fits on the diagonal path: all at the default `tol`,
-on problems whose three solvers stopped 1.5e-5 to 1.5e-3 above the optimum. At
-`tol=1e-6` the 34 dense fits on which scikit-learn converged too met §3's objective,
-probability and label tolerances, every one; on 7 more scikit-learn did not converge in
-5 000 iterations. The dense path stopped above the float32 floor, with a
-`ConvergenceWarning`, on one fit the diagonal path converged on — 569 rows of breast
-cancer in raw units with sample weights, whose `tol` of 1e-4 is below the 1.9e-4 that
-float32 resolves there, so that reaching it at all is a matter of rounding; it stopped
-at 2.2 times that — and the diagonal path did so on 35 that the dense path converged
-on.
+on problems whose three solvers stopped 1.5e-5 to 1.4e-3 above the optimum. At
+`tol=1e-6` the 35 dense fits on which scikit-learn converged too met §3's objective,
+probability and label tolerances, every one (`max|Δp|` 9.8e-4, labels 0.99997); on 7
+more scikit-learn did not converge in 5 000 iterations. No fit the diagonal path
+converged on stopped short on the dense path, and 35 went the other way. Of the 12 that
+fell back — eight on Cauchy features, three on raw breast cancer, one on raw digits at
+`C = inf` and `tol=1e-6` — two then converged; the diagonal path converges on none of
+the other ten either, whose runs on both paths stall where float32 no longer resolves
+their progress.
 
 ### 2.4 Kernel evaluation (`SVC`)
 

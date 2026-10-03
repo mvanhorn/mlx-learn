@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import threading
+import types
 
 import numpy as np
 import pytest
@@ -21,6 +22,7 @@ import mlxlearn
 from mlxlearn._common.config import Tuning, _tuning_from_env, tuning_context
 from mlxlearn._common.device import gpu_available
 from mlxlearn._solvers import logistic
+from mlxlearn._solvers.lbfgs import DensePreconditioner
 from mlxlearn._solvers.logistic import LogisticConfig, solve_logistic
 from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.patching._estimators import LogisticRegression as PatchedLogisticRegression
@@ -164,14 +166,122 @@ def test_null_directions_get_neutral_curvature(plans):
     """Three one-hot blocks beside an intercept are three exact dependencies. Without a
     penalty the model's curvature along them is only its ridge, and its inverse would
     amplify the gradient's rounding there by 1/ridge (‖coef‖ 1 260 against 16.7 when
-    it did); they get the model's mean curvature instead."""
+    it did); they get the model's mean curvature instead. Every level is common, so the
+    sample reads each as the whole design does and no floor disturbs the dependencies."""
     X, y = logistic_data("onehot", 10000, 68, 2, seed=5)
     dense = _solve(X, y, 2, C=math.inf, tol=1e-6, device="cpu")
     diagonal = _solve(X, y, 2, C=math.inf, tol=1e-6, device="cpu", dense_preconditioner=False)
 
     assert dense.preconditioner == "dense" and plans[0].stats["null_directions"] == 3
+    assert plans[0].stats["floored"] == 0
     assert np.linalg.norm(dense.coef) <= 1.5 * np.linalg.norm(diagonal.coef)
     assert dense.objective <= diagonal.objective * (1 + 1e-6)
+
+
+# ------------------------------------------------- what a sample of the rows misses
+
+
+@pytest.mark.parametrize("n, rows", [(8192, 8192), (16383, 8192), (65535, 8192), (1000, 999),
+                                     (600, 512)])
+def test_the_sample_spreads_over_every_row(n, rows):
+    """A strided prefix never saw the last ``n − stride·rows`` rows: 8 191 of 16 383."""
+    index = logistic._sample_rows(n, rows)
+    assert index.shape == (rows,) and index[0] == 0
+    assert np.all(np.diff(index) >= 1) and index[-1] < n
+    assert index[-1] >= n - math.ceil(n / rows)
+
+
+def test_weighted_rows_are_drawn_in_proportion_to_their_weight():
+    """Ten rows of 60 000 carrying 90% of the weight are 90% of the sample, rows of zero
+    weight are never drawn, and unit weights draw exactly the unweighted rows."""
+    n, rows = 60000, 8192
+    weights = np.ones(n)
+    weights[1::7] = 0.0
+    heavy = np.arange(5, n, n // 10)[:10]
+    weights[heavy] = 9.0 * (n - 10) / 10
+    index = logistic._sample_rows(n, rows, weights)
+
+    assert np.all(np.diff(index) >= 0) and 0 <= index[0] and index[-1] < n
+    # Systematic sampling draws each row ⌊share·rows⌋ or ⌈share·rows⌉ times.
+    share = weights[heavy].sum() / weights.sum()
+    assert np.mean(np.isin(index, heavy)) == pytest.approx(share, abs=len(heavy) / rows)
+    assert not np.any(weights[index] == 0.0)
+    np.testing.assert_array_equal(
+        logistic._sample_rows(16383, rows, np.ones(16383)), logistic._sample_rows(16383, rows)
+    )
+
+
+@pytest.mark.parametrize("law, d, K, reason", [
+    ("blobsar", 32, 2, "separated"),  # λ ≈ 39: read as 0.04 from the head of sorted rows
+    ("digits", 64, 3, "correlated"),
+    ("twosource", 16, 3, "correlated"),  # AR(0.99) rows, then as many N(0, I) rows
+])
+def test_the_order_of_the_rows_does_not_decide(law, d, K, reason, plans):
+    X, y = logistic_data(law, 16383, d, K, seed=3)
+    order = np.argsort(y, kind="stable")
+    shuffled = _solve(X, y, K, max_iter=1, device="cpu")
+    ordered = _solve(X[order], y[order], K, max_iter=1, device="cpu")
+
+    assert shuffled.preconditioner_reason == ordered.preconditioner_reason == reason
+    assert plans[1].stats["separation"] == pytest.approx(plans[0].stats["separation"], rel=0.05)
+
+
+def test_features_the_sample_misses_get_the_whole_designs_curvature(plans):
+    """Two hundred Zipf levels in 20 000 rows: the 8 192-row sample misses the rarest,
+    whose curvature it reads as c·p², the centering's, where the design's is c·p. Without
+    the floor the model's step along them was ~1e4 times too long, and the fit, falling
+    back, stopped on a line-search failure 9% above the optimum after 586 evaluations."""
+    X, y = logistic_data("rare", 20000, 216, 3, seed=3)
+    solution = _solve(X, y, 3, C=math.inf, max_iter=1000, device="cpu")
+
+    assert solution.preconditioner_reason == "correlated" and plans[0].stats["floored"] > 0
+    assert solution.converged and solution.n_fev < 60
+
+
+def test_the_floor_is_the_whole_designs_clipped_weighted_second_moment():
+    rng = np.random.default_rng(0)
+    X = rng.standard_t(2.0, size=(30000, 7)).astype(np.float32)
+    weights = rng.exponential(size=30000)
+    cap = 2.5
+    norms = np.sum(X.astype(np.float64) ** 2, axis=1)
+    w = weights * np.minimum(1.0, cap * cap / norms)
+    expected = (w @ X.astype(np.float64) ** 2) / w.sum()
+
+    np.testing.assert_allclose(logistic._column_moments(X, weights, cap), expected, rtol=1e-12)
+    np.testing.assert_allclose(
+        logistic._column_moments(X, None, 0.0), np.mean(X.astype(np.float64) ** 2, axis=0),
+        rtol=1e-12,
+    )
+
+
+@pytest.mark.parametrize("scale", [1e4, 1e8])
+def test_the_model_does_not_depend_on_a_columns_units(scale, plans):
+    """λ of W⁻¹B is invariant to a column's units, and so is the model's reading of it
+    now that each feature's ridge is relative to its own curvature. Relative to the mean
+    curvature, a column in units of 1e8 swamped every other one: the separation read
+    0.005 where it is 1.05, and the dense fit stopped on ``max_iter`` 1.4% above the
+    optimum (200 000 x 16, two classes)."""
+    X, y = logistic_data("ar90", 20000, 16, 3, seed=3)
+    scaled = X.copy()
+    scaled[:, 0] *= scale
+    _solve(X, y, 3, max_iter=1, device="cpu")
+    _solve(scaled, y, 3, max_iter=1, device="cpu")
+
+    assert plans[0].reason == plans[1].reason == "correlated"
+    assert plans[1].stats["separation"] == pytest.approx(plans[0].stats["separation"], rel=1e-3)
+
+
+def test_a_constant_column_gets_no_step_of_its_own():
+    """Centering a constant column of 0.3 in float64 leaves a residue of order 1e-13 in
+    every row, collinear with the intercept. A ridge relative to that column's own
+    curvature alone would make the model's step along it 1e26 times the gradient's; the
+    geometric mean of the curvatures floors it (the diagonal path puts -5.8e8 there)."""
+    X, y = logistic_data("ar90", 20000, 16, 2, seed=1)
+    X = np.hstack([X, np.full((20000, 1), 0.3)])
+    solution = _solve(X, y, 2, C=math.inf, device="cpu")
+
+    assert solution.preconditioner == "dense" and solution.converged
+    assert abs(solution.coef[0, -1]) < 1.0
 
 
 # ----------------------------------------------------- the switch, bit for bit
@@ -234,6 +344,35 @@ def test_a_fit_that_takes_no_step_reports_the_diagonal(config, reason):
     assert solution.preconditioner_reason == reason
 
 
+@pytest.mark.parametrize("device", DEVICES)
+def test_a_wrong_model_falls_back_to_the_diagonal_and_says_so(device, monkeypatch):
+    """A model whose steps are 1e30 times too long, as a sample that missed what is rare
+    once made them along some coordinates: the run leaves it where it would have
+    stopped short, converges on the diagonal path from there, and records the fallback
+    — on the solution and on the estimator's one fit event."""
+    device = _device(device)
+
+    def wrong(self):
+        self.reason = "correlated"
+        return DensePreconditioner(lambda v: 1e30 * v)
+
+    monkeypatch.setattr(logistic._DensePlan, "_model", wrong)
+    X, y = logistic_data("ar99", 5000, 16, 2, seed=2)
+    off = _solve(X, y, 2, device=device, dense_preconditioner=False)
+    solution = _solve(X, y, 2, device=device)
+
+    assert (solution.preconditioner, solution.preconditioner_reason) == ("diagonal", "fallback")
+    assert solution.converged
+    assert solution.objective == pytest.approx(off.objective, rel=1e-6)
+
+    backend = "mlx" if device == "gpu" else "cpu"
+    with tuning_context(force_backend=backend):
+        model = LogisticRegression().fit(X, y)
+    extra = model.fit_event_.extra
+    assert (extra["preconditioner"], extra["preconditioner_reason"]) == ("diagonal", "fallback")
+    assert "stop_reason" not in extra
+
+
 # ----------------------------------------------------- overlap and BLAS threads
 
 
@@ -275,8 +414,9 @@ def test_the_plan_runs_once_per_fit_before_it_is_resolved(monkeypatch):
 class _FakePools:
     """threadpoolctl's ``limit`` on a controller with a BLAS pool, recorded."""
 
-    def __init__(self, log):
+    def __init__(self, log, threads=16):
         self.log = log
+        self.lib_controllers = [types.SimpleNamespace(num_threads=threads)]
 
     def limit(self, *, limits):
         log = self.log
@@ -292,12 +432,30 @@ class _FakePools:
         return Limit()
 
 
-def test_the_plan_runs_on_one_blas_thread_under_the_lock(monkeypatch):
+def test_the_model_runs_on_one_blas_thread_under_the_lock(monkeypatch):
     log = []
     monkeypatch.setattr(logistic, "_blas_pools", lambda: _FakePools(log))
     X, y = logistic_data("ar99", 5000, 16, 2, seed=2)
-    _solve(X, y, 2, device="cpu")
+    assert _solve(X, y, 2, device="cpu").preconditioner == "dense"
     assert log == [("limit", 1), "restore"]
+    assert not logistic._BLAS_LIMIT_LOCK.locked()
+
+
+def test_a_fit_the_gate_turns_away_leaves_the_blas_alone(monkeypatch):
+    """The limit is process-wide; the gate, which every fit runs, never takes it."""
+    log = []
+    monkeypatch.setattr(logistic, "_blas_pools", lambda: _FakePools(log))
+    X, y = logistic_data("iso", 5000, 16, 2, seed=2)
+    assert _solve(X, y, 2, device="cpu").preconditioner_reason == "uncorrelated"
+    assert log == []
+
+
+def test_pools_already_on_one_thread_are_left_alone(monkeypatch):
+    log = []
+    monkeypatch.setattr(logistic, "_blas_pools", lambda: _FakePools(log, threads=1))
+    X, y = logistic_data("ar99", 5000, 16, 2, seed=2)
+    assert _solve(X, y, 2, device="cpu").preconditioner == "dense"
+    assert log == []
     assert not logistic._BLAS_LIMIT_LOCK.locked()
 
 
@@ -307,14 +465,60 @@ def test_without_a_blas_pool_there_is_nothing_to_limit(monkeypatch):
         assert not logistic._BLAS_LIMIT_LOCK.locked()
 
 
+def _blas_threads():
+    from threadpoolctl import threadpool_info
+
+    return [(lib["filepath"], lib["num_threads"]) for lib in threadpool_info()
+            if lib["user_api"] == "blas"]
+
+
+def test_an_outside_limit_that_overlaps_the_gate_is_restored_as_it_was_found(monkeypatch):
+    """Another thread's threadpoolctl limit — scikit-learn's ``KMeans`` sets one — that
+    begins while a fit's gate runs and ends after the fit. Had the gate held the plan's
+    limit, the outside one would have saved the plan's single thread and restored it
+    when it ended, leaving the process on one BLAS thread for good. A no-op where the
+    BLAS has no pool (Accelerate), and the test that matters on an OpenBLAS stack."""
+    from threadpoolctl import threadpool_limits
+
+    before = _blas_threads()
+    in_gate, entered, fitted = threading.Event(), threading.Event(), threading.Event()
+    gate = logistic._DensePlan._gate
+
+    def paused_gate(self):
+        in_gate.set()
+        assert entered.wait(30)
+        return gate(self)
+
+    monkeypatch.setattr(logistic._DensePlan, "_gate", paused_gate)
+    errors = []
+
+    def outside():
+        try:
+            assert in_gate.wait(30)
+            with threadpool_limits(limits=2, user_api="blas"):
+                entered.set()
+                assert fitted.wait(30)
+        except BaseException as exc:  # reported below, by the main thread
+            errors.append(exc)
+            entered.set()
+
+    thread = threading.Thread(target=outside, daemon=True)
+    thread.start()
+    X, y = logistic_data("ar99", 5000, 16, 2, seed=2)
+    try:
+        assert _solve(X, y, 2, device="cpu").preconditioner == "dense"
+    finally:
+        fitted.set()
+        join_or_fail([thread])
+    assert not errors, errors
+    assert _blas_threads() == before
+
+
 def test_concurrent_fits_leave_the_blas_thread_count_as_they_found_it():
     """The limit is process-wide BLAS state; fits on several threads must not save and
     restore it out of order and leave the process on one thread. A no-op where the
     BLAS has no pool (Accelerate), and the test that matters on an OpenBLAS stack."""
-    from threadpoolctl import threadpool_info
-
-    before = [(lib["filepath"], lib["num_threads"]) for lib in threadpool_info()
-              if lib["user_api"] == "blas"]
+    before = _blas_threads()
     X, y = logistic_data("ar99", 8000, 32, 3, seed=7)
     errors = []
 
@@ -330,9 +534,7 @@ def test_concurrent_fits_leave_the_blas_thread_count_as_they_found_it():
         thread.start()
     join_or_fail(threads)
     assert not errors, errors
-    after = [(lib["filepath"], lib["num_threads"]) for lib in threadpool_info()
-             if lib["user_api"] == "blas"]
-    assert after == before
+    assert _blas_threads() == before
 
 
 # ------------------------------------------------------- the estimator's record

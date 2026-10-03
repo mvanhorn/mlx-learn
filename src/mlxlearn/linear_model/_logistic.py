@@ -600,9 +600,11 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     features and no nearly separable classes, L-BFGS starts every iteration from the
     inverse of the loss's curvature at the zero start instead of a diagonal
     (``docs/fp32_policy.md`` §2.3). It changes the search direction only, not the
-    objective or the stopping test. ``fit_event_.extra`` records which one the fit
-    used and why (``preconditioner``, ``preconditioner_reason``) and the objective
-    evaluations it took (``n_fev``).
+    objective or the stopping test, and a run on it that would stop above the
+    float32 floor without converging goes on along the diagonal path instead.
+    ``fit_event_.extra`` records which one the fit ended on and why
+    (``preconditioner``, ``preconditioner_reason``) and the objective evaluations it
+    took (``n_fev``).
 
     **Callbacks.** On scikit-learn 1.9+, callbacks set with ``set_callbacks`` see
     the same task tree as scikit-learn's lbfgs path: the fit, and one subtask per

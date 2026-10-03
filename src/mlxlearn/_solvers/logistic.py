@@ -94,7 +94,9 @@ features are correlated and no two classes are close to separable, L-BFGS starts
 every iteration from the inverse of that curvature instead of the diagonal. See
 :class:`_DensePlan`. It changes the search direction only — the objective, its
 evaluation on the device and every stopping rule are the same — and a fit the gate
-turns away runs the diagonal path bit for bit.
+turns away runs the diagonal path bit for bit. A fit the model would leave short of
+convergence, above the float32 floor, falls back to the diagonal path from where it
+stands.
 """
 
 from __future__ import annotations
@@ -192,11 +194,14 @@ class LogisticSolution:
         ``max|gradient|`` at the zero start, the scale the float32 gradient floor is
         relative to.
     preconditioner : {"diagonal", "dense"}
-        The initial inverse Hessian the L-BFGS iterations started from.
+        The initial inverse Hessian the L-BFGS iterations ended on.
     preconditioner_reason : str
         Why: ``"correlated"`` for the dense one; otherwise ``"disabled"``,
         ``"width"``, ``"uncorrelated"``, ``"separated"``, ``"non-finite"``,
-        ``"not-positive-definite"`` or ``"no-step"`` (:class:`_DensePlan`).
+        ``"not-positive-definite"`` or ``"no-step"`` (:class:`_DensePlan`), or
+        ``"fallback"``: the run started on the dense one and left it for the
+        diagonal where it would have stopped above the float32 floor without
+        converging (:attr:`~mlxlearn._solvers.lbfgs.LBFGSState.fallback`).
     """
 
     coef: np.ndarray
@@ -713,40 +718,50 @@ def _weight_scale(sample_weight: np.ndarray) -> float:
 # (digits upsampled to 20 000-200 000 rows, ten classes: 35-42 evaluations became
 # 65-116). Hence a gate, in two stages.
 #
-# **The gate** reads a small strided sample — at most 1 024 rows of the first 256
-# features — and asks whether the diagonal leaves curvature that the pairs learn
-# slowly: features correlated within the classes (mean squared within-class
-# correlation above _GATE_CORRELATION, or a Cholesky-pivot condition estimate above
-# _GATE_CONDITION), or scales the diagonal's dead band leaves apart (a spread above
-# _GATE_SPREAD). Most fits stop here, after 0.1-0.7 ms of host work.
+# **The gate** reads a small sample spread over all the rows, or over their weight
+# (_sample_rows) — at most 1 024 rows of the first 256 features — and asks whether
+# the diagonal leaves curvature that the pairs learn slowly: features correlated
+# within the classes (mean squared within-class correlation above _GATE_CORRELATION,
+# or a Cholesky-pivot condition estimate above _GATE_CONDITION), or scales the
+# diagonal's dead band leaves apart (a spread above _GATE_SPREAD). Most fits stop
+# here, after 0.1-0.7 ms of host work.
 #
-# **The model** is then built from 8 192 rows (or four per feature), factorized, and
-# asked one more question in its own metric: how separable are the classes? The
-# largest eigenvalue λ of W⁻¹B — between-class over within-class scatter along the
-# most separating direction, from the eigenvalues λ/(1 + λ) of the class means' scatter
-# against the model's curvature — is at most _SEPARATION_LIMIT for the model to be
-# used. λ = 5 is two classes whose means stand 2√5 within-class deviations apart,
-# which overlap by about 1 %. The penalty enters through the model, so a strongly
-# regularized fit, which cannot become confident, reads as less separable.
+# **The model** is then built from 8 192 rows (or four per feature) spread the same
+# way, each feature's curvature floored at the whole design's (one more pass over the
+# rows: what is rare, the sample misses), factorized, and asked one more question in
+# its own metric: how separable are the classes? The largest eigenvalue λ of W⁻¹B —
+# between-class over within-class scatter along the most separating direction, from
+# the eigenvalues λ/(1 + λ) of the class means' scatter against the model's curvature
+# — is at most _SEPARATION_LIMIT for the model to be used. λ = 5 is two classes whose
+# means stand 2√5 within-class deviations apart, which overlap by about 1 %. The
+# penalty enters through the model, so a strongly regularized fit, which cannot become
+# confident, reads as less separable.
 #
 # Calibrated on evaluation counts, which do not depend on the machine, over 582 fits:
 # 23 data laws, 2-20 classes, 569-200 000 rows, 16-256 features, C from 1e-4 to inf,
-# tol 1e-4 and 1e-6, weights and fit_intercept=False (docs/fp32_policy.md §2.3).
+# tol 1e-4 and 1e-6, weights and fit_intercept=False; and checked on 168 more whose
+# rows a sample reads wrong — rare one-hot levels, rows ordered by source or label,
+# one column in units of 1e6-1e8, a few rows carrying most of the weight, a constant
+# column (docs/fp32_policy.md §2.3).
+#
+# A model can still be wrong where no sample shows it. A run on it that would stop
+# above the float32 floor without converging falls back to the diagonal instead
+# (lbfgs.py), and reports "fallback".
 #
 # All of it runs on the host while the device computes the first evaluation
-# (_FirstEvaluation), on one BLAS thread (_one_blas_thread), and the device graph is
-# the one every fit runs.
+# (_FirstEvaluation), the model's factorizations on one BLAS thread
+# (_one_blas_thread), and the device graph is the one every fit runs.
 
 #: Narrowest and widest designs the model is built for. At 1 024 features it is a
 #: 1 025 x 1 025 factorization and its inverse.
 _DENSE_MIN_FEATURES = 2
 _DENSE_MAX_FEATURES = 1024
 #: The model's sample: ``min(n, max(_MODEL_MIN_ROWS, _MODEL_ROWS_PER_FEATURE · d))``
-#: strided rows.
+#: rows (:func:`_sample_rows`).
 _MODEL_MIN_ROWS = 8192
 _MODEL_ROWS_PER_FEATURE = 4
 #: The gate's sample: the first ``_GATE_MAX_COLUMNS`` features of at most
-#: ``_GATE_ROWS`` strided rows, fewer on a wide block so that
+#: ``_GATE_ROWS`` rows (:func:`_sample_rows`), fewer on a wide block so that
 #: ``rows · (columns + classes)²`` stays within ``_GATE_WORK`` — never fewer than
 #: ``_GATE_MIN_ROWS``. The correlation statistic's sampling floor is about 1/rows,
 #: against a gate of 0.01.
@@ -773,10 +788,12 @@ _ROW_CLIP = 3.0
 #: Up to this many features the model's sample is accumulated in float64; wider, in
 #: float32, whose rounding the jitter below is sized for.
 _FLOAT64_MODEL_MAX_FEATURES = 256
-#: Ridges tried on the model's data block, relative to its mean diagonal: what keeps
-#: the factorization defined for ``C = inf`` or a rank-deficient design. A float32
-#: sample of one-hot rows beside an intercept has eigenvalues down to -5e-6 of the
-#: mean, so its ridge starts larger, and is raised if the factorization still fails.
+#: Ridges tried on the model's data block: what keeps the factorization defined for
+#: ``C = inf`` or a rank-deficient design. Each feature's is relative to its own
+#: curvature, never less than to the geometric mean of them all (:func:`_ridge`). A
+#: float32 sample of one-hot rows beside an intercept has eigenvalues down to -5e-6
+#: of the mean, so its ridge starts larger, and is raised if the factorization still
+#: fails.
 _JITTER = {"float64": (1e-10,), "float32": (1e-6, 1e-4)}
 #: A feature whose variance left unexplained by the features before it is below this
 #: fraction of its own variance (the factorization's pivot) is a null direction of the
@@ -788,6 +805,9 @@ _JITTER = {"float64": (1e-10,), "float32": (1e-6, 1e-4)}
 #: them. Ten times the ridge or more; real ill-conditioning sits far above it
 #: (AR(0.99): ~0.02, five latent factors under 0.3 noise: ~0.01).
 _NULL_PIVOT = {"float64": 1e-6, "float32": 1e-3}
+#: A feature whose curvature in the model's sample is below the whole design's by more
+#: than this factor gets the whole design's (:meth:`_DensePlan._model`).
+_FLOOR_SLACK = 2.0
 
 
 def _zero_start_curvature(n_classes: int) -> float:
@@ -802,35 +822,62 @@ def _gate_rows(rows: int, width: int) -> int:
     return min(rows, max(_GATE_MIN_ROWS, min(_GATE_ROWS, _GATE_WORK // (width * width))))
 
 
-def _sample_moments(X, codes, weights, n_classes: int, rows: int, columns: int, dtype):
-    """Weighted moments of ``rows`` strided rows of the first ``columns`` features.
+def _sample_rows(n: int, rows: int, weights=None) -> np.ndarray:
+    """``rows`` row indices spread evenly over all ``n`` rows, or over their weight.
 
-    Returns ``(gram, sums, totals)`` in float64: ``Σ w·xxᵀ``, each class's ``Σ w·x``
-    as a row, and each class's ``Σ w``, with ``w`` the sample weight times the row
-    clip's shrink (``_ROW_CLIP``). One matrix product of ``[x | labels]`` with itself,
-    accumulated in ``dtype``; the label columns are the one-hot classes, or ``[y, 1]``
-    for two.
+    Unweighted, ``⌊i·n/rows⌋``: every stretch of the data is represented in proportion
+    to its length. A strided prefix, ``X[:stride·rows:stride]``, never saw the last
+    ``n − stride·rows`` rows — up to half of them just below twice the sample's size —
+    and on data ordered by source, time or label the model and the separation limit
+    then described only the head of it. At 16 383 rows, a label-sorted, nearly
+    separable binary problem read λ = 0.04 where its rows in random order read 34, and
+    was admitted; AR(0.99) rows followed by as many independent ones took 48
+    evaluations, and 9 in random order. Spread, both read the same either way.
+
+    Weighted, the same spacing along the cumulative weight — systematic sampling with
+    probability proportional to weight — so each sampled row stands for the same weight
+    and is counted once, and a row heavier than ``Σw/rows`` is drawn every time.
+    Spread over rows instead, the sample held about one of ten rows carrying 90% of
+    the weight in 60 000, and the model missed most of the curvature: 164 evaluations
+    to the diagonal's 30, and a stop 1.9e-4 above the optimum. Unit weights give the
+    unweighted indices.
+    """
+    if weights is None:
+        return (np.arange(rows, dtype=np.int64) * n) // rows
+    cumulative = np.cumsum(weights, dtype=np.float64)
+    targets = np.arange(rows, dtype=np.float64) * cumulative[-1] / rows
+    return np.minimum(np.searchsorted(cumulative, targets, side="right"), n - 1)
+
+
+def _sample_moments(X, codes, weights, n_classes: int, rows: int, columns: int, dtype):
+    """Weighted moments of ``rows`` rows (:func:`_sample_rows`) of the first ``columns``
+    features.
+
+    Returns ``(gram, sums, totals, cap)``: in float64, ``Σ w·xxᵀ``, each class's
+    ``Σ w·x`` as a row, and each class's ``Σ w``, with ``w`` the row clip's shrink
+    (``_ROW_CLIP``) — the sample weights are in which rows were drawn, each drawn row
+    standing for the same weight; and the row norm the clip caps at, from this
+    sample's median. One matrix product of ``[x | labels]`` with itself, accumulated
+    in ``dtype``; the label columns are the one-hot classes, or ``[y, 1]`` for two.
     """
     n, d = X.shape
     b = min(columns, d)
-    stride = max(1, n // rows)
-    stop = stride * rows
+    index = _sample_rows(n, rows, weights)
     k = 2 if n_classes == 2 else n_classes
     A = np.empty((rows, b + k), dtype=dtype)
-    A[:, :b] = X[:stop:stride, :b]
-    code = codes[:stop:stride]
+    A[:, :b] = X[index, :b]
+    code = codes[index]
     if n_classes == 2:
         A[:, b] = code
         A[:, b + 1] = 1.0
     else:
         A[:, b:] = code[:, None] == np.arange(n_classes)[None, :]
-    w = None if weights is None else weights[:stop:stride].astype(dtype)
     norms = np.sqrt(np.einsum("ij,ij->i", A[:, :b], A[:, :b]))
     cap = _ROW_CLIP * float(np.median(norms))
+    left = A
     if cap > 0.0 and float(norms.max()) > cap:
         shrink = np.minimum(1.0, (cap / np.maximum(norms, 1e-30)) ** 2).astype(dtype)
-        w = shrink if w is None else w * shrink
-    left = A if w is None else A * w[:, None]
+        left = A * shrink[:, None]
     M = (left.T @ A).astype(np.float64)
     gram = M[:b, :b]
     if n_classes == 2:
@@ -841,7 +888,56 @@ def _sample_moments(X, codes, weights, n_classes: int, rows: int, columns: int, 
     else:
         sums = M[b:, :b]
         totals = np.diag(M[b:, b:]).copy()
-    return 0.5 * (gram + gram.T), sums, totals
+    return 0.5 * (gram + gram.T), sums, totals, cap
+
+
+def _column_moments(X, weights, cap: float) -> np.ndarray:
+    """Every row's weighted ``x²`` per column over the whole design, in float64.
+
+    ``Σ w·s·x² / Σ w·s`` with ``s`` the row clip's shrink at ``cap``, as
+    :func:`_sample_moments` applies it — the diagonal the model's sample estimates,
+    computed exactly. One pass, split by rows across the host pool in a fixed order
+    (``_common/host.py``) and with no BLAS call, so it neither depends on the thread
+    count nor competes with the plan's own BLAS for threads.
+    """
+    n, d = X.shape
+
+    def part(start: int, stop: int):
+        block = X[start:stop]
+        w = np.ones(stop - start) if weights is None else weights[start:stop]
+        if cap > 0.0:
+            norms = np.einsum("ij,ij->i", block, block, dtype=np.float64)
+            w = w * np.minimum(1.0, cap * cap / np.maximum(norms, 1e-300))
+        return np.einsum("i,ij,ij->j", w, block, block, dtype=np.float64), float(w.sum())
+
+    parts = map_row_blocks(part, n, d)
+    moments = parts[0][0].copy()
+    total = parts[0][1]
+    for column, weight in parts[1:]:
+        moments += column
+        total += weight
+    return moments / max(total, 1e-300)
+
+
+def _ridge(diagonal: np.ndarray, jitter: float) -> np.ndarray:
+    """The ridge each feature gets: ``jitter`` times its own curvature, or times the
+    geometric mean of all of them where that is larger.
+
+    Relative to each feature's own curvature, a ridge leaves the problem's shape
+    alone whatever the columns' scales. Relative to their mean, as it once was, one
+    column of sixteen in units of 1e8 put it at 6e4 times a unit column's curvature:
+    the model under-stepped every other feature, the separation statistic read 0.005
+    where it is 1.05, and at the default ``max_iter`` the dense path stopped on it 1.4%
+    to 4.6% above the optimum (60 000-200 000 rows, two to five classes), which the
+    diagonal path reached in 110-180 evaluations and this ridge's in 18-38. The
+    geometric mean, which no single column dominates, is the floor: centering a
+    constant column in float64 leaves a residue of order 1e-13 collinear with the
+    intercept, and a ridge relative to that column's curvature alone would make the
+    model's step along it some 1e26 times the gradient there.
+    """
+    positive = diagonal[diagonal > 0.0]
+    typical = float(np.exp(np.mean(np.log(positive)))) if positive.size else 1.0
+    return jitter * np.maximum(diagonal, typical)
 
 
 def _within(gram, sums, totals):
@@ -890,9 +986,10 @@ def _condition_estimate(within, gram) -> float:
     return float(pivots.max() / pivots.min())
 
 
-#: Serializes the one-thread BLAS limit: it is process-wide state of the BLAS
-#: library, which two plans on two threads would otherwise save and restore out of
-#: order, leaving the process on one thread.
+#: Serializes the one-thread BLAS limit between plans: it is process-wide state of the
+#: BLAS library, which two plans on two threads would otherwise save and restore out of
+#: order, leaving the process on one thread. It cannot order anyone else's limit; see
+#: :func:`_one_blas_thread`.
 _BLAS_LIMIT_LOCK = threading.Lock()
 
 
@@ -915,20 +1012,34 @@ def _blas_pools():
 
 @contextlib.contextmanager
 def _one_blas_thread():
-    """The plan's BLAS and LAPACK calls on one thread.
+    """The model's BLAS and LAPACK calls on one thread.
 
     Its products and factorizations are at most 8 192 x 1 044 and 1 025 x 1 025, and
     run while the device computes. On a stack whose NumPy and SciPy each bring an
     OpenBLAS (NumPy 1.23 and SciPy 1.10 wheels: two pools of 16 threads), a 65 x 65
     Cholesky factorization took up to 50 ms instead of 0.04, and a plan for 60 000 x 64
     rows of three classes a median 0.28 s instead of 4 ms.
+
+    The limit is process-wide, and threadpoolctl restores on exit what it found on
+    entry, so another thread's limit that starts inside this one and ends after it
+    restores this one's single thread, for good: scikit-learn's ``KMeans`` sets one
+    around its iterations. The lock orders mlxlearn's plans only. So the limit is held
+    as briefly as the plan allows — around the model, which only a fit the gate admits
+    builds, never around the gate, whose one product and 64 x 64 factorization call
+    NumPy's BLAS alone — and not at all where every pool already runs one thread, or
+    where there is no pool to limit (Accelerate: the NumPy 2.2-2.5 and SciPy 1.15-1.18
+    wheels for macOS).
     """
     pools = _blas_pools()
     if pools is None:
         yield
         return
-    with _BLAS_LIMIT_LOCK, pools.limit(limits=1):
-        yield
+    with _BLAS_LIMIT_LOCK:
+        if all(pool.num_threads <= 1 for pool in pools.lib_controllers):
+            yield
+            return
+        with pools.limit(limits=1):
+            yield
 
 
 class _DensePlan:
@@ -961,9 +1072,10 @@ class _DensePlan:
         # checked for finiteness — a row that overflowed float32 makes the sample
         # non-finite, and the fit's own objective reports it — and NumPy 2.2 on
         # Accelerate raises spurious ones from matrix products.
-        with _one_blas_thread(), np.errstate(all="ignore"):
+        with np.errstate(all="ignore"):
             if self._gate():
-                self._operator = self._model()
+                with _one_blas_thread():
+                    self._operator = self._model()
 
     def resolve(self) -> DensePreconditioner | None:
         return self._operator
@@ -973,7 +1085,7 @@ class _DensePlan:
         rows = min(n, max(_MODEL_MIN_ROWS, _MODEL_ROWS_PER_FEATURE * d))
         k = 2 if self.n_classes == 2 else self.n_classes
         rows = _gate_rows(rows, min(d, _GATE_MAX_COLUMNS) + k)
-        gram, sums, totals = _sample_moments(
+        gram, sums, totals, _ = _sample_moments(
             self.X, self.codes, self.weights, self.n_classes, rows, _GATE_MAX_COLUMNS,
             np.float32,
         )
@@ -1020,15 +1132,30 @@ class _DensePlan:
         n, d = self.X.shape
         rows = min(n, max(_MODEL_MIN_ROWS, _MODEL_ROWS_PER_FEATURE * d))
         precision = "float64" if d <= _FLOAT64_MODEL_MAX_FEATURES else "float32"
-        gram, sums, totals = _sample_moments(
+        gram, sums, totals, cap = _sample_moments(
             self.X, self.codes, self.weights, self.n_classes, rows, d,
             np.float64 if precision == "float64" else np.float32,
         )
         total = float(totals.sum())
         c = _zero_start_curvature(self.n_classes)
         p = d + int(self.fit_intercept)
+        features = np.arange(d)
         H = np.zeros((p, p))
         H[:d, :d] = c * gram / max(total, 1e-300)
+        floored = 0
+        if rows < n:
+            # The sample cannot see what is rare in the data: a one-hot level of a few
+            # rows in 60 000. Its curvature along such a feature is then c·p² (the
+            # centering's) or nothing, where the data's is about c·p, and the model's
+            # step along it orders of magnitude too long. So a feature the sample reads
+            # at less than 1/_FLOOR_SLACK of the whole design's curvature gets the whole
+            # design's, whose diagonal one pass computes exactly. Sampling noise stays
+            # well inside that factor, and so do the exact dependencies the null
+            # directions below are found from.
+            floor = c * _column_moments(self.X, self.weights, cap)
+            low = np.flatnonzero(np.diag(H)[:d] * _FLOOR_SLACK < floor)
+            H[low, low] = floor[low]
+            floored = int(low.size)
         mean = float(np.trace(H[:d, :d])) / d
         if self.fit_intercept:
             H[d, d] = c
@@ -1040,12 +1167,11 @@ class _DensePlan:
             self.reason = "non-finite"
             return None
 
-        features = np.arange(d)
         factor = threshold = None
         for jitter in _JITTER[precision]:
             # The data's curvature alone first: its pivots find the null directions.
             trial = H.copy()
-            trial[features, features] += jitter * mean
+            trial[features, features] += _ridge(np.diag(H)[:d], jitter)
             try:
                 factor = cholesky(trial, lower=True, check_finite=False)
             except LinAlgError:
@@ -1086,7 +1212,9 @@ class _DensePlan:
         Z = solve_triangular(factor, deviations, lower=True, check_finite=False)
         ratio = float(np.linalg.eigvalsh(c * (Z.T @ Z))[-1])
         separation = ratio / (1.0 - ratio) if ratio < 1.0 else math.inf
-        self.stats.update(rows=rows, null_directions=int(null.size), separation=separation)
+        self.stats.update(
+            rows=rows, floored=floored, null_directions=int(null.size), separation=separation
+        )
         if not separation < _SEPARATION_LIMIT:
             self.reason = "separated"
             return None
@@ -1270,7 +1398,9 @@ def solve_logistic(
 
     if plan is not None:
         reason = plan.reason
-        if reason == "correlated" and state.preconditioner != "dense":
+        if state.fallback:
+            reason = "fallback"
+        elif reason == "correlated" and state.preconditioner != "dense":
             reason = "no-step"
     coef, intercept = unpack(theta)
     return LogisticSolution(
