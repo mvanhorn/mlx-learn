@@ -405,8 +405,9 @@ moved by up to 6.3e-3 (1.6e-2) at `C=1` and 1.0e-2 (2.0e-2) at `C=10`. The numbe
 support vectors changed by one in some of those fits, and a training point whose decision
 value was that close to zero could change label, as LIBSVM's did. The gradient it rebuilds
 is summed in a fixed order, so shrinking adds no dependence of its own on `cache_size` or
-on the NumPy/BLAS build. The tolerances in §3 hold either way. The GPU's one-vs-one kernel
-does not shrink at all (§2.5), so `shrinking` changes nothing on that path.
+on the NumPy/BLAS build. The tolerances in §3 hold either way. The GPU's one-vs-one kernel,
+and the host's finish of its pairs, do not shrink at all (§2.5); a pair the host loop
+solves again from scratch there honors `shrinking`, as on the host path.
 
 **`cache_size`.** When the row cache can hold a whole one-vs-one subproblem, its Gram is
 built in one blocked matmul; otherwise rows are evaluated on demand, and the two can round
@@ -469,7 +470,8 @@ That changes the path, not the contract:
   one pair of a two-feature fit at C = 8.9 — and every bias that differed from the host
   loop's by more than 1e-2 was among them. A fit it takes every pair of costs the host
   loop's time plus the kernel's: random labels with balanced class weights at C = 0.1–0.2
-  took 0.83–0.88× the host loop's time, still 2.5–3.1× stock scikit-learn's.
+  ran at 0.89–0.96× the host loop's speed (1.04–1.12× its time), still 2.3–2.7× stock
+  scikit-learn's.
 - **Deterministic.** No result is a sum across threads: every reduction in the kernel
   is a maximum, ties broken by the larger index, which no order of evaluation changes,
   and there are no atomics. A pair's result is a function of its data alone — not of
@@ -477,38 +479,58 @@ That changes the path, not the contract:
   launches — so repeated fits, fits from many threads at once, and fits at any
   `cache_size` that holds the largest pair's Gram are bit for bit the same. The host's
   float64 gradient depends on the BLAS build, as §2.4's does.
-- **No shrinking.** The kernel takes every sample at every step, and so does the host's
-  finish: shrinking is a speed heuristic, the optimum and the full-set stopping test do
-  not depend on it, and `shrinking` changes nothing on this path.
+- **No shrinking in the kernel or the host's finish.** Both take every sample at every
+  step, whatever `shrinking` says: shrinking is a speed heuristic, and the optimum and the
+  full-set stopping test do not depend on it. A pair solved again from scratch — no free
+  dual variable, or non-finite — is the host loop's, `shrinking` included, so that it is
+  the host path's pair bit for bit; there `shrinking` can move the bias in its last
+  bits, as on the host path.
 - **`n_iter_`** counts, per pair, the kernel's steps plus the host finish's, and
   `max_iter` bounds their sum as it bounds the host loop; a pair solved again from scratch
   reports the host loop's own count. A pair that exhausts its budget on the device is
   reported as the host loop reports one — `fit_status_ = 1` and a `ConvergenceWarning` —
   without testing the last iterate, as the host loop does not test it.
+- **A `tol` the state can resolve.** The kernel's own stop reads its double-float
+  gradient, good to about 2⁻⁴⁸ of its scale, and every gradient a pair's SMO reaches is
+  bounded by `1 + C_t · m`. Below what that resolves the kernel cannot see its violation
+  fall under `tol`: at `tol=1e-14`, C = 10 and three classes of 200 rows, one pair stepped
+  to its 10⁷-step budget in 58 s, and reported it exhausted, where the host loop converged
+  in 8 083 steps. A fit whose `tol` is below 2⁻⁴⁰ · (1 + C_t · m), for the largest box
+  and the largest pair, runs on the host loop.
 - **Memory.** The pairs run in **waves** whose packed Grams fit together in the kernel
   cache `cache_size` already sizes (capped by `Tuning.smo_kernel_cache_max_bytes` and
   `smo_kernel_cache_fraction` of installed memory, as for the host loop's row cache), and
   each pair's Gram must fit it alone — exactly the pairs the host loop would have
-  materialized — or the fit runs on the host loop. Building a wave's Grams takes
-  transients within `Tuning.distance_block_bytes`, the budget `kernel_matrix`'s own
-  blocks keep to. At 16 000 × 32 with 16 classes — 1.83 GiB of Grams in all — the fit
-  peaked at 332 MiB of device memory at the default `cache_size=200`, in ten waves,
-  against 1.97 GiB holding every pair at once, and took no longer (96 against 108 ms:
-  the one large buffer cost more to allocate than the waves cost to run in turn); the
-  host loop peaked at 18 MiB. Across four fits of 2–10 waves the default took 0.89–1.04×
-  the time of one wave. The buffers go when the fit returns, to MLX's buffer cache, which
-  the cache-release rule (`Tuning.mlx_cache_release_fraction`) empties after a fit that
-  grew it past its share of memory, as after any other; every wave of a fit uses one
-  buffer size, so a fit grows that cache by about what the host loop's own churn of tile
-  sizes does (1.26 against 1.03 GiB there).
+  materialized — or the fit runs on the host loop. Everything else the build puts on the
+  device stays within `Tuning.distance_block_bytes`, the budget `kernel_matrix`'s own
+  blocks keep to: the training rows, uploaded class by class and kept there only while
+  they take at most half of it, and every transient, the rows' squares included. A pair
+  too large for that alone takes what `kernel_matrix` takes to build it on the host
+  loop's path. So a fit's device memory is at most `cache_size` plus that budget (456 MiB
+  at the defaults) unless one pair needs more. Measured in a fresh process per fit:
+  264–353 MiB on the fits patched dispatch routes, at the default `cache_size=200`,
+  against the host loop's 13–79 MiB, and 445–601 MiB at `cache_size=1000`; 447 MiB at
+  20 000 × 4 096 with 50 classes, whose rows alone take 312 MiB; and at 16 000 × 32 with
+  16 classes — 1.83 GiB of Grams in all — 326 MiB in ten waves, against 1.92 GiB holding
+  every pair at once and 19 MiB on the host loop. Waves cost time once MLX's buffer cache
+  is warm: the default took 1.15–1.33× the time of one wave after an idle gap
+  (8 000 × 256 with 4 classes in two waves, 1.33×; 8 000 × 512 with 16 in three, 1.15×;
+  16 000 × 32 in ten, 1.22×) and 1.08–1.18× back to back, while a process's first fit was
+  faster in waves (107 against 124 ms at 16 000 × 32), the one large buffer costing more
+  to allocate. The buffers go when the fit returns, to MLX's buffer cache, which the
+  cache-release rule (`Tuning.mlx_cache_release_fraction`) empties after a fit that grew
+  it past its share of memory, as after any other; every wave of a fit uses one buffer
+  size, and a fit leaves that cache at 521–706 MiB on the routed fits, against the host
+  loop's 228–430 MiB, and at 1.37 against 1.11 GiB at 16 000 × 32.
 
 The kernel runs for three classes or more, the rbf kernel, a positive `max_iter`, work
 resolved to the GPU, MLX 0.32 or later and `Tuning.metal_kernels`, pairs of at most 4 096
-rows whose Grams fit the cache, and boxes the double-float state holds (`C_t · m` at most
-2⁴⁰, every `C_t` at least 2⁻¹⁰⁰); anything else runs the host loop, pair after pair, bit
-for bit as before. Unlike §2.1's kernel it needs no list of validated MLX releases:
-nothing it returns is trusted to match MLX, so a release that changed its behavior could
-cost time — pairs finished on the host — but never an answer.
+rows whose Grams fit the cache, boxes the double-float state holds (`C_t · m` at most
+2⁴⁰, every `C_t` at least 2⁻¹⁰⁰), and a `tol` it resolves (at least 2⁻⁴⁰ · (1 + C_t · m));
+anything else runs the host loop, pair after pair, bit for bit as before. Unlike §2.1's
+kernel it needs no list of validated MLX releases: nothing it returns is trusted to match
+MLX, so a release that changed its behavior could cost time — pairs finished on the host
+— but never an answer.
 
 Measured against scikit-learn 1.9.0 and 1.7.2 (the same on both), over 21 configurations
 — 3 to 26 classes, C from 0.1 to 100, four `gamma` resolutions, random labels, low-rank
@@ -517,7 +539,12 @@ and imbalanced data, balanced and explicit class weights, sample weights with ze
 each pair's dual objective within 6.3e-7 relative, KKT margins within 6.7e-4. Over 200
 random fits (`tests/parity/test_svc_ovo.py`, slow): within 1.9e-2 of the host loop's
 decision values and, on every tenth, 1.8e-2 of scikit-learn's, KKT margins within 8.9e-4,
-and no pair needed the host's finish.
+and no pair needed the host's finish. Over 300 more, drawn independently — 3 to 20
+classes, 300 to 6 000 rows, 8 to 512 features, C from 0.1 to 100, five kinds of data,
+class and sample weights — the same on both scikit-learn versions: no pair of 21 914
+needed the host's finish or went non-finite, 94 in 14 fits had no free dual variable,
+decision values were within 5.7e-3 of scikit-learn's, and at least 99.81% of labels the
+same.
 
 ## 3. Tolerances the test suite uses
 

@@ -140,6 +140,17 @@ _BOX_RTOL = 1e-9
 _OVO_MAX_BOX_ROWS = 2.0**40
 _OVO_MIN_BOX = 2.0**-100
 
+#: The smallest ``tol`` the one-vs-one kernel is launched for, relative to
+#: ``1 + C_t · m``, the same bound on every gradient. The kernel's stop test reads its
+#: double-float gradient, good to about 2⁻⁴⁸ of that scale before its rounding
+#: accumulates over the steps; with ``tol`` below what it resolves, a pair never saw its
+#: violation under ``tol`` and stepped to ``max_iter``, which the host's finish then
+#: reports as exhausted. Measured at ``tol=1e-14``, C = 10, three classes of 200 rows
+#: and four features: 10⁷ steps and 58 s on one pair, where the host solver converged
+#: in 8 083. 2⁻⁴⁰ leaves that a margin of 2⁸ and the pair's size; a smaller ``tol``
+#: runs on the host solver.
+_OVO_TOL_FLOOR = 2.0**-40
+
 #: A dual variable counts as free, for :meth:`MLXSVCMixin._solve_pairs_on_gpu`'s bias
 #: rule, only this far inside its box, relative to the box: well above the residue a
 #: clipped update leaves in double-float (measured up to about 2⁻⁴², 2e-13).
@@ -422,10 +433,12 @@ class MLXSVCMixin(BackendMixin):
         hold on an independent check. See ``docs/benchmarks.md``.
 
         Every figure above was measured on the host solver. A multiclass rbf fit on
-        the GPU now solves its pairs concurrently (:meth:`_solve_pairs_on_gpu`) — 2.1x
-        to 21x the host solver on the fits these rules send to MLX — and the rules have
-        not been recalibrated for it: they send to MLX exactly the fits they did
-        before, until a calibration on both scikit-learn versions moves them.
+        the GPU now solves its pairs concurrently (:meth:`_solve_pairs_on_gpu`) — 1.4x
+        to 16x the host solver's speed on the fits these rules send to MLX, and
+        0.89x-0.96x where every pair ends with no free dual variable and is solved
+        again on the host, still 2.3x-2.7x stock's — and the rules have not been
+        recalibrated for it: they send to MLX exactly the fits they did before, until
+        a calibration on both scikit-learn versions moves them.
         """
         tuning = get_tuning()
 
@@ -772,10 +785,11 @@ class MLXSVCMixin(BackendMixin):
         run on and ``Tuning.metal_kernels`` on (:func:`~._kernels._ovo.pair_solver`),
         every pair of at most :data:`~._kernels._ovo.MAX_PAIR_ROWS` samples whose
         Gram fits the kernel cache (:meth:`_kernel_cache_bytes`) — the pairs the host
-        solver would have materialized — and boxes the kernel's state can hold
-        (:data:`_OVO_MAX_BOX_ROWS`). Anything else is ``None``, and the host solver
-        runs every pair, as before. The kernel compiles here, last, so a fit the
-        other rules refuse never builds it.
+        solver would have materialized — boxes the kernel's state can hold
+        (:data:`_OVO_MAX_BOX_ROWS`), and a ``tol`` it can resolve
+        (:data:`_OVO_TOL_FLOOR`). Anything else is ``None``, and the host solver runs
+        every pair, as before. The kernel compiles here, last, so a fit the other
+        rules refuse never builds it.
         """
         if len(class_rows) < 3 or self.kernel != "rbf" or self.max_iter == 0:
             return None
@@ -787,7 +801,10 @@ class MLXSVCMixin(BackendMixin):
         if largest > _ovo.MAX_PAIR_ROWS or 4 * largest * largest > self._kernel_cache_bytes():
             return None
         box = C_all[C_all > 0.0]
-        if not (box.min() >= _OVO_MIN_BOX and box.max() * largest <= _OVO_MAX_BOX_ROWS):
+        scale = float(box.max()) * largest
+        if not (box.min() >= _OVO_MIN_BOX and scale <= _OVO_MAX_BOX_ROWS):
+            return None
+        if float(self.tol) < _OVO_TOL_FLOOR * (1.0 + scale):
             return None
         solver = _ovo.pair_solver(device)
         return None if solver is None else (solver, device)
@@ -814,27 +831,27 @@ class MLXSVCMixin(BackendMixin):
         on the fit's event how many pairs the kernel solved, the host finished, and
         :meth:`_solve_pair` solved again, for each reason.
 
-        No shrinking: the kernel and its finish take every sample at every step, so
-        ``shrinking`` changes nothing here. It is a speed heuristic of the host loop,
-        and neither the optimum nor the stopping test depends on it.
+        The kernel and its finish do not shrink: they take every sample at every
+        step, whatever ``shrinking`` says — a speed heuristic of the host loop, on
+        which neither the optimum nor the stopping test depends. A pair solved again
+        by :meth:`_solve_pair` is the host loop's, ``shrinking`` included, so that it
+        is the host path's pair bit for bit.
         """
         plan = self._ovo_solver(class_rows, C_all, backend)
         if plan is None:
             return None
         solver, device = plan
         spec = problem.basis.spec
-        rows = _ovo.sorted_rows(problem.X32, class_rows, device)
-        order = np.concatenate(class_rows)
-        k_diag = kernel_diagonal(spec, rows.host)
-        box = C_all[order]
+        rows = _ovo.class_rows(problem.X32, class_rows)
+        k_diag = kernel_diagonal(spec, problem.X32)
         sizes, boxes, diagonals, budgets, members = [], [], [], [], []
         for i, j in pairs:
-            s_i, n_i, s_j, n_j = rows.pair(i, j)
-            sorted_index = np.concatenate([np.arange(s_i, s_i + n_i), np.arange(s_j, s_j + n_j)])
-            sizes.append(n_i + n_j)
-            boxes.append(box[sorted_index])
-            diagonals.append(k_diag[sorted_index])
-            budgets.append(self._resolve_max_iter(n_i + n_j))
+            index = np.concatenate([class_rows[i], class_rows[j]])
+            n_i = class_rows[i].shape[0]
+            sizes.append(index.shape[0])
+            boxes.append(C_all[index])
+            diagonals.append(k_diag[index])
+            budgets.append(self._resolve_max_iter(index.shape[0]))
             members.append(n_i)
         width = _ovo.threadgroup_width(max(sizes))
         tol = float(self.tol)
@@ -869,8 +886,11 @@ class MLXSVCMixin(BackendMixin):
                 else:
                     finished += int(state.n_iter != wave.n_iter[at])
                     states[k] = state
-            # The wave's device buffers go with it, before anything else is built.
+            # The wave's device buffers go with it, before anything else is built; and
+            # the rows kept on the device go before the host solver builds its own.
             del wave
+            if any(states[k] is None for k in range(start, end)):
+                rows.release()
             for k in range(start, end):
                 if states[k] is None:
                     i, j = pairs[k]
@@ -1192,8 +1212,10 @@ class SVC(MLXSVCMixin, _SkSVC):
         sample, so the optimum is the same either way. As in LIBSVM, the path to
         it can differ within ``tol`` — the support-vector set at the margin and
         the last digits of the decision values can move. The GPU's one-vs-one
-        kernel (see Notes) does not shrink, whatever this says: it is a speed
-        heuristic, and nothing about the optimum or the stop depends on it.
+        kernel (see Notes) and the host's finish of its pairs do not shrink,
+        whatever this says: it is a speed heuristic, and nothing about the optimum
+        or the stop depends on it. A pair the host solver solves again from
+        scratch there honors it, as on the host path.
     probability : bool, default=False
         ``True`` is not implemented; see Notes. On scikit-learn 1.9, where the
         parameter is deprecated and defaults to the ``"deprecated"`` sentinel,
@@ -1308,7 +1330,8 @@ class SVC(MLXSVCMixin, _SkSVC):
     whose bias LIBSVM takes from its own rounding, is solved again by the host
     solver, as is one that went non-finite. The fit's diagnostics event counts
     them (``ovo_*`` in ``fit_event_.extra``). Pairs of more than 4 096 rows, or
-    whose Gram does not fit ``cache_size``, and MLX 0.31, keep the host solver for
+    whose Gram does not fit ``cache_size``, a ``tol`` below what the kernel's state
+    resolves (about 2⁻⁴⁰ of ``1 + C·m``), and MLX 0.31, keep the host solver for
     every pair. See ``docs/fp32_policy.md`` §2.5.
 
     **Where inference runs.** A ``predict`` or ``decision_function`` batch of at most

@@ -57,16 +57,20 @@ same products, norms and fused rbf transform, block for block — so it is the G
 host path would have solved against. Pairs whose rbf entries need the host's float64
 recomputation (``docs/fp32_policy.md`` §2.4) take :func:`kernel_matrix` itself.
 Every pair's Gram is packed into one buffer for the launch; pairs run in **waves**
-whose packed Grams fit the caller's budget (:func:`waves`).
+whose packed Grams fit the caller's budget (:func:`waves`). Building them, the
+classes' rows on the device and the build's transients keep within
+``Tuning.distance_block_bytes`` (:func:`_pair_grams`), where a pair too large for it
+alone takes what :func:`kernel_matrix` takes to build it on the host path.
 
 **When it compiles.** On the first fit in a process that takes this path, and once:
 :func:`pair_solver` builds the library, runs it on a fixed problem whose answer the
 host checks, and serves it only if the two agree. A library never compiled on the
-machine cost that first fit 133-150 ms on an M4 Max with MLX 0.32.2 (first fits of
-168-191 ms against 32-58 ms), once per machine, MLX release and kernel version; the
-operating system's shader cache serves it to later processes. MLX holds a lock that
-stalls the process's other GPU work while a library builds, so nothing builds ahead of
-need, as for the neighbor search's kernel.
+machine cost that first fit 70-78 ms more on an M4 Max with MLX 0.32.2 (first fits of
+108-150 ms against 33-81 ms), once per machine, MLX release and kernel version; the
+operating system's shader cache serves it to later processes. The check itself costs
+the first fit of every process about 8 ms. MLX holds a lock that stalls the process's
+other GPU work while a library builds, so nothing builds ahead of need, as for the
+neighbor search's kernel.
 """
 
 from __future__ import annotations
@@ -93,11 +97,11 @@ from .kernels import (
 
 __all__ = [
     "MAX_PAIR_ROWS",
+    "ClassRows",
     "PairSolver",
-    "SortedRows",
     "WaveResult",
+    "class_rows",
     "pair_solver",
-    "sorted_rows",
     "waves",
 ]
 
@@ -120,6 +124,11 @@ LAUNCH_SECONDS = 0.25
 
 #: LIBSVM's floor for a non-positive quadratic coefficient, as ``smo._TAU``.
 _TAU = 1e-12
+
+#: The most Gram entries one wave packs. The launch table carries each pair's Gram
+#: offset as an int32, and MLX sizes an array in int32 too; a wave past it would wrap
+#: and read other pairs' Grams. 8 GiB of float32: :func:`waves` splits before it.
+MAX_WAVE_ENTRIES = 2**31 - 1
 
 #: Stop codes a launch reports per pair.
 STOP_BUDGET = 0  # the launch's step budget, or max_iter, ran out
@@ -609,56 +618,74 @@ def _split(values) -> tuple[np.ndarray, np.ndarray]:
 
 
 @dataclass(frozen=True, slots=True)
-class SortedRows:
-    """A fit's training rows in the compute frame, class by class, on host and device.
+class ClassRows:
+    """A fit's training rows in the compute frame, class by class, for its pairs' Grams.
 
-    Class ``c``'s rows are ``host[starts[c]:starts[c + 1]]``, ascending, as LIBSVM
-    orders each one-vs-one subproblem; ``device`` is the same matrix on the GPU,
-    evaluated. ``top_sq`` is each class's largest squared row norm, from the float32
-    norms :func:`kernel_matrix`'s refinement test reads.
+    Class ``c``'s rows are ``X32[members[c]]``, ascending, and pair ``(i, j)`` is class
+    ``i``'s rows then class ``j``'s, as LIBSVM orders each one-vs-one subproblem.
+    ``X32`` is the fit's own float32 copy, read and never copied whole. ``top_sq`` is
+    each class's largest squared row norm, from the float32 norms
+    :func:`kernel_matrix`'s refinement test reads. ``device`` holds classes' rows on
+    the GPU between the Grams that read them, in the order they were last read, within
+    the budget :func:`_pair_grams` builds to; it goes with the fit, or :meth:`release`.
     """
 
-    host: np.ndarray
-    device: Any
-    starts: np.ndarray
+    X32: np.ndarray
+    members: tuple
     top_sq: np.ndarray
+    device: dict
 
-    def pair(self, i: int, j: int) -> tuple[int, int, int, int]:
-        """``(start_i, rows_i, start_j, rows_j)`` of pair ``(i, j)``."""
-        s = self.starts
-        return int(s[i]), int(s[i + 1] - s[i]), int(s[j]), int(s[j + 1] - s[j])
+    def count(self, c: int) -> int:
+        return int(self.members[c].shape[0])
+
+    def host(self, i: int, j: int) -> np.ndarray:
+        """Pair ``(i, j)``'s rows, on the host."""
+        return np.concatenate([self.X32[self.members[i]], self.X32[self.members[j]]])
+
+    def on_device(self, mx, c: int):
+        """Class ``c``'s rows on the device, uploaded unless resident; now the most recent."""
+        rows = self.device.pop(c, None)
+        if rows is None:
+            rows = mx.array(self.X32[self.members[c]], dtype=mx.float32)
+        self.device[c] = rows
+        return rows
+
+    def device_bytes(self) -> int:
+        return sum(4 * int(rows.size) for rows in self.device.values())
+
+    def evict(self, keep, room: int) -> None:
+        """Drop resident classes but ``keep``, least recently used first, to ``room`` bytes."""
+        for c in list(self.device):
+            if self.device_bytes() <= room:
+                return
+            if c not in keep:
+                del self.device[c]
+
+    def release(self) -> None:
+        self.device.clear()
 
 
-def sorted_rows(X32: np.ndarray, class_rows: list[np.ndarray], device: str) -> SortedRows:
-    """:class:`SortedRows` of ``X32``, whose class ``c`` is ``X32[class_rows[c]]``."""
-    import mlx.core as mx
-
-    host = np.ascontiguousarray(X32[np.concatenate(class_rows)], dtype=np.float32)
-    counts = np.array([rows.shape[0] for rows in class_rows], dtype=np.int64)
-    starts = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
-    sq = np.einsum("ij,ij->i", host, host)
-    top = np.array(
-        [float(np.max(sq[a:b])) if b > a else 0.0 for a, b in zip(starts[:-1], starts[1:], strict=True)]
-    )
-    with use_device(device):
-        rows = mx.array(host, dtype=mx.float32)
-        mx.eval(rows)
-    return SortedRows(host=host, device=rows, starts=starts, top_sq=top)
+def class_rows(X32: np.ndarray, members: list[np.ndarray]) -> ClassRows:
+    """:class:`ClassRows` of ``X32``, whose class ``c`` is ``X32[members[c]]``; none on the device."""
+    sq = np.einsum("ij,ij->i", X32, X32)
+    top = np.array([float(np.max(sq[rows])) if rows.shape[0] else 0.0 for rows in members])
+    return ClassRows(X32=X32, members=tuple(members), top_sq=top, device={})
 
 
 def waves(sizes, budget_bytes: int) -> list[tuple[int, int]]:
     """Consecutive runs of pairs, in LIBSVM's order, whose packed Grams fit the budget.
 
-    ``sizes`` are the pairs' sample counts; a pair's Gram takes ``4·m²`` bytes. Every
-    pair must fit on its own, which the caller's gate checks. Returns ``[start, end)``
-    bounds.
+    ``sizes`` are the pairs' sample counts; a pair's Gram takes ``4·m²`` bytes, and a
+    wave at most :data:`MAX_WAVE_ENTRIES` entries whatever the budget. Every pair must
+    fit on its own, which the caller's gate checks. Returns ``[start, end)`` bounds.
     """
+    budget = min(int(budget_bytes), 4 * MAX_WAVE_ENTRIES)
     out: list[tuple[int, int]] = []
     start = 0
     used = 0
     for k, m in enumerate(sizes):
         need = 4 * int(m) * int(m)
-        if k > start and used + need > budget_bytes:
+        if k > start and used + need > budget:
             out.append((start, k))
             start, used = k, 0
         used += need
@@ -667,7 +694,7 @@ def waves(sizes, budget_bytes: int) -> list[tuple[int, int]]:
     return out
 
 
-def _pair_grams(mx, spec: KernelSpec, rows: SortedRows, pairs, device: str, capacity: int):
+def _pair_grams(mx, spec: KernelSpec, rows: ClassRows, pairs, device: str, capacity: int):
     """The packed Gram of ``pairs``: each pair's ``m × m`` kernel matrix, row-major.
 
     Block for block the MLX operations :func:`kernel_matrix` evaluates for the pair,
@@ -676,65 +703,93 @@ def _pair_grams(mx, spec: KernelSpec, rows: SortedRows, pairs, device: str, capa
     ``capacity`` entries: every wave of a fit allocates the same size, so MLX's
     buffer cache hands each wave the one the wave before it freed, where buffers of
     different sizes would each stay cached. Returns ``(gram, offsets)``.
+
+    Everything else it puts on the device — the classes' rows ``rows`` keeps there
+    and each pair's transients — stays within ``Tuning.distance_block_bytes``; a
+    pair whose own transients exceed it is built alone, beside its two classes, as
+    :func:`kernel_matrix` would build it on the host solver's path.
     """
-    sizes = []
-    for i, j in pairs:
-        _, n_i, _, n_j = rows.pair(i, j)
-        sizes.append(n_i + n_j)
-    sizes = np.asarray(sizes, dtype=np.int64)
+    sizes = np.asarray([rows.count(i) + rows.count(j) for i, j in pairs], dtype=np.int64)
     offsets = np.concatenate([[0], np.cumsum(sizes * sizes)]).astype(np.int64)
     total = int(offsets[-1])
-    needs_norms = spec.kernel == "rbf"
-    n_features = int(rows.host.shape[1])
+    rbf = spec.kernel == "rbf"
+    n_features = int(rows.X32.shape[1])
     transform = _tile_transform(mx, spec, device)
     gram = mx.zeros((max(total, int(capacity), _metal.MIN_INPUT),), dtype=mx.float32)
-    # A pair's rows, product and transformed tile are transient. Pairs are built in
-    # groups whose transients fit the budget kernel_matrix's blocks keep to on the
-    # device, each group evaluated before the next is built: a lazy graph over every
-    # pair would hold all of them at once, and evaluating after every pair cost a
-    # synchronization each (51 against 25 ms at 2 048 × 512, K = 16).
+    # Pairs are built in groups, each evaluated before the next is built: a lazy graph
+    # over every pair would hold all their transients at once, and evaluating after
+    # every pair cost a synchronization each (51 against 25 ms at 2 048 × 512, K = 16).
+    # A group's transients and the resident classes fit the budget kernel_matrix's
+    # blocks keep to. When the next pair would overflow it, the group is evaluated and
+    # classes the pair does not read are dropped, least recently used first, until the
+    # rest take at most half the budget, or less where the pair needs more: a fit whose
+    # rows fit in half keeps them all, and one whose rows do not leaves its groups
+    # half the budget, not a pair at a time.
     limit = get_tuning().distance_block_bytes
     pending = 0
     for k, (i, j) in enumerate(pairs):
-        s_i, n_i, s_j, n_j = rows.pair(i, j)
-        m = n_i + n_j
-        need = 4 * (m * n_features + 2 * m * m)
-        if pending and pending + need > limit:
-            mx.eval(gram)
-            pending = 0
-        pending += need
+        m = int(sizes[k])
         top = float(max(rows.top_sq[i], rows.top_sq[j]))
+        refined = _RbfRefiner.needed(spec, n_features, top, top)
+        block = _block_rows(m, m, device, None)
+        if refined:
+            # kernel_matrix's own: the rows and a block uploaded, their squares, the
+            # product and the tile; then its result, uploaded.
+            need = 4 * (4 * m * n_features + 3 * m * m)
+        else:
+            # The pair's rows side by side and their squares, then kernel_matrix's
+            # blocks: each one's product and transformed tile, and its rows' squares
+            # where it is not the whole pair.
+            need = 4 * ((2 * m + (m if block < m else 0)) * n_features + 2 * m * m)
+        fresh = () if refined else tuple(c for c in (i, j) if c not in rows.device)
+        upload = 4 * n_features * sum(rows.count(c) for c in fresh)
+        if pending + rows.device_bytes() + upload + need > limit:
+            if pending:
+                mx.eval(gram)
+                pending = 0
+            rows.evict((i, j), min(limit // 2, limit - need) - upload)
+        pending += need
         at = int(offsets[k])
-        if _RbfRefiner.needed(spec, n_features, top, top):
-            host = np.concatenate([rows.host[s_i : s_i + n_i], rows.host[s_j : s_j + n_j]])
-            tile = mx.array(kernel_matrix(spec, host, backend="mlx", device=device))
+        if refined:
+            tile = mx.array(kernel_matrix(spec, rows.host(i, j), backend="mlx", device=device))
             gram[at : at + m * m] = tile.reshape(-1)
         else:
-            right = mx.concatenate(
-                [rows.device[s_i : s_i + n_i], rows.device[s_j : s_j + n_j]], axis=0
+            _build_pair(
+                mx, gram, at, rows.on_device(mx, i), rows.on_device(mx, j), block, transform,
+                rbf,
             )
-            right_t = right.T
-            b_sq = mx.sum(right * right, axis=1) if needs_norms else None
-            block = _block_rows(m, m, device, None)
-            for start in range(0, m, block):
-                end = min(start + block, m)
-                left = right[start:end]
-                a_sq = mx.sum(left * left, axis=1) if needs_norms else None
-                tile = transform(left @ right_t, a_sq, b_sq)
-                gram[at + start * m : at + end * m] = tile.reshape(-1)
     # Every self-entry is the closed-form diagonal, rounded to float32, as
     # kernel_matrix writes it.
-    selfs = _self_entries(spec, rows.host)
+    selfs = _self_entries(spec, rows.X32)
     diag = []
     values = []
     for k, (i, j) in enumerate(pairs):
-        s_i, n_i, s_j, n_j = rows.pair(i, j)
-        m = n_i + n_j
+        m = int(sizes[k])
         diag.append(int(offsets[k]) + np.arange(m, dtype=np.int64) * (m + 1))
-        values += [selfs[s_i : s_i + n_i], selfs[s_j : s_j + n_j]]
+        values += [selfs[rows.members[i]], selfs[rows.members[j]]]
     gram[mx.array(np.concatenate(diag))] = mx.array(np.concatenate(values))
     mx.eval(gram)
     return gram, offsets
+
+
+def _build_pair(mx, gram, at: int, first, second, block: int, transform, rbf: bool) -> None:
+    """Write the kernel matrix of ``first``'s rows then ``second``'s into ``gram`` at ``at``.
+
+    Lazily, in blocks of ``block`` rows, the operations :func:`kernel_matrix`
+    evaluates. A block of every row takes the norms of the whole pair, which
+    kernel_matrix computes again from an identical array, to the same bits. The
+    transients are this function's locals, so nothing but the graph holds them.
+    """
+    right = mx.concatenate([first, second], axis=0)
+    m = int(right.shape[0])
+    right_t = right.T
+    b_sq = mx.sum(right * right, axis=1) if rbf else None
+    for start in range(0, m, block):
+        end = min(start + block, m)
+        left = right[start:end]
+        a_sq = b_sq if end - start == m else (mx.sum(left * left, axis=1) if rbf else None)
+        tile = transform(left @ right_t, a_sq, b_sq)
+        gram[at + start * m : at + end * m] = tile.reshape(-1)
 
 
 # -------------------------------------------------------------------------- solving
@@ -770,7 +825,7 @@ class PairSolver:
     def solve(
         self,
         spec: KernelSpec,
-        rows: SortedRows,
+        rows: ClassRows,
         pairs,
         boxes,
         k_diag,
@@ -792,7 +847,7 @@ class PairSolver:
         """
         import mlx.core as mx
 
-        firsts = [rows.pair(i, j)[1] for i, j in pairs]
+        firsts = [rows.count(i) for i, _ in pairs]
         with use_device(device):
             gram, gram_offsets = _pair_grams(mx, spec, rows, pairs, device, capacity)
             return self._run(mx, gram, gram_offsets, firsts, boxes, k_diag, max_iter, tol, width)
@@ -825,6 +880,10 @@ class PairSolver:
         labels = np.concatenate(
             [np.where(np.arange(m) < f, 1.0, -1.0) for m, f in zip(sizes, firsts, strict=True)]
         )
+        if int(gram_offsets[-1]) > MAX_WAVE_ENTRIES:  # waves() splits before this
+            raise OverflowError(
+                f"a wave of {int(gram_offsets[-1])} Gram entries exceeds {MAX_WAVE_ENTRIES}"
+            )
         table = np.zeros((n_pairs, 8), dtype=np.int64)
         table[:, 0] = sizes
         table[:, 1] = firsts
@@ -874,6 +933,12 @@ class PairSolver:
                 grid=(n_pairs * width, 1, 1),
                 threadgroup=(width, 1, 1),
             )
+            # Evaluated before NumPy reads any of it. An error MLX raises while it
+            # evaluates — a library Metal cannot build, a threadgroup wider than the
+            # pipeline takes, a failed allocation — is a Python exception from
+            # mx.eval, and aborts the process from inside NumPy's buffer protocol
+            # (MLX 0.32.2).
+            mx.eval(*outputs)
             info = np.array(outputs[4]).reshape(n_pairs, 2).astype(np.int64)
             elapsed = time.perf_counter() - started
             launches += 1
@@ -925,7 +990,9 @@ def _known_problem():
         t = np.arange(m, dtype=np.float64)
         X = np.stack([np.sin(1.3 * t), np.cos(0.7 * t + 0.4), np.sin(0.37 * t + 1.0)], axis=1)
         sq = np.einsum("ij,ij->i", X, X)
-        dist = np.maximum(sq[:, None] + sq[None, :] - 2.0 * X @ X.T, 0.0)
+        # Finite data: a flag NumPy's BLAS raises here is spurious (smo._gradient).
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            dist = np.maximum(sq[:, None] + sq[None, :] - 2.0 * X @ X.T, 0.0)
         gram = np.exp(-0.5 * dist).astype(np.float32)
         np.fill_diagonal(gram, 1.0)
         rows.append(gram)
@@ -971,7 +1038,8 @@ def _known_answer(solver: PairSolver) -> bool:
             return False
         if np.any(alpha < 0.0) or np.any(alpha > C) or abs(float(alpha @ y)) > 1e-9 * C.sum():
             return False
-        yg = gram.astype(np.float64) @ (alpha * y) - y
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            yg = gram.astype(np.float64) @ (alpha * y) - y
         upper = alpha >= C
         lower = ~upper & (alpha <= 0.0)
         up = np.where(y > 0, ~upper, ~lower)
@@ -991,10 +1059,11 @@ def _checked() -> bool:
     """
     try:
         return _known_answer(PairSolver(_kernel()))
-    except RuntimeError:
-        # What MLX raises when Metal cannot build the library or load the kernel, or
-        # when a launch of the widest threadgroup exceeds what the compiled pipeline
-        # allows. The kernel ran only on the fixed problem above, never on a fit's data.
+    except (RuntimeError, ValueError):
+        # What MLX raises, from mx.eval, when Metal cannot build the library or load
+        # the kernel (RuntimeError), or when the widest threadgroup exceeds what the
+        # compiled pipeline takes (ValueError). The kernel ran only on the fixed problem
+        # above, never on a fit's data.
         return False
 
 

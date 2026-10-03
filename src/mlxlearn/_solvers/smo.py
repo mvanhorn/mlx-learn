@@ -556,13 +556,19 @@ def _gradient(y: np.ndarray, alpha: np.ndarray, gram: np.ndarray) -> np.ndarray:
     matrix product, chunk after chunk in index order, so the result depends on the
     data and the BLAS alone — not on threads, timing or which rows were read
     together before.
+
+    Floating-point flags are not reported: NumPy 2.2 on macOS raised divide-by-zero,
+    overflow and invalid-value warnings from this product on every fit, finite data
+    and a finite result, flags its BLAS left set. A gradient that is really not
+    finite is the caller's to find, with ``np.isfinite``.
     """
     yg = -y.copy()
     support = np.flatnonzero(alpha)
     weights = alpha[support] * y[support]
-    for start in range(0, support.shape[0], _GRADIENT_ROWS):
-        rows = gram[support[start : start + _GRADIENT_ROWS]].astype(np.float64)
-        yg += weights[start : start + _GRADIENT_ROWS] @ rows
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        for start in range(0, support.shape[0], _GRADIENT_ROWS):
+            rows = gram[support[start : start + _GRADIENT_ROWS]].astype(np.float64)
+            yg += weights[start : start + _GRADIENT_ROWS] @ rows
     return yg
 
 

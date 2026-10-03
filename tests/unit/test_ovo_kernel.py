@@ -27,6 +27,7 @@ from mlxlearn._common.device import gpu_available, use_device
 from mlxlearn._kernels import _metal, _ovo
 from mlxlearn._kernels.kernels import KernelSpec, kernel_matrix
 from mlxlearn._solvers import smo
+from mlxlearn.exceptions import BackendExecutionError
 from mlxlearn.svm import SVC, _classes
 from tests._helpers import join_or_fail
 
@@ -127,6 +128,15 @@ def fresh_first_use():
     _ovo._checked.cache_clear()
     yield
     _ovo._checked.cache_clear()
+    _ovo._kernel.cache_clear()
+
+
+def _unbuildable(patch):
+    """Give the kernel a source Metal rejects, under a name of its own, as a compiler
+    that cannot build it would: MLX raises only when it evaluates the first launch."""
+    patch.setattr(_ovo, "_SOURCE", _ovo._SOURCE.replace("steps += 1;", "steps += 1 + undeclared;"))
+    patch.setattr(_ovo, "_SOURCE_VERSION", _ovo._SOURCE_VERSION + 1000)
+    _ovo._kernel.cache_clear()
 
 
 # ----------------------------------------------------------------------------------
@@ -174,6 +184,16 @@ def test_waves_fit_the_budget_in_libsvm_order():
     assert _ovo.waves([], 100) == []
 
 
+def test_a_wave_never_holds_more_gram_entries_than_int32_offsets_reach():
+    """Whatever the budget, as the cache overrides allow: 127 Grams of 4 096 rows are
+    2³¹ − 2²⁴ entries, and a 128th would wrap the launch table's offsets."""
+    assert _ovo.waves([_ovo.MAX_PAIR_ROWS] * 200, 2**45) == [(0, 127), (127, 200)]
+    with pytest.raises(OverflowError, match="Gram entries"):
+        _ovo.PairSolver(None)._run(
+            mx, None, np.array([0, 2**31 + 5]), [1], [np.ones(2)], [np.ones(2)], [10], 1e-3, 32
+        )
+
+
 @needs_kernel
 def test_the_known_problem_passes_and_matches_the_host_solver():
     """The first-use problem: the kernel's answer, held to the host's float64 stop."""
@@ -199,21 +219,45 @@ def test_the_kernel_compiles_on_the_first_fit_that_takes_it():
     assert _ovo_extra(model)["ovo_kernel_pairs"] == 3
 
 
+@pytest.mark.parametrize("fault", ["unbuildable", "too wide"])
 @pytest.mark.usefixtures("fresh_first_use")
 @needs_kernel
-def test_a_kernel_that_fails_to_build_keeps_the_host_path(monkeypatch, host_only, spies):
-    """What MLX raises for a library Metal cannot build; the fit still answers."""
-
-    def unbuildable():
-        raise RuntimeError("[metal::Device] Unable to build metal library from source")
-
-    monkeypatch.setattr(_ovo, "_kernel", unbuildable)
-    _ovo._checked.cache_clear()
-    X, y = _blobs()
-    model = _fit(X, y)
-    assert spies["waves"] == 0 and _ovo_extra(model) == {}
+def test_a_kernel_that_fails_on_its_first_launch_keeps_the_host_path(
+    fault, monkeypatch, host_only, spies
+):
+    """A library Metal cannot build (MLX's RuntimeError), and a threadgroup wider than
+    the pipeline takes (its ValueError): both raised when the check's launch is
+    evaluated, where reading it through NumPy first aborted the process. The check
+    says no, and every fit keeps the host loop."""
+    with monkeypatch.context() as patch:
+        if fault == "unbuildable":
+            _unbuildable(patch)
+        else:
+            patch.setattr(_ovo, "MAX_THREADS", 2048)  # past every Apple GPU's 1 024
+        _ovo._checked.cache_clear()
+        assert _ovo.pair_solver("gpu") is None
+        checked = spies["waves"]  # the check's own runs, up to the one that failed
+        X, y = _blobs()
+        model = _fit(X, y)
+        assert _ovo._checked.cache_info().currsize == 1, "the failure was not remembered"
+    assert spies["waves"] == checked and _ovo_extra(model) == {}
     _assert_same_model(model, host_only(X, y))
-    assert _ovo._checked.cache_info().currsize == 1, "the failure was not remembered"
+
+
+@needs_kernel
+def test_an_mlx_error_in_a_fits_launch_raises_and_never_aborts(monkeypatch, spies):
+    """An error MLX raises evaluating a fit's own launch — here a library that does not
+    build, served after the check passed — is the fit's BackendExecutionError."""
+    assert _ovo._checked()
+    X, y = _blobs()
+    try:
+        with monkeypatch.context() as patch:
+            _unbuildable(patch)
+            with pytest.raises(BackendExecutionError):
+                _fit(X, y)
+    finally:
+        _ovo._kernel.cache_clear()
+    assert _ovo_extra(_fit(X, y))["ovo_kernel_pairs"] == 6
 
 
 @pytest.mark.usefixtures("fresh_first_use")
@@ -243,6 +287,7 @@ GATE_MISSES = {
     "a pair the cache cannot hold": ({}, {"cache_size": 0.5}, {}),
     "a box too large": ({}, {"C": 2.0**40}, {}),
     "a box too small": ({}, {"C": 2.0**-110}, {}),
+    "a tol below the kernel's resolution": ({}, {"tol": 1e-14}, {}),
 }
 
 
@@ -267,6 +312,32 @@ def test_a_pair_past_the_kernels_rows_runs_the_host_loop(monkeypatch, spies, hos
     model = _fit(X, y)
     assert spies["waves"] == 0
     _assert_same_model(model, host_only(X, y))
+
+
+@needs_kernel
+def test_the_gate_reads_tol_against_the_boxes_and_the_largest_pair():
+    """``tol`` at least 2⁻⁴⁰ of ``1 + C·m``: the double-float state's reach."""
+    classes = [np.arange(300), np.arange(100), np.arange(50)]
+    floor = _classes._OVO_TOL_FLOOR * (1.0 + 10.0 * 400)
+    assert SVC(C=10.0, tol=floor)._ovo_solver(classes, np.full(450, 10.0), "mlx") is not None
+    assert SVC(C=10.0, tol=floor * 0.99)._ovo_solver(classes, np.full(450, 10.0), "mlx") is None
+
+
+@needs_kernel
+def test_a_tol_the_kernel_cannot_resolve_converges_on_the_host_loop(spies, host_only):
+    """tol = 1e-14 at C = 10: the double-float state never saw its violation under it,
+    and one pair stepped to max_iter (10⁷ steps, 58 s, at the default) where the host
+    loop converged in 8 083. Such a fit is the host loop's."""
+    rng = np.random.default_rng(7)
+    y = rng.integers(0, 3, 600)
+    X = rng.normal(size=(600, 4)) + 0.8 * rng.normal(size=(3, 4))[y]
+    params = {"C": 10.0, "tol": 1e-14, "max_iter": 200_000}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        with tuning_context(force_backend="mlx"):
+            model = SVC(**params).fit(X, y)
+    assert model.fit_status_ == 0 and spies["waves"] == 0
+    _assert_same_model(model, host_only(X, y, **params))
 
 
 def test_the_gate_reads_the_largest_pair_and_the_cache():
@@ -427,8 +498,28 @@ def test_the_iteration_budget_is_the_host_loops(host_only):
 
 @needs_kernel
 def test_shrinking_changes_nothing_on_the_kernel_path():
+    """Pairs the kernel solved, and the host finished, are the same either way."""
     X, y = _blobs(n=900, K=4)
     _assert_same_model(_fit(X, y, shrinking=True), _fit(X, y, shrinking=False))
+
+
+@needs_kernel
+def test_a_pair_solved_again_honors_shrinking_as_the_host_path_does(host_only):
+    """Every pair here ends with no free dual variable and is solved again by the host
+    loop, which honors ``shrinking``: each setting gives the host path's model, bit for
+    bit, and the two settings differ in the biases' last bits."""
+    rng = np.random.default_rng(238)
+    K, n = int(rng.integers(3, 6)), int(rng.integers(90, 400))
+    X = rng.normal(size=(n, int(rng.integers(2, 6))))
+    y = rng.integers(0, K, n)
+    params = {"C": float(10 ** rng.uniform(-1.5, 1.0)), "gamma": float(10 ** rng.uniform(-3, 1.5))}
+    params["class_weight"] = "balanced"
+    models = {}
+    for shrinking in (True, False):
+        models[shrinking] = _fit(X, y, shrinking=shrinking, **params)
+        assert _ovo_extra(models[shrinking])["ovo_resolved_no_free"] == 6, "lost its premise"
+        _assert_same_model(models[shrinking], host_only(X, y, shrinking=shrinking, **params))
+    assert models[True]._pair_rho_.tobytes() != models[False]._pair_rho_.tobytes()
 
 
 # ----------------------------------------------------------------------------------
@@ -438,7 +529,7 @@ def test_shrinking_changes_nothing_on_the_kernel_path():
 
 def _packed_against_kernel_matrix(X, y, spec, budget=None):
     classes = [np.flatnonzero(y == c) for c in np.unique(y)]
-    rows = _ovo.sorted_rows(X, classes, "gpu")
+    rows = _ovo.class_rows(X, classes)
     pairs = [(i, j) for i in range(len(classes)) for j in range(i + 1, len(classes))]
     overrides = {} if budget is None else {"distance_block_bytes": budget}
     with tuning_context(**overrides), use_device("gpu"):
@@ -570,6 +661,18 @@ def test_concurrent_fits_and_the_first_compile(monkeypatch):
 # ----------------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("fresh_first_use")
+@needs_kernel
+def test_a_kernel_fit_and_its_check_raise_no_floating_point_warnings():
+    """NumPy 2.2's BLAS on macOS left floating-point flags set on finite products, and the
+    host's verification of every pair, and the first-use check, warned on every fit."""
+    X, y = _blobs(n=900, K=4)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        model = _fit(X, y)
+    assert _ovo_extra(model)["ovo_kernel_pairs"] == 6
+
+
 @needs_kernel
 def test_one_fit_records_one_event_with_the_counts():
     X, y = _blobs(n=900, K=4)
@@ -594,11 +697,19 @@ def test_a_pickled_model_is_the_host_paths_and_loads_without_the_kernel(host_onl
     _assert_same_model(loaded, model)
 
 
+@pytest.mark.parametrize(
+    "n, d, K",
+    [
+        (4000, 16, 6),  # 15 pairs of about 1 333 rows: 7 MiB of Gram each
+        (4000, 2048, 20),  # 31 MiB of rows, twice the tiles' budget; pairs of 400
+    ],
+)
 @needs_kernel
-def test_the_fit_holds_at_most_its_cache_of_grams_and_releases_them():
-    """A wave's packed Grams fit ``cache_size``; the build's transients fit the kernel
-    tiles' own budget; the fit keeps none of it, and the cache-release rule returns it."""
-    X, y = _blobs(n=4000, d=16, K=6)  # 15 pairs of about 1 333 rows: 7 MiB each
+def test_the_fit_holds_at_most_its_cache_of_grams_and_releases_them(n, d, K):
+    """A wave's packed Grams fit ``cache_size``; the rows on the device and the build's
+    transients fit the kernel tiles' own budget, the rows' squares included; the fit
+    keeps none of it, and the cache-release rule returns it."""
+    X, y = _blobs(n=n, d=d, K=K)
     budget, tiles = 24 * MiB, 16 * MiB
     with tuning_context(distance_block_bytes=tiles):
         _fit(X, y, cache_size=budget / MiB)

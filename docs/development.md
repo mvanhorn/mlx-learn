@@ -281,10 +281,12 @@ these rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel 
   their threadgroup width and launch. `fma` appears only where a kernel means it — the
   exact product error of a double-float multiply.
 - **Inputs of at least eight elements** (`_metal.pad_min8`); sizes travel in one int32
-  array of eight (`_metal.int_params`), never as template values. MLX declares a shorter
-  input `constant`, which compiles a second variant of the source. Sources are ASCII and
-  names fixed: the operating system's Metal shader cache serves a library to later
-  processes only while both stay the same, and a source change bumps the name's version.
+  array of eight (`_metal.int_params`), never as template values, and a value int32
+  cannot hold is refused, in a launch table of offsets too (`_ovo.waves` keeps a wave's
+  packed Grams under 2³¹ entries). MLX declares a shorter input `constant`, which
+  compiles a second variant of the source. Sources are ASCII and names fixed: the
+  operating system's Metal shader cache serves a library to later processes only while
+  both stay the same, and a source change bumps the name's version.
 - **Kernel objects come from an `lru_cache` factory keyed by static parameters only** —
   the variant, never data — and kernels stay out of `mx.compile`d functions.
 - **Compile on first use, in the query that needs it, not ahead of it.** MLX holds a lock
@@ -293,9 +295,16 @@ these rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel 
   milliseconds, once per machine — and one started at the index build overlapped only
   that build's host work, 8 ms of it at 30 000 × 256. A first use runs the kernel on a
   fixed input whose answer the host computes, under a lock, so concurrent first queries
-  compile once; a kernel that does not build (MLX raises `RuntimeError`) or answers
-  wrongly is not used in that process. That narrow `except` is a capability probe on
-  fixed data, like `gpu_available()`, never a guard around a query's own work.
+  compile once; a kernel that does not build (MLX raises `RuntimeError`), whose widest
+  threadgroup the compiled pipeline cannot take (`ValueError`), or that answers wrongly
+  is not used in that process. That narrow `except` is a capability probe on fixed data,
+  like `gpu_available()`, never a guard around a query's own work.
+- **`mx.eval` a launch before NumPy reads it.** MLX raises those errors while it
+  evaluates. From `mx.eval` they are Python exceptions — the first-use check's `False`, a
+  fit's `BackendExecutionError` — but on MLX 0.32.2 an evaluation that runs inside
+  NumPy's buffer protocol (`np.array`, `np.asarray`) turns the same error into
+  `std::terminate`, and the process aborts. The tests make the first launch fail both
+  ways, and a fit's own launch fail after the check passed.
 - **Launches stay short and bounded.** A kernel that iterates (the one-vs-one SMO) runs
   a step budget per launch — 2 048 steps first, then about a quarter second's worth by
   the last launch's time per step — and the host relaunches with the state on the device,
@@ -305,10 +314,16 @@ these rules; each was measured on MLX 0.31.2 and 0.32.2 before the first kernel 
 - **Device memory has a budget the documentation already promises.** The one-vs-one
   kernel holds every pair's Gram it solves at once, so it solves them in **waves** whose
   packed Grams fit `cache_size` (the kernel cache a fit already sizes, within the
-  `Tuning.smo_kernel_cache_*` ceiling), builds them in groups whose transients fit
-  `Tuning.distance_block_bytes`, and gives every wave of a fit one buffer size, so MLX's
-  buffer cache reuses it. The buffers are locals, freed when the fit returns, and the
-  existing cache-release rule (`release_mlx_cache`) applies on the way out.
+  `Tuning.smo_kernel_cache_*` ceiling), and gives every wave of a fit one buffer size, so
+  MLX's buffer cache reuses it. Everything else it puts on the device to build them —
+  the training rows it keeps there, which stay only while they take at most half the
+  budget, and every transient, the rows' squares included — fits
+  `Tuning.distance_block_bytes`; a pair too large for that alone takes what
+  `kernel_matrix` takes to build it on the host path. Count every array a lazy graph
+  materializes, not only the tiles: an uncounted copy of the rows and their squares put
+  a 20 000 × 4 096 fit at over 1 GiB against a 456 MiB budget. The buffers are locals,
+  freed when the fit returns, and the existing cache-release rule (`release_mlx_cache`)
+  applies on the way out.
 - **Tests prove which path ran**, by spying on the kernel's launches, and compare its
   answers with the switch off — bit for bit where the kernel promises identity: indices,
   distance bits and diagnostics counts (`tests/unit/test_fused_selection.py`); to the

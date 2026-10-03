@@ -215,11 +215,12 @@ choice unless the queries come in large batches.
   training point that close to the boundary can change label. See
   [`fp32_policy.md`](fp32_policy.md) §2.4. On the GPU's one-vs-one kernel — a fit with
   three or more classes, the rbf kernel, and pairs of at most 4 096 rows whose Grams fit
-  `cache_size` — nothing shrinks, whatever `shrinking` says: shrinking is a speed
-  heuristic, and the optimum and the full-set stopping test do not depend on it. There
-  `n_iter_` counts the kernel's steps per pair plus any the host took to finish it, and
-  `cache_size` bounds how many pairs' Grams the GPU holds at once
-  ([`fp32_policy.md`](fp32_policy.md) §2.5).
+  `cache_size` — the kernel and the host's finish of its pairs do not shrink, whatever
+  `shrinking` says: shrinking is a speed heuristic, and the optimum and the full-set
+  stopping test do not depend on it. A pair the host solver solves again from scratch
+  there honors it, as on the host path. There `n_iter_` counts the kernel's steps per pair
+  plus any the host took to finish it, and `cache_size` bounds how many pairs' Grams the
+  GPU holds at once ([`fp32_policy.md`](fp32_policy.md) §2.5).
 - **Neighbor ties** are decided by `(distance, training index)` over the whole training
   set, where scikit-learn's order among exactly equal distances is undefined
   ([`fp32_policy.md`](fp32_policy.md) §3.1).
