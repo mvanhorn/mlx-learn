@@ -217,6 +217,42 @@ def test_query_peak_memory_stays_near_the_budget(backend, rng):
     assert peak <= 2 * budget, f"peak {peak / MiB:.0f} MiB against a {budget / MiB:.0f} MiB budget"
 
 
+@pytest.mark.parametrize("backend", ["mlx", "cpu"])
+def test_a_block_searched_in_many_tiles_stays_near_the_budget(backend, rng):
+    """64 rows against 200 000 at 4 MiB, by MLX's own selection: the first pass takes 86
+    train tiles, and the second pass, where the duplicated rows send 63 of them, 85 more.
+    Left lazy, every tile was alive at once: 167 MiB here on the GPU and 39 MiB on MLX's
+    CPU, and 7.0 GiB above the index for 64 rows against 40 000 000 x 2 at a 1 GiB budget.
+    ``test_fused_selection.py`` holds the fused kernel's pass to the same budget.
+    """
+    budget = 4 * MiB
+    distinct = rng.normal(size=(10_000, 4)).astype(np.float32)
+    X = distinct[rng.integers(0, len(distinct), 200_000)]  # every row about 20 times
+    Q = X[rng.integers(0, len(X), 64)] + np.float32(1e-3) * rng.normal(size=(64, 4)).astype(
+        np.float32
+    )
+    with tuning_context(
+        distance_block_bytes=budget,
+        distance_block_bytes_max=budget,
+        cpu_distance_block_bytes=budget,
+        metal_kernels=False,
+    ):
+        k_carry = distance._first_pass_carry(5, 4, len(X))
+        plan = resolve_blocks(len(Q), len(X), backend=backend, k_search=k_carry)
+        index = build_index(X, backend=backend)
+        index.query(Q, 5)
+        mx.eval(mx.zeros(1))
+        mx.clear_cache()
+        base = mx.get_active_memory()
+        mx.reset_peak_memory()
+        stats: dict = {}
+        index.query(Q, 5, stats=stats)
+        peak = mx.get_peak_memory() - base
+    assert plan.query_rows == len(Q) and plan.train_cols * 50 < len(X), "not many tiles"
+    assert stats["widened_rows"] > 0, "nothing reached the second pass"
+    assert peak <= 2 * budget, f"peak {peak / MiB:.0f} MiB against a {budget / MiB:.0f} MiB budget"
+
+
 # ----------------------------------------------------------------------------------
 # the exact search's tiles
 # ----------------------------------------------------------------------------------

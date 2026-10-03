@@ -84,6 +84,24 @@ come first under **Changed**.
 - Under `patch_sklearn()`, a prebuilt `KDTree`, `BallTree` or fitted estimator passed as
   `X` falls back to scikit-learn instead of raising `TypeError`.
 - `effective_metric_` is set as scikit-learn sets it (`metric="l2"` stays `"l2"`).
+- A neighbor query against a training set too long for a block of query rows to search in
+  one tile — more rows than the memory budget over 28 bytes: 38 million at the 1 GiB of a
+  Mac with 32 GB or more, 9.6 million at an 8 GB Mac's 256 MiB, 4.8 million on MLX's CPU
+  device — held every train tile's working set at once, in the first pass, fused or not,
+  and in the second, and so many times its memory budget: 64 queries against
+  40 000 000 × 2 peaked 7.0 GiB above the index against 1 GiB, 256 queries 23 GiB, and 256
+  against 10 000 000 × 2 at 256 MiB 6.0 GiB. The search now evaluates its running
+  candidates once one more tile would take the work in flight past the budget, as the
+  exact search already did: 610 MiB and 164 MiB there, every answer and every count the
+  same bit for bit. Those evaluations are device round trips, and they end the overlap
+  between tiles that the unbounded search ran with: 1.03×, 1.04× and 1.09–1.11× the query
+  time at 40 000 000 × 2 for 16, 64 and 256 queries, and 1.11–1.12× at 10 000 000 × 2. A
+  block searched in one tile gains none, so nothing changes below those lengths: at
+  1 000 000 × 64 and 128 000 × 768, 16–4 096 queries, `k` = 5 and 50, the same evaluations
+  and paired median times of 0.99–1.02×, each interquartile range spanning 1. Measured on
+  the GPU of an M4 Max with MLX 0.32.2 and Python 3.13, the code before and after in one
+  process, each call after a garbage collection and a 10 ms idle gap, in alternating
+  order: 31 pairs, 9 on the long training sets.
 
 #### LogisticRegression
 
