@@ -30,7 +30,10 @@ The layering is enforced, not merely described:
   (`get_config`, `set_config`, `config_context`), or imports an estimator package fails the
   `layering` gate in `tools/compliance.py`. Solvers take arrays and a frozen config
   dataclass and return a frozen state dataclass, so the numerics can be tested without
-  constructing an estimator. `_kernels` may read `get_tuning()` for block sizes, which are
+  constructing an estimator. SciPy and threadpoolctl, scikit-learn's own dependencies,
+  are imported only inside the functions that use them; a switch a solver honors, such
+  as `LogisticRegression`'s dense preconditioner (`Tuning.lbfgs_dense_preconditioner`),
+  is a field of its config, which the estimator fills from `get_tuning()`. `_kernels` may read `get_tuning()` for block sizes, which are
   private typed knobs, not user configuration. The gate is static, so an indirect read —
   `inference_device(backend)` or `use_device(None)` resolving the configured device — is
   still on the reviewer. Neither layer makes one: solvers pass their config's device
@@ -186,7 +189,12 @@ early means silently swapping something untested into someone's `sklearn` namesp
 to the last training and query matrices so it could skip re-uploading them, plus `id()`-keyed
 LRU caches in the estimator layer. CPython recycles `id()` after a garbage collection, so a
 freed array whose address was reused produced predictions computed on the wrong data,
-silently. Everything cached lives on the fitted estimator and dies with it.
+silently. Everything cached lives on the fitted estimator and dies with it. What a process
+may keep is a description of itself, keyed on nothing a fit passes in: the compiled Metal
+kernels (below), the host thread pool (`_common/host.py`), and the BLAS pools that
+`LogisticRegression`'s dense-preconditioner plan holds to one thread while it runs
+(`_solvers/logistic.py`), with the lock that stops two plans on two threads from
+restoring the thread count out of order.
 
 **No aliasing of a caller's array.** `fit` copies. An estimator that holds a view of the
 caller's buffer changes its own predictions when the caller mutates their array.

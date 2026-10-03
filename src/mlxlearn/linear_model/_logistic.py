@@ -596,6 +596,14 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
     recorded without a warning. ``n_iter_`` counts accepted steps, so a problem
     already optimal at the zero start reports ``0``.
 
+    **Preconditioning.** Where a gate on a sample of the rows finds correlated
+    features and no nearly separable classes, L-BFGS starts every iteration from the
+    inverse of the loss's curvature at the zero start instead of a diagonal
+    (``docs/fp32_policy.md`` §2.3). It changes the search direction only, not the
+    objective or the stopping test. ``fit_event_.extra`` records which one the fit
+    used and why (``preconditioner``, ``preconditioner_reason``) and the objective
+    evaluations it took (``n_fev``).
+
     **Callbacks.** On scikit-learn 1.9+, callbacks set with ``set_callbacks`` see
     the same task tree as scikit-learn's lbfgs path: the fit, and one subtask per
     accepted L-BFGS iteration carrying that iterate's ``coef_`` and
@@ -703,6 +711,7 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
             history_size=tuning.lbfgs_history,
             max_line_search=tuning.lbfgs_max_line_search,
             device=device,
+            dense_preconditioner=tuning.lbfgs_dense_preconditioner,
         )
 
         callback_ctx = bridge = None
@@ -753,6 +762,13 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         self.coef_ = solution.coef
         self.intercept_ = solution.intercept
         self.n_iter_ = np.array([solution.n_iter], dtype=np.int32)
+        # On the fit's one event: which initial inverse Hessian L-BFGS started from
+        # and why (docs/fp32_policy.md §2.3), and what the run cost in evaluations.
+        self._amend_fit_event(
+            preconditioner=solution.preconditioner,
+            preconditioner_reason=solution.preconditioner_reason,
+            n_fev=solution.n_fev,
+        )
         # Before the commit, so a ConvergenceWarning that a user's "error" filter
         # escalates leaves the fit incomplete, as every fit that raises does.
         self._report_convergence(solution)

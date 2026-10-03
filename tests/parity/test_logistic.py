@@ -739,7 +739,8 @@ def test_an_escalated_convergence_warning_leaves_the_fit_incomplete(backend):
     assert event.extra["stop_reason"] == "max_iter"
 
 
-def test_objective_is_no_worse_at_an_equal_truncated_budget():
+@pytest.mark.parametrize("budget", [5, 10, 20])
+def test_objective_is_no_worse_at_an_equal_truncated_budget(budget):
     """The fair comparison when neither solver has converged.
 
     On a hard problem at a small ``max_iter`` both solvers stop on the iteration
@@ -748,8 +749,12 @@ def test_objective_is_no_worse_at_an_equal_truncated_budget():
     and what actually matters — is that mlxlearn has not made *less* progress.
 
     The budget was 100 until the diagonal preconditioner, with which mlxlearn
-    converges on this problem in 76 iterations (scikit-learn needs 251); at 50 both
-    are still truncated.
+    converged on this problem in 91 iterations (scikit-learn needs 251), and then
+    50. With the dense preconditioner (``docs/fp32_policy.md`` §2.3) — the features
+    are correlated, one of them redundant — it converges in 23, so the budgets are
+    5 to 20, where both are still truncated. The claim holds at each: the objective
+    was 2.3-3.6% below scikit-learn's at 5-20 iterations; on the diagonal path it
+    holds from 5 (0.1-2.0% below) and failed below that.
     """
     from sklearn.utils.class_weight import compute_class_weight
 
@@ -761,12 +766,15 @@ def test_objective_is_no_worse_at_an_equal_truncated_budget():
     C = 39.0
 
     with tuning_context(force_backend="mlx"):
-        mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=50).fit(X, y)
+        mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=budget).fit(X, y)
     ref = SkLogisticRegression(
-        C=C, class_weight="balanced", max_iter=50, solver="lbfgs"
+        C=C, class_weight="balanced", max_iter=budget, solver="lbfgs"
     ).fit(X, y)
 
-    assert mlx.n_iter_[0] == 50 and ref.n_iter_[0] == 50, "precondition: neither converged"
+    assert mlx.fit_event_.extra["preconditioner"] == "dense"
+    assert mlx.n_iter_[0] == budget and ref.n_iter_[0] == budget, (
+        "precondition: neither converged"
+    )
 
     weights = compute_class_weight("balanced", classes=ref.classes_, y=y)[
         np.searchsorted(ref.classes_, y)

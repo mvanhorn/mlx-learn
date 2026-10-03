@@ -299,6 +299,97 @@ and `at_resolution_floor`, and whose `detail` explains the stop. A floor stop ab
 level is a stall. It warns, as a `max_iter` or line-search-failure stop does, and those are
 recorded the same way.
 
+#### Preconditioned L-BFGS
+
+L-BFGS starts every iteration from an initial inverse Hessian `γₖH₀`, and the two-loop
+recursion needs nothing of `H₀` but symmetry and positive definiteness (Nocedal &
+Wright, *Numerical Optimization*, §7.2; `γₖ = sₖᵀyₖ / yₖᵀH₀yₖ` from the newest pair).
+`LogisticRegression` has two:
+
+- **The diagonal** of the column scales, rounded to powers of four with a dead band, so
+  that features in units of 1e8 move at all. Every fit had it, and every fit the gate
+  below turns away still does.
+- **The curvature at the zero start**, where the fit always begins and every predicted
+  probability is 1/K. There the Hessian of the loss is its Fisher information, for the
+  logistic loss also its Gauss-Newton matrix: `c·XᵀWX/Σw + l2·I` on the coefficients and
+  `c` on the intercept, with `c = p(1 − p) = 1/4` for two classes and `(1/K)(1 − 1/K)`
+  shared by every class's block for K — the matrix a Newton method for logistic
+  regression works with (Lin, Weng & Keerthi, 2008), taken once and held fixed.
+  `H₀` is its inverse, and an iteration without curvature pairs takes the Newton step
+  `−H₀g` for it at a unit trial step. For two classes it bounds the curvature
+  everywhere (`p(1 − p) ≤ 1/4`; Böhning, 1992), so that first step is conservative.
+
+The second pays where features are correlated, which ten curvature pairs learn slowly,
+and costs where classes are nearly separable: the fit ends confident, with a curvature
+that is a small and differently shaped fraction of the zero-start one, and there it took
+more evaluations than the diagonal and stopped at a higher objective. So a **gate**
+decides, in two stages, on the host. The first reads at most 1 024 strided rows of the
+first 256 features and asks for curvature the diagonal leaves to the pairs: a mean
+squared within-class correlation above 0.01, a Cholesky-pivot condition estimate of the
+within-class correlations (64 columns, its sampling floor divided out) above 1.5, or a
+spread above 20 in the curvature the coordinates show after the diagonal. Only then is
+the model built, from `min(n, max(8 192, 4·d))` strided rows, and asked how separable the
+classes are in its own metric: the largest eigenvalue λ of `W⁻¹B`, between- over
+within-class scatter along the most separating direction, read from the eigenvalues
+`λ/(1 + λ)` of the class means' scatter against the model's curvature. At `λ ≥ 5` —
+two classes 2√5 within-class deviations apart, overlapping by about 1% — the fit keeps
+the diagonal. The penalty enters through the model, so a strongly regularized fit,
+which cannot become confident, reads as less separable. Designs of one feature or more
+than 1 024 keep the diagonal too.
+
+**Numerics.** The model is accumulated in float64 up to 256 features and in float32
+above, from the float32 design the device holds; rows whose norm exceeds three times the
+median count as if they had it (on heavy-tailed features a handful of rows would be the
+whole model, and those rows carry almost no curvature near the optimum); a ridge of 1e-10
+of the mean curvature (1e-6, then 1e-4, for a float32 sample) keeps `C = inf` and
+rank-deficient designs factorizable; a feature whose Cholesky pivot is below 1e-6 of its
+variance (1e-3 in float32) is an exact dependency — one-hot blocks beside an intercept —
+and gets the mean curvature, since `1/ridge` there would amplify the gradient's float32
+rounding (‖coef‖ = 1 260 against 16.7 on one-hot data at `C = inf` without it); and `H₀`
+is the explicit inverse of the factorization. All of it runs on the host while the
+device computes the first evaluation, with the host's BLAS on one thread (on a stack
+whose NumPy and SciPy each ship an OpenBLAS — NumPy 1.23 and SciPy 1.10 — a plan of
+4 ms otherwise took a median 0.28 s). The device graph and every stopping rule are the
+diagonal path's, and a fit the gate turns away is the diagonal path bit for bit.
+`fit_event_.extra` records `preconditioner` (`"dense"` or `"diagonal"`),
+`preconditioner_reason` (`"correlated"`, or why not: `"uncorrelated"`, `"separated"`,
+`"width"`, `"disabled"`, `"non-finite"`, `"not-positive-definite"`, `"no-step"`) and
+`n_fev`. `MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0` (`Tuning.lbfgs_dense_preconditioner`)
+turns it off, for tests and bisection.
+
+**What it changes, measured.** The gate was calibrated on objective evaluations, which
+do not depend on the machine: 582 fits over 23 data laws — isotropic, AR(0.5/0.9/0.99),
+low-rank, one-hot (with rare levels too), column scales, Student-t₂ and Cauchy
+features, overlapping, nearly separable and separable blobs, random and noisy labels,
+raw and standardized digits (2-10 classes, 600-200 000 rows) and breast cancer — at
+2-20 classes, 569-200 000 rows, 16-256 features, `C` from 1e-4 to `inf`, `tol` 1e-4
+and 1e-6, sample and class weights and `fit_intercept=False`, each against a float64
+Newton solution and scikit-learn 1.9. The dense path ran on 348 fits and took 13 327
+evaluations where the diagonal took 59 313 (median 5.1× fewer; 4.9× on the 223 fits at
+sizes patched dispatch routes). It took more on 6: +27 at `tol=1e-6` on column-scaled
+data, where that `tol` is below the float32 floor — the dense run ended at the float64
+optimum (8.6e-16 relative, against the diagonal's 1.1e-8 and a stall above the floor)
+and spent its last 80 evaluations in line searches at the floor; +12 of 1 154 on Cauchy
+features, both runs stopping on `max_iter`; and +1 to +4 on four fits of 9-91
+evaluations. Without the separation limit, ten-class digits at 20 000-200 000 rows took
+65-116 evaluations where the diagonal took 35-42.
+
+The objective and the stopping test are unchanged, but on an ill-conditioned problem at
+the default `tol` a different path stops at a different point. Of the 335 fits the dense
+path ran on non-separable data, 308 stopped closer to the float64 optimum than the
+diagonal path did (median relative gap 9.0e-8 against 2.1e-6). Of the 307 on which both
+it and scikit-learn converged, 9 missed scikit-learn's objective by more than §3's
+`rtol=1e-5`, against 25 of the same fits on the diagonal path: all at the default `tol`,
+on problems whose three solvers stopped 1.5e-5 to 1.5e-3 above the optimum. At
+`tol=1e-6` the 34 dense fits on which scikit-learn converged too met §3's objective,
+probability and label tolerances, every one; on 7 more scikit-learn did not converge in
+5 000 iterations. The dense path stopped above the float32 floor, with a
+`ConvergenceWarning`, on one fit the diagonal path converged on — 569 rows of breast
+cancer in raw units with sample weights, whose `tol` of 1e-4 is below the 1.9e-4 that
+float32 resolves there, so that reaching it at all is a matter of rounding; it stopped
+at 2.2 times that — and the diagonal path did so on 35 that the dense path converged
+on.
+
 ### 2.4 Kernel evaluation (`SVC`)
 
 LIBSVM computes each kernel entry in double and caches it rounded to C `float`. mlxlearn

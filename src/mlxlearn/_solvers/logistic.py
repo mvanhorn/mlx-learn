@@ -84,11 +84,25 @@ exact — they change how the problem is represented, never which problem is sol
 * **A diagonal preconditioner from the column scales**, handed to L-BFGS as its
   initial inverse Hessian. It rescales nothing in the data; it tells the solver that
   a feature measured in units of 1e8 has curvature 1e16 times the intercept's.
+
+A dense preconditioner where the features are correlated
+--------------------------------------------------------
+A diagonal cannot describe correlated features, and ten curvature pairs learn them
+slowly: 21-451 evaluations where the curvature at the start of the fit, used as a
+fixed model, took 6-51. So where a gate on a sample of the rows says the
+features are correlated and no two classes are close to separable, L-BFGS starts
+every iteration from the inverse of that curvature instead of the diagonal. See
+:class:`_DensePlan`. It changes the search direction only — the objective, its
+evaluation on the device and every stopping rule are the same — and a fit the gate
+turns away runs the diagonal path bit for bit.
 """
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import math
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -97,7 +111,7 @@ from .._common.arrays import NUMPY_FLOAT
 from .._common.device import use_device
 from .._common.host import column_mean, map_row_blocks
 from ..exceptions import InvalidInputError
-from .lbfgs import GRADIENT_RESOLUTION, LBFGSConfig, minimize
+from .lbfgs import GRADIENT_RESOLUTION, DensePreconditioner, LBFGSConfig, minimize
 
 __all__ = [
     "LogisticConfig",
@@ -129,6 +143,10 @@ class LogisticConfig:
         Passed straight to :func:`~mlxlearn._common.device.use_device`. Explicit,
         because a solver that reads global configuration cannot be tested in
         isolation.
+    dense_preconditioner : bool, default=True
+        Whether L-BFGS may start from the dense zero-start curvature where
+        :class:`_DensePlan`'s gate says it pays. ``False`` is the diagonal path, bit
+        for bit, with no sample taken.
     """
 
     C: float = 1.0
@@ -138,6 +156,7 @@ class LogisticConfig:
     history_size: int = 10
     max_line_search: int = 32
     device: str = "auto"
+    dense_preconditioner: bool = True
 
     def __post_init__(self) -> None:
         if not (self.C > 0.0):
@@ -172,6 +191,12 @@ class LogisticSolution:
     initial_grad_max_abs : float
         ``max|gradient|`` at the zero start, the scale the float32 gradient floor is
         relative to.
+    preconditioner : {"diagonal", "dense"}
+        The initial inverse Hessian the L-BFGS iterations started from.
+    preconditioner_reason : str
+        Why: ``"correlated"`` for the dense one; otherwise ``"disabled"``,
+        ``"width"``, ``"uncorrelated"``, ``"separated"``, ``"non-finite"``,
+        ``"not-positive-definite"`` or ``"no-step"`` (:class:`_DensePlan`).
     """
 
     coef: np.ndarray
@@ -183,6 +208,8 @@ class LogisticSolution:
     stop_reason: str
     n_fev: int = 0
     initial_grad_max_abs: float = math.nan
+    preconditioner: str = "diagonal"
+    preconditioner_reason: str = "disabled"
 
     @property
     def at_resolution_floor(self) -> bool:
@@ -239,6 +266,32 @@ def _total(parts, penalty, sw_sum: float) -> float:
     """Finish the reduction in float64 on the host. Assumes both are evaluated."""
     value = float(np.asarray(parts).astype(np.float64).sum() / sw_sum)
     return value if penalty is None else value + float(penalty)
+
+
+class _FirstEvaluation:
+    """Host work that runs while the device computes a fit's first evaluation.
+
+    The first evaluation is submitted (``mx.async_eval``), ``host`` runs, and only
+    then does the host wait for the device. The device graph is the one every other
+    evaluation runs, so nothing the device computes depends on it; it changes when
+    the host's own work happens, not what either side computes.
+    """
+
+    __slots__ = ("host",)
+
+    def __init__(self, host) -> None:
+        self.host = host
+
+
+def _evaluate(mx, outputs, first: _FirstEvaluation | None) -> None:
+    """``mx.eval(*outputs)``, with ``first``'s host work overlapped the first time."""
+    if first is None or first.host is None:
+        mx.eval(*outputs)
+        return
+    host, first.host = first.host, None
+    mx.async_eval(*outputs)
+    host()
+    mx.eval(*outputs)
 
 
 #: The batched GPU gradient's row blocks: one per ``_BLOCK_ROWS`` rows, and never
@@ -299,13 +352,13 @@ def _binary_terms(mx, X, y, sw, theta, fit_intercept, n_features, zero):
     return w, loss, residual
 
 
-def _binary_objective_cpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
+def _binary_objective_cpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features, first=None):
     """``fun(theta) -> (value, grad)`` for the two-class log-loss, as the CPU runs it.
 
     ``theta`` is ``(1, n_features + fit_intercept)`` and ``X`` the row-major
     design. ``sw_sum`` is the normalizer of the data term — the sum of the weights
     as they are passed here. The gradient is one ``residual @ X``, finished on the
-    device in float32.
+    device in float32. ``first``, when given, is :class:`_FirstEvaluation`'s host work.
     """
     zero = mx.zeros((1,), dtype=X.dtype)
 
@@ -326,15 +379,15 @@ def _binary_objective_cpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
         penalty = mx.sum(w * w) * (0.5 * l2) if l2 else None
         # One synchronization for the value and the gradient together.
         if penalty is None:
-            mx.eval(parts, grad)
+            _evaluate(mx, (parts, grad), first)
         else:
-            mx.eval(parts, penalty, grad)
+            _evaluate(mx, (parts, penalty, grad), first)
         return _total(parts, penalty, sw_sum), grad
 
     return fun
 
 
-def _binary_objective_gpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
+def _binary_objective_gpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features, first=None):
     """The function :func:`_binary_objective_cpu` computes, in the form the GPU runs fast.
 
     The gradient is the batched product of the module docstring over the blocks of
@@ -369,7 +422,7 @@ def _binary_objective_gpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
             residual_parts = _blocked_sum(mx, residual)
             outputs.append(residual_parts)
         # One synchronization for everything the host finishes.
-        mx.eval(*outputs)
+        _evaluate(mx, outputs, first)
 
         grad_w = np.asarray(partials).astype(np.float64).reshape(blocks, n_features).sum(axis=0)
         if tail:
@@ -382,7 +435,9 @@ def _binary_objective_gpu(mx, X, y, sw, sw_sum, l2, fit_intercept, n_features):
     return fun
 
 
-def _multinomial_objective_cpu(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features):
+def _multinomial_objective_cpu(
+    mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features, first=None
+):
     """``fun(theta) -> (value, grad)`` for the softmax cross-entropy, as the CPU runs it.
 
     ``theta`` is ``(n_classes, n_features + fit_intercept)``; ``sw_sum`` as for
@@ -418,15 +473,17 @@ def _multinomial_objective_cpu(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_int
         parts = _blocked_sum(mx, loss)
         penalty = mx.sum(W * W) * (0.5 * l2) if l2 else None
         if penalty is None:
-            mx.eval(parts, grad)
+            _evaluate(mx, (parts, grad), first)
         else:
-            mx.eval(parts, penalty, grad)
+            _evaluate(mx, (parts, penalty, grad), first)
         return _total(parts, penalty, sw_sum), grad
 
     return fun
 
 
-def _multinomial_objective_gpu(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features):
+def _multinomial_objective_gpu(
+    mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features, first=None
+):
     """The function :func:`_multinomial_objective_cpu` computes, in the form the GPU runs fast.
 
     ``mx.logsumexp`` gives every row a threadgroup of its own, which a handful of
@@ -483,7 +540,7 @@ def _multinomial_objective_gpu(mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_int
         if fit_intercept:
             residual_sum = mx.sum(residual, axis=0)
             outputs.append(residual_sum)
-        mx.eval(*outputs)
+        _evaluate(mx, outputs, first)
 
         grad_W = np.asarray(partials).astype(np.float64)
         if batched:
@@ -631,6 +688,420 @@ def _weight_scale(sample_weight: np.ndarray) -> float:
     return math.ldexp(1.0, math.frexp(largest)[1] - 1)
 
 
+# ----------------------------------------------------------- dense preconditioner
+#
+# The fit always starts from zero, where every predicted probability is 1/K. The
+# Hessian of the loss there is its Fisher information, which for the logistic loss
+# is also its Gauss-Newton matrix: c·XᵀWX/Σw + l2·I on the coefficients, c on the
+# intercept, with c = p(1 − p) = 1/4 for two classes. For K classes it is
+# (1/K)(I − 11ᵀ/K) ⊗ XᵀWX/Σw, and the model gives every class's block the same
+# (1/K)(1 − 1/K) — the exact matrix on the directions the softmax gradient moves in,
+# up to a scale the iteration's γₖ absorbs, and wrong only along the sum over the
+# classes, in which the data term's gradient has no component. This is the matrix a
+# Newton or trust-region Newton method for logistic regression works with (Lin, Weng
+# & Keerthi, 2008), taken once, at the start, and held fixed: its inverse becomes
+# L-BFGS's initial inverse Hessian (lbfgs.py, after Nocedal & Wright §7.2). For two
+# classes it also bounds the curvature everywhere (p(1 − p) ≤ 1/4; Böhning, 1992), so
+# the first step, a Newton step for it, is a conservative one.
+#
+# It pays where the curvature is correlated across features: ten curvature pairs
+# learn it slowly, and on AR(0.99) features, low-rank data, one-hot blocks or columns
+# on scales the diagonal leaves apart, fits of 21-451 evaluations took 6-51. It costs
+# where classes are nearly separable: the fit ends confident, the curvature it ends with is
+# a small and differently shaped fraction of the zero-start one, and there the dense
+# path took more evaluations than the diagonal and stopped at a higher objective
+# (digits upsampled to 20 000-200 000 rows, ten classes: 35-42 evaluations became
+# 65-116). Hence a gate, in two stages.
+#
+# **The gate** reads a small strided sample — at most 1 024 rows of the first 256
+# features — and asks whether the diagonal leaves curvature that the pairs learn
+# slowly: features correlated within the classes (mean squared within-class
+# correlation above _GATE_CORRELATION, or a Cholesky-pivot condition estimate above
+# _GATE_CONDITION), or scales the diagonal's dead band leaves apart (a spread above
+# _GATE_SPREAD). Most fits stop here, after 0.1-0.7 ms of host work.
+#
+# **The model** is then built from 8 192 rows (or four per feature), factorized, and
+# asked one more question in its own metric: how separable are the classes? The
+# largest eigenvalue λ of W⁻¹B — between-class over within-class scatter along the
+# most separating direction, from the eigenvalues λ/(1 + λ) of the class means' scatter
+# against the model's curvature — is at most _SEPARATION_LIMIT for the model to be
+# used. λ = 5 is two classes whose means stand 2√5 within-class deviations apart,
+# which overlap by about 1 %. The penalty enters through the model, so a strongly
+# regularized fit, which cannot become confident, reads as less separable.
+#
+# Calibrated on evaluation counts, which do not depend on the machine, over 582 fits:
+# 23 data laws, 2-20 classes, 569-200 000 rows, 16-256 features, C from 1e-4 to inf,
+# tol 1e-4 and 1e-6, weights and fit_intercept=False (docs/fp32_policy.md §2.3).
+#
+# All of it runs on the host while the device computes the first evaluation
+# (_FirstEvaluation), on one BLAS thread (_one_blas_thread), and the device graph is
+# the one every fit runs.
+
+#: Narrowest and widest designs the model is built for. At 1 024 features it is a
+#: 1 025 x 1 025 factorization and its inverse.
+_DENSE_MIN_FEATURES = 2
+_DENSE_MAX_FEATURES = 1024
+#: The model's sample: ``min(n, max(_MODEL_MIN_ROWS, _MODEL_ROWS_PER_FEATURE · d))``
+#: strided rows.
+_MODEL_MIN_ROWS = 8192
+_MODEL_ROWS_PER_FEATURE = 4
+#: The gate's sample: the first ``_GATE_MAX_COLUMNS`` features of at most
+#: ``_GATE_ROWS`` strided rows, fewer on a wide block so that
+#: ``rows · (columns + classes)²`` stays within ``_GATE_WORK`` — never fewer than
+#: ``_GATE_MIN_ROWS``. The correlation statistic's sampling floor is about 1/rows,
+#: against a gate of 0.01.
+_GATE_ROWS = 1024
+_GATE_MIN_ROWS = 512
+_GATE_MAX_COLUMNS = 256
+_GATE_WORK = 1 << 25
+#: The condition estimate factorizes the leading block this wide: banded and low-rank
+#: structure shows in it, and a gate that turns the fit away pays tens of
+#: microseconds for it rather than the hundreds the whole block costs.
+_GATE_CONDITION_COLUMNS = 64
+#: The gate's thresholds, and the model's separation limit (the comment above).
+_GATE_CORRELATION = 0.01
+_GATE_CONDITION = 1.5
+_GATE_SPREAD = 20.0
+_SEPARATION_LIMIT = 5.0
+#: Rows of either sample whose norm exceeds this multiple of the median row norm
+#: count as if they had it. Near the optimum such rows sit far from the decision
+#: boundary and carry almost no curvature, but the zero-start curvature weighs them by
+#: ‖x‖², and on heavy-tailed features a handful of them would be the whole model.
+#: Gaussian, column-scaled and one-hot rows do not reach it, and keep the exact
+#: zero-start curvature.
+_ROW_CLIP = 3.0
+#: Up to this many features the model's sample is accumulated in float64; wider, in
+#: float32, whose rounding the jitter below is sized for.
+_FLOAT64_MODEL_MAX_FEATURES = 256
+#: Ridges tried on the model's data block, relative to its mean diagonal: what keeps
+#: the factorization defined for ``C = inf`` or a rank-deficient design. A float32
+#: sample of one-hot rows beside an intercept has eigenvalues down to -5e-6 of the
+#: mean, so its ridge starts larger, and is raised if the factorization still fails.
+_JITTER = {"float64": (1e-10,), "float32": (1e-6, 1e-4)}
+#: A feature whose variance left unexplained by the features before it is below this
+#: fraction of its own variance (the factorization's pivot) is a null direction of the
+#: design: one-hot blocks beside an intercept, duplicated or derived columns. The
+#: model's curvature there is the ridge, and its inverse would multiply the
+#: gradient's float32 rounding by 1/ridge: measured on one-hot data at ``C = inf``,
+#: the same objective and predictions, and ‖coef‖ = 1 260 against 16.7. Those
+#: directions get the model's mean curvature instead, as the diagonal path treats
+#: them. Ten times the ridge or more; real ill-conditioning sits far above it
+#: (AR(0.99): ~0.02, five latent factors under 0.3 noise: ~0.01).
+_NULL_PIVOT = {"float64": 1e-6, "float32": 1e-3}
+
+
+def _zero_start_curvature(n_classes: int) -> float:
+    """``p(1 − p)`` at the zero start: 1/4 for two classes, ``(1/K)(1 − 1/K)`` for K."""
+    if n_classes == 2:
+        return 0.25
+    return (1.0 / n_classes) * (1.0 - 1.0 / n_classes)
+
+
+def _gate_rows(rows: int, width: int) -> int:
+    """Rows of the gate's sample for a block ``width`` columns wide (``_GATE_WORK``)."""
+    return min(rows, max(_GATE_MIN_ROWS, min(_GATE_ROWS, _GATE_WORK // (width * width))))
+
+
+def _sample_moments(X, codes, weights, n_classes: int, rows: int, columns: int, dtype):
+    """Weighted moments of ``rows`` strided rows of the first ``columns`` features.
+
+    Returns ``(gram, sums, totals)`` in float64: ``Σ w·xxᵀ``, each class's ``Σ w·x``
+    as a row, and each class's ``Σ w``, with ``w`` the sample weight times the row
+    clip's shrink (``_ROW_CLIP``). One matrix product of ``[x | labels]`` with itself,
+    accumulated in ``dtype``; the label columns are the one-hot classes, or ``[y, 1]``
+    for two.
+    """
+    n, d = X.shape
+    b = min(columns, d)
+    stride = max(1, n // rows)
+    stop = stride * rows
+    k = 2 if n_classes == 2 else n_classes
+    A = np.empty((rows, b + k), dtype=dtype)
+    A[:, :b] = X[:stop:stride, :b]
+    code = codes[:stop:stride]
+    if n_classes == 2:
+        A[:, b] = code
+        A[:, b + 1] = 1.0
+    else:
+        A[:, b:] = code[:, None] == np.arange(n_classes)[None, :]
+    w = None if weights is None else weights[:stop:stride].astype(dtype)
+    norms = np.sqrt(np.einsum("ij,ij->i", A[:, :b], A[:, :b]))
+    cap = _ROW_CLIP * float(np.median(norms))
+    if cap > 0.0 and float(norms.max()) > cap:
+        shrink = np.minimum(1.0, (cap / np.maximum(norms, 1e-30)) ** 2).astype(dtype)
+        w = shrink if w is None else w * shrink
+    left = A if w is None else A * w[:, None]
+    M = (left.T @ A).astype(np.float64)
+    gram = M[:b, :b]
+    if n_classes == 2:
+        positive, every = M[:b, b], M[:b, b + 1]
+        sums = np.stack([every - positive, positive])
+        positives, total = M[b, b + 1], M[b + 1, b + 1]
+        totals = np.array([total - positives, positives])
+    else:
+        sums = M[b:, :b]
+        totals = np.diag(M[b:, b:]).copy()
+    return 0.5 * (gram + gram.T), sums, totals
+
+
+def _within(gram, sums, totals):
+    """The within-class scatter: the Gram less every class's mean outer product."""
+    return gram - (sums.T / np.maximum(totals, 1e-300)) @ sums
+
+
+def _mean_square_correlation(M, reference) -> float:
+    """Mean squared off-diagonal of ``D^-½ M D^-½``, ``D = diag(M)``, in float64.
+
+    A column whose diagonal is below 1e-6 of ``reference``'s — a feature that encodes
+    the label, whose within-class variance is only rounding — is left out rather than
+    read as a correlation.
+    """
+    diag = np.diag(M)
+    valid = (diag > 1e-6 * np.diag(reference)) & (diag > 0.0)
+    count = int(valid.sum())
+    if count < 2:
+        return 0.0
+    scale = 1.0 / diag[valid]
+    block = M[np.ix_(valid, valid)]
+    energy = float(scale @ ((block * block) @ scale))
+    return (energy - count) / (count * (count - 1))
+
+
+def _condition_estimate(within, gram) -> float:
+    """``max/min`` of the Cholesky pivots of the within-class correlation matrix.
+
+    Each pivot is the variance of a feature left unexplained by the ones before it: 1
+    for independent features, ``1 − ρ²`` for AR(ρ). A 1e-4 ridge bounds an exact
+    dependency's — the gate's sample is accumulated in float32 — and a matrix that
+    still does not factorize counts as ill-conditioned. Columns left out as in
+    :func:`_mean_square_correlation`.
+    """
+    diag = np.diag(within)
+    valid = (diag > 1e-6 * np.diag(gram)) & (diag > 0.0)
+    if int(valid.sum()) < 2:
+        return 1.0
+    inv = 1.0 / np.sqrt(diag[valid])
+    R = within[np.ix_(valid, valid)] * inv[:, None] * inv[None, :]
+    R[np.diag_indices_from(R)] += 1e-4
+    try:
+        pivots = np.diag(np.linalg.cholesky(R)) ** 2
+    except np.linalg.LinAlgError:
+        return math.inf
+    return float(pivots.max() / pivots.min())
+
+
+#: Serializes the one-thread BLAS limit: it is process-wide state of the BLAS
+#: library, which two plans on two threads would otherwise save and restore out of
+#: order, leaving the process on one thread.
+_BLAS_LIMIT_LOCK = threading.Lock()
+
+
+@functools.lru_cache(maxsize=1)
+def _blas_pools():
+    """threadpoolctl's controller for the BLAS pools the plan can reach, or ``None``.
+
+    Built once per process — a scan of the loaded libraries, about 10 ms — and keyed
+    on nothing: a description of the process's libraries, never of data, as the
+    kernel factories in ``_kernels`` cache compiled kernels. SciPy is imported first
+    so that a SciPy shipping its own BLAS is in it. Accelerate has no pool to
+    control, and then this is ``None``. threadpoolctl is scikit-learn's dependency.
+    """
+    import scipy.linalg  # noqa: F401
+    from threadpoolctl import ThreadpoolController
+
+    pools = ThreadpoolController().select(user_api="blas")
+    return pools if pools.lib_controllers else None
+
+
+@contextlib.contextmanager
+def _one_blas_thread():
+    """The plan's BLAS and LAPACK calls on one thread.
+
+    Its products and factorizations are at most 8 192 x 1 044 and 1 025 x 1 025, and
+    run while the device computes. On a stack whose NumPy and SciPy each bring an
+    OpenBLAS (NumPy 1.23 and SciPy 1.10 wheels: two pools of 16 threads), a 65 x 65
+    Cholesky factorization took up to 50 ms instead of 0.04, and a plan for 60 000 x 64
+    rows of three classes a median 0.28 s instead of 4 ms.
+    """
+    pools = _blas_pools()
+    if pools is None:
+        yield
+        return
+    with _BLAS_LIMIT_LOCK, pools.limit(limits=1):
+        yield
+
+
+class _DensePlan:
+    """The dense initial inverse Hessian of one fit: the gate, the model, the operator.
+
+    :meth:`run` is the host's work, done while the device computes the first
+    evaluation; :meth:`resolve` hands its result to L-BFGS afterwards — a
+    :class:`~mlxlearn._solvers.lbfgs.DensePreconditioner`, or ``None`` to keep the
+    diagonal. ``reason`` says which and why: ``"correlated"`` (the operator),
+    ``"uncorrelated"`` (the gate), ``"separated"`` (the model's separation limit),
+    ``"non-finite"`` or ``"not-positive-definite"``. ``stats`` holds what the
+    decision was made from.
+
+    ``X`` is the float32 design the device holds (centered when there is an
+    intercept), ``codes`` the class codes, ``weights`` the sample weights as the
+    objective takes them, and ``diagonal`` the diagonal preconditioner the fit would
+    otherwise use, whose dead band the gate's spread is measured after.
+    """
+
+    def __init__(self, X, codes, weights, *, n_classes, fit_intercept, l2, diagonal):
+        self.X, self.codes, self.weights = X, codes, weights
+        self.n_classes, self.fit_intercept, self.l2 = n_classes, fit_intercept, l2
+        self.diagonal = diagonal
+        self.reason = "pending"
+        self.stats: dict[str, float] = {}
+        self._operator: DensePreconditioner | None = None
+
+    def run(self) -> None:
+        # Floating-point flags are not warnings here: every result the plan uses is
+        # checked for finiteness — a row that overflowed float32 makes the sample
+        # non-finite, and the fit's own objective reports it — and NumPy 2.2 on
+        # Accelerate raises spurious ones from matrix products.
+        with _one_blas_thread(), np.errstate(all="ignore"):
+            if self._gate():
+                self._operator = self._model()
+
+    def resolve(self) -> DensePreconditioner | None:
+        return self._operator
+
+    def _gate(self) -> bool:
+        n, d = self.X.shape
+        rows = min(n, max(_MODEL_MIN_ROWS, _MODEL_ROWS_PER_FEATURE * d))
+        k = 2 if self.n_classes == 2 else self.n_classes
+        rows = _gate_rows(rows, min(d, _GATE_MAX_COLUMNS) + k)
+        gram, sums, totals = _sample_moments(
+            self.X, self.codes, self.weights, self.n_classes, rows, _GATE_MAX_COLUMNS,
+            np.float32,
+        )
+        if not (np.all(np.isfinite(gram)) and np.all(np.isfinite(sums))):
+            self.reason = "non-finite"
+            return False
+        within = _within(gram, sums, totals)
+        correlation = _mean_square_correlation(within, gram)
+        b = min(gram.shape[0], _GATE_CONDITION_COLUMNS)
+        # b independent columns from m rows give an estimate of about m/(m − b): the
+        # last pivot keeps (m − b)/m of its variance by chance alone.
+        condition = _condition_estimate(within[:b, :b], gram[:b, :b]) / (
+            rows / max(rows - min(b, rows - 1), 1)
+        )
+        spread = self._spread(np.diag(gram) / max(float(totals.sum()), 1e-300))
+        self.stats.update(
+            gate_rows=rows, correlation=correlation, condition=condition, spread=spread
+        )
+        if (
+            correlation > _GATE_CORRELATION
+            or condition > _GATE_CONDITION
+            or spread > _GATE_SPREAD
+        ):
+            return True
+        self.reason = "uncorrelated"
+        return False
+
+    def _spread(self, variance) -> float:
+        """``max/min`` of the curvature each coordinate presents to L-BFGS after the
+        diagonal preconditioner — what its power-of-four dead band leaves, up to 16x in
+        scale — over the gate's columns and the intercept. ``nan`` when undefined."""
+        c = _zero_start_curvature(self.n_classes)
+        seen = self.diagonal[0, : variance.shape[0]] * (c * variance + self.l2)
+        seen = seen[np.isfinite(seen) & (variance > 0.0)]
+        if self.fit_intercept:
+            seen = np.append(seen, c)
+        if not seen.size or not seen.min() > 0.0:
+            return math.nan
+        return float(seen.max() / seen.min())
+
+    def _model(self) -> DensePreconditioner | None:
+        from scipy.linalg import LinAlgError, cho_solve, cholesky, solve_triangular
+
+        n, d = self.X.shape
+        rows = min(n, max(_MODEL_MIN_ROWS, _MODEL_ROWS_PER_FEATURE * d))
+        precision = "float64" if d <= _FLOAT64_MODEL_MAX_FEATURES else "float32"
+        gram, sums, totals = _sample_moments(
+            self.X, self.codes, self.weights, self.n_classes, rows, d,
+            np.float64 if precision == "float64" else np.float32,
+        )
+        total = float(totals.sum())
+        c = _zero_start_curvature(self.n_classes)
+        p = d + int(self.fit_intercept)
+        H = np.zeros((p, p))
+        H[:d, :d] = c * gram / max(total, 1e-300)
+        mean = float(np.trace(H[:d, :d])) / d
+        if self.fit_intercept:
+            H[d, d] = c
+            if self.weights is not None:
+                # The design is centered by its unweighted mean, so under weights the
+                # intercept's curvature is coupled to the coefficients'.
+                H[:d, d] = H[d, :d] = c * sums.sum(axis=0) / max(total, 1e-300)
+        if not (np.all(np.isfinite(H)) and mean > 0.0):
+            self.reason = "non-finite"
+            return None
+
+        features = np.arange(d)
+        factor = threshold = None
+        for jitter in _JITTER[precision]:
+            # The data's curvature alone first: its pivots find the null directions.
+            trial = H.copy()
+            trial[features, features] += jitter * mean
+            try:
+                factor = cholesky(trial, lower=True, check_finite=False)
+            except LinAlgError:
+                continue
+            H = trial
+            threshold = _NULL_PIVOT[precision] * jitter / _JITTER[precision][0]
+            break
+        if factor is None:
+            self.reason = "not-positive-definite"
+            return None
+        pivots = np.diag(factor)
+        null = np.flatnonzero(pivots[:d] ** 2 < threshold * np.diag(H)[:d])
+        H[features, features] += self.l2
+        if null.size:
+            # v = L₁⁻ᵀeᵢ, with L₁ the unit lower factor, is the null direction behind
+            # pivot i: H·v = Dᵢᵢ²·L₁eᵢ ≈ 0.
+            E = np.zeros((p, null.size))
+            E[null, np.arange(null.size)] = 1.0
+            V = solve_triangular(
+                (factor / pivots[None, :]).T, E, lower=False, unit_diagonal=True,
+                check_finite=False,
+            )
+            U, _ = np.linalg.qr(V)
+            H += mean * (U @ U.T)
+        try:
+            factor = cholesky(H, lower=True, check_finite=False)
+        except LinAlgError:
+            self.reason = "not-positive-definite"
+            return None
+
+        # The classes' separation in the model's metric. With D the class means'
+        # deviations, weighted by √(share), the eigenvalues of c·DᵀH⁻¹D are
+        # λ/(1 + λ) for the eigenvalues λ of W⁻¹B (H ≈ c·(W + B)).
+        shares = totals / max(total, 1e-300)
+        means = sums / np.maximum(totals, 1e-300)[:, None]
+        deviations = np.zeros((p, shares.shape[0]))
+        deviations[:d] = ((means - shares @ means) * np.sqrt(shares)[:, None]).T
+        Z = solve_triangular(factor, deviations, lower=True, check_finite=False)
+        ratio = float(np.linalg.eigvalsh(c * (Z.T @ Z))[-1])
+        separation = ratio / (1.0 - ratio) if ratio < 1.0 else math.inf
+        self.stats.update(rows=rows, null_directions=int(null.size), separation=separation)
+        if not separation < _SEPARATION_LIMIT:
+            self.reason = "separated"
+            return None
+
+        inverse = cho_solve((factor, True), np.eye(p), check_finite=False)
+        inverse = 0.5 * (inverse + inverse.T)
+        n_targets = 1 if self.n_classes == 2 else self.n_classes
+
+        def apply(v: np.ndarray) -> np.ndarray:
+            return (v.reshape(n_targets, p) @ inverse).reshape(-1)
+
+        self.reason = "correlated"
+        return DensePreconditioner(apply)
+
+
 def solve_logistic(
     X: np.ndarray,
     y: np.ndarray,
@@ -731,6 +1202,19 @@ def solve_logistic(
         def iteration_callback(theta):
             callback(*unpack(theta))
 
+    diagonal = _preconditioner(scale, l2, n_targets, config.fit_intercept)
+    plan = first = None
+    reason = "disabled"
+    if config.dense_preconditioner:
+        if _DENSE_MIN_FEATURES <= n_features <= _DENSE_MAX_FEATURES:
+            plan = _DensePlan(
+                X_host, y_host, weights, n_classes=n_classes,
+                fit_intercept=config.fit_intercept, l2=l2, diagonal=diagonal,
+            )
+            first = _FirstEvaluation(plan.run)
+        else:
+            reason = "width"
+
     with use_device(config.device) as stream:
         # use_device yields the block's stream, not the device's name.
         on_gpu = stream.device == mx.gpu
@@ -748,6 +1232,7 @@ def solve_logistic(
                 l2,
                 config.fit_intercept,
                 n_features,
+                first,
             )
         else:
             codes = y_host.astype(np.int32)
@@ -764,6 +1249,7 @@ def solve_logistic(
                 l2,
                 config.fit_intercept,
                 n_features,
+                first,
             )
 
         theta0 = mx.zeros((n_targets, n_columns), dtype=mx.float32)
@@ -777,10 +1263,15 @@ def solve_logistic(
                 max_line_search=config.max_line_search,
             ),
             callback=iteration_callback,
-            preconditioner=_preconditioner(scale, l2, n_targets, config.fit_intercept),
+            preconditioner=diagonal,
+            dense_preconditioner=None if plan is None else plan.resolve,
         )
         theta = np.asarray(state.x, dtype=NUMPY_FLOAT).astype(np.float64)
 
+    if plan is not None:
+        reason = plan.reason
+        if reason == "correlated" and state.preconditioner != "dense":
+            reason = "no-step"
     coef, intercept = unpack(theta)
     return LogisticSolution(
         coef=coef,
@@ -792,6 +1283,8 @@ def solve_logistic(
         stop_reason=state.stop_reason,
         n_fev=state.n_fev,
         initial_grad_max_abs=state.initial_grad_max_abs,
+        preconditioner="dense" if state.preconditioner == "dense" else "diagonal",
+        preconditioner_reason=reason,
     )
 
 
