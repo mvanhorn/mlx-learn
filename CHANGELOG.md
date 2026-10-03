@@ -1086,14 +1086,14 @@ Where patched dispatch now sends each problem is under **Changed**.
   host solver (0.97–1.00×, not significant). A fit whose every pair ends with no free dual
   variable is solved twice: random labels with balanced class weights at C = 0.1–0.2 took
   0.83–0.88× the host solver's time, still 2.5–3.1× stock; at the same sizes without the
-  weights, at C = 0.05–0.1, no pair needed it (4.4–11.8× the host solver). The kernel compiles on the first fit of a process that takes it: a
-  library never compiled on the machine costs that fit 133–150 ms, once per machine, MLX
-  release and kernel version — first fits of 168–191 ms against 32–58 ms once the operating
-  system's shader cache holds it, medians of five fresh processes under both Pythons —
-  where the host solver's first fit took 32–795 ms and stock scikit-learn's 8–610 ms on the
-  same cells. No dispatch threshold changed, so patched mode sends no new fit to MLX;
-  narrower and many-class fits, which the prototype measured faster than stock as well,
-  wait for their own calibration.
+  weights, at C = 0.05–0.1, no pair needed it (4.4–11.8× the host solver). The kernel
+  compiles on the first fit of a process that takes it: a library never compiled on the
+  machine costs that fit 133–150 ms, once per machine, MLX release and kernel version —
+  first fits of 168–191 ms against 32–58 ms once the operating system's shader cache holds
+  it, medians of five fresh processes under both Pythons — where the host solver's first
+  fit took 32–795 ms and stock scikit-learn's 8–610 ms on the same cells. No dispatch
+  threshold changed, so patched mode sends no new fit to MLX; narrower and many-class fits,
+  which the prototype measured faster than stock as well, wait for their own calibration.
 - Patched low-dimensional KNN handed to the KD-tree: 200 000 × 3, fit and 1 000-row
   predict, went from 0.40× to 1.00× of stock.
 - `radius_neighbors` on an MLX-fitted `NearestNeighbors` hands scikit-learn a float32

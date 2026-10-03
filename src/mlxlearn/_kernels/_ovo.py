@@ -33,7 +33,7 @@ candidates whose gains agree to float32's precision can be ranked differently fr
 the host's float64 ranking: a different path to the same optimum. The kernel is not
 trusted with the answer: every pair's result is held to the host solver's stop by
 ``smo.finish_c_svc`` — gradient recomputed in float64, full-set KKT test, the host
-loop finishing any pair that fails it (``docs/fp32_policy.md`` §2.4).
+loop finishing any pair that fails it (``docs/fp32_policy.md`` §2.5).
 
 **Deterministic.** No result is a sum across threads: every reduction is a maximum
 with ties broken by the larger index, which no order of evaluation changes, and the
