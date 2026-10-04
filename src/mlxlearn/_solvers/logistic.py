@@ -903,12 +903,17 @@ def _column_moments(X, weights, cap: float) -> np.ndarray:
     n, d = X.shape
 
     def part(start: int, stop: int):
-        block = X[start:stop]
-        w = np.ones(stop - start) if weights is None else weights[start:stop]
-        if cap > 0.0:
-            norms = np.einsum("ij,ij->i", block, block, dtype=np.float64)
-            w = w * np.minimum(1.0, cap * cap / np.maximum(norms, 1e-300))
-        return np.einsum("i,ij,ij->j", w, block, block, dtype=np.float64), float(w.sum())
+        # The plan's errstate (_DensePlan.run) is its own thread's, and these blocks run
+        # on the pool's: an all-zero row beside rows of norm ~1e5 overflows cap² over its
+        # norm here, to the shrink of 1 it gets anyway, and a fit without an intercept
+        # warned — raised, under an error filter — where the diagonal path says nothing.
+        with np.errstate(all="ignore"):
+            block = X[start:stop]
+            w = np.ones(stop - start) if weights is None else weights[start:stop]
+            if cap > 0.0:
+                norms = np.einsum("ij,ij->i", block, block, dtype=np.float64)
+                w = w * np.minimum(1.0, cap * cap / np.maximum(norms, 1e-300))
+            return np.einsum("i,ij,ij->j", w, block, block, dtype=np.float64), float(w.sum())
 
     parts = map_row_blocks(part, n, d)
     moments = parts[0][0].copy()

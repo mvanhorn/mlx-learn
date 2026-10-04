@@ -255,6 +255,24 @@ def test_the_floor_is_the_whole_designs_clipped_weighted_second_moment():
     )
 
 
+@pytest.mark.parametrize("device", DEVICES)
+def test_the_floors_pass_raises_no_floating_point_warnings(device, plans):
+    """The floor's pass over the rows runs on the host pool's threads, which the plan's
+    errstate — its own thread's — does not reach. Without an intercept an all-zero row
+    stays zero, and beside rows of norm ~1e5 the clip's cap² over its norm overflowed
+    there, to the shrink of 1 it gets anyway: the fit warned, or raised under an error
+    filter, where the diagonal path says nothing."""
+    device = _device(device)
+    X, y = logistic_data("ar90", 60000, 64, 3, seed=3)
+    X = X * 1e4
+    X[::1000] = 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        _solve(X, y, 3, fit_intercept=False, device=device)
+    # The model was built from a sample, so the floor's pass ran.
+    assert plans[0].reason == "correlated" and plans[0].stats["rows"] < len(X)
+
+
 @pytest.mark.parametrize("scale", [1e4, 1e8])
 def test_the_model_does_not_depend_on_a_columns_units(scale, plans):
     """λ of W⁻¹B is invariant to a column's units, and so is the model's reading of it
