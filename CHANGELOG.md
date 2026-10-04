@@ -89,26 +89,35 @@ come first under **Changed**.
   Mac with 32 GB or more, 9.6 million at an 8 GB Mac's 256 MiB, 4.8 million on MLX's CPU
   device — held every train tile's working set at once, in the first pass, fused or not,
   and in the second, and so many times its memory budget: 64 queries against
-  40 000 000 × 2 peaked 7.0 GiB above the index against 1 GiB, 256 queries 23 GiB, and 256
-  against 10 000 000 × 2 at 256 MiB 6.0 GiB. The search now evaluates its running
-  candidates once one more tile would take the work in flight past the budget, as the
-  exact search already did: 610 MiB and 159 MiB there, every answer and every count the
-  same bit for bit. Those evaluations are device round trips, and they end the overlap
+  40 000 000 × 2 peaked 7.0 GiB above the index against 1 GiB, 256 queries 23 GiB, and
+  against 10 000 000 × 2 at 256 MiB, `k` = 5, 16, 64 and 256 queries peaked 1.2, 2.0 and
+  5.7 GiB. The search now evaluates its running candidates once one more tile would take
+  the work in flight past the budget, as the exact search already did: 610 MiB at
+  40 000 000 × 2, and 153, 154 and 161 MiB at 10 000 000 × 2, every answer and every count
+  the same bit for bit. Those evaluations are device round trips, and they end the overlap
   between tiles that the unbounded search ran with: 1.03×, 1.04× and 1.09–1.11× the query
-  time at 40 000 000 × 2 for 16, 64 and 256 queries, and 1.11–1.12× at 10 000 000 × 2. A
-  block searched in one tile gains none, so nothing changes below those lengths: at
-  1 000 000 × 64 and 128 000 × 768, 16–4 096 queries, `k` = 5 and 50, the same evaluations
-  and paired median times of 0.99–1.02×, each interquartile range spanning 1. Measured on
-  the GPU of an M4 Max with MLX 0.32.2 and Python 3.13, the code before and after in one
-  process, each call after a garbage collection and a 10 ms idle gap, in alternating
-  order: 31 pairs, 9 on the long training sets. Each such evaluation then waits for the
-  stream to finish: MLX takes an evaluated tile's buffers back only when its command
-  buffer completes, on a thread of its own, so without the wait the next tiles were
-  sometimes allocated beside the last ones — 159–303 MiB over five calls of 256 queries
-  against 10 000 000 × 2 at 256 MiB, past the budget, and 8–10 MiB against 4 MiB in 7 of
-  120 runs of the two tests that hold the search to it. With it, all five calls peaked at
-  the 610 MiB and 159 MiB above, and the six long-training-set shapes took 1.00–1.01× the
-  query time they took without it (9 pairs each, measured the same way).
+  time at 40 000 000 × 2 for 16, 64 and 256 queries, and 1.11–1.16× at 10 000 000 × 2
+  (1.13×, 1.14× and 1.11× under scikit-learn 1.9.0, 1.15×, 1.16× and 1.14× under 1.7.2,
+  each significant; 1.07–1.24× back to back). A block searched in one tile gains none, so
+  nothing changes below those lengths: at 1 000 000 × 64 and 128 000 × 768, 16, 256 and
+  4 096 queries, `k` = 5, 10 and 50, the evaluations and the answers are the same bit for
+  bit, and paired median times 0.95–1.01× the code before's under 1.9.0 and 0.93–1.01×
+  under 1.7.2, none significantly different, and 0.97–1.03× back to back. Measured on the
+  GPU of an M4 Max with MLX 0.32.2, the code before and after in one process, each call
+  after a garbage collection and a 10 ms idle gap, "significant" meaning three standard
+  errors apart: at 40 000 000 × 2 under Python 3.13, in alternating order (31 pairs over
+  this entry's shapes, 9 on the long training sets); at 10 000 000 × 2 (16 calls each,
+  and five more for the peaks, every one the same) and at one tile (30 calls each),
+  under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, in balanced
+  order, and back to back in blocks of 8 calls at 10 000 000 × 2 and interleaved call by
+  call at one tile. Each such evaluation then waits for the stream to finish: MLX takes
+  an evaluated tile's buffers back only when its command buffer completes, on a thread of
+  its own, so without the wait the next tiles were sometimes allocated beside the last
+  ones — 159–303 MiB over five calls of 256 queries against 10 000 000 × 2 at 256 MiB,
+  past the budget, and 8–10 MiB against 4 MiB in 7 of 120 runs of the two tests that hold
+  the search to it. With it, every call peaked at the figures above, and the six
+  long-training-set shapes took 1.00–1.01× the query time they took without it (9 pairs
+  each, measured as at 40 000 000 × 2).
 
 #### LogisticRegression
 
@@ -279,11 +288,22 @@ come first under **Changed**.
   left those flags set after products whose results were finite, on every iteration of
   a wide `LogisticRegression` fit and on `SVC`'s rbf refinement, `predict` and
   `decision_function`, so a filter that escalates `RuntimeWarning` failed them. Only the
-  products are silenced, and a result that really is not finite is still reported
-  without the flag: by `SVC`'s finiteness checks, and by a `LogisticRegression` fit that
-  stops unconverged with a `ConvergenceWarning`. `LogisticRegression`'s inference is
-  scikit-learn's own code, and warns as stock scikit-learn does. NumPy 2.5 raises none of
-  them.
+  products are silenced, with the arithmetic of the L-BFGS direction they feed, and a
+  result that really is not finite is still reported without the flag: by `SVC`'s
+  finiteness checks, and by a `LogisticRegression` fit that stops unconverged with a
+  `ConvergenceWarning`. `LogisticRegression`'s inference is scikit-learn's own code, and
+  warns as stock scikit-learn does. NumPy 2.5 raises none of them. Silencing is not free:
+  entering an `np.errstate` takes about half a microsecond on NumPy 2 and two on NumPy
+  1.23, and one around each of L-BFGS's products, as first written, added 8–17 µs to
+  every iteration — 1.9–10.6% of a directly imported `LogisticRegression` fit of 3–10 ms
+  under scikit-learn 1.9.0, up to 10.9% under 1.7.2. The products now share them: one
+  covers the two-loop recursion, its slope and the dense operator's two applications,
+  one the curvature test, and one each line-search slope, about 2 µs an iteration in
+  all. Fits of 1.5–11 ms took 1.01–1.04× less time than with one per product under 1.9.0
+  and 0.99–1.03× under 1.7.2, and with the dense preconditioner off ran at 0.96–0.99× and
+  0.96–1.02× the speed of the code before the errstates, a fixed cost per fit part of
+  that (on the GPU of the M4 Max below, after an idle gap, 48 calls each in a balanced
+  order).
 
 #### Runtime: configuration, devices, diagnostics
 
@@ -549,11 +569,23 @@ come first under **Changed**.
     1.55×; `knn-data`, 1.53×), clusters of std 0.4–0.5, which the fit-time probe passes
     (`knn-structured`, 1.54×), rows repeated about twice and one column on 100 times the
     scale of the rest, which it hands off (0.98×~), and k = 1–50 (`knn-k`, 1.26×~; the
-    grids gained these shapes). What the move costs is the index build at those shapes:
-    a patched fit, probe included, took 47–132 ms against stock's 1.9–6.0 ms
-    (0.04×–0.06×; see the accepted `knn/fit` regression), and a float64 index holds three
-    times the float32 data on the device. Fits of 16–255 features still need a million
-    rows (above).
+    grids gained these shapes). An A/B of the code before and after the move, patched
+    `NearestNeighbors` on the GPU of the same M4 Max with MLX 0.32.2, each query after a
+    garbage collection and a 10 ms idle gap (16 calls each, in both orders), sent all 336
+    configurations of Gaussian and std-1 cluster data at 1 000 000 and 1 600 000 × 16, 24,
+    32 and 48, k = 5, 10 and 50 and 1–4 096 queries to MLX, where the code before had
+    handed them to stock brute force, and every one ran significantly faster than stock
+    (three standard errors apart) under Python 3.13 with scikit-learn 1.9.0 and Python
+    3.10 with 1.7.2: 1.33× at worst on 1.9.0 (clusters at 1 000 000 × 24, k = 50, 64
+    queries) and 1.39× on 1.7.2 (the same shape, 4 queries), up to 9.0× and 9.3× at 4 096
+    queries, and 1.59× at worst back to back. So the `knn` table's 1.55× holds for it, at
+    k = 10 on Gaussian data; across k = 5–50 and clustered data the floor is 1.33×. The
+    neighbor sets agreed with stock's in at least 99.88% of each configuration's entries,
+    the rest near-ties, with distances within 2.1e-6. What the move costs is the index
+    build at those shapes: a patched fit, probe included, took 47–132 ms against stock's
+    1.9–6.0 ms (0.04×–0.06×; see the accepted `knn/fit` regression), and a float64 index
+    holds three times the float32 data on the device. Fits of 16–255 features still need a
+    million rows (above).
   - **Patched neighbor fits read `n_neighbors`.** The size rules were measured at k = 10,
     and MLX pays per query for every neighbor it keeps where stock brute force barely
     does (table `knn-k`, k = 1–200, up to 4 096 features): at k = 100 a 1 024-query
@@ -1052,12 +1084,14 @@ come first under **Changed**.
   relative to its own curvature, so that one column in units of 1e8 does not swamp the
   rest. A run on the model that would stop above the float32 floor without converging
   leaves it and goes on along the diagonal path from where it stands. It serves 2 to
-  1 024 features on both MLX devices and MLX 0.31, with no kernel of its own: the model
-  is built on the host while the device computes the first evaluation, its
-  factorizations on one BLAS thread, and the device graph and the stopping test are the
-  diagonal path's — so a fit it turns away is that path bit for bit. Every MLX fit's
-  `fit_event_.extra` says which path it took and why (`preconditioner`,
-  `preconditioner_reason`). Private switch: `MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0`.
+  1 024 features on both MLX devices and MLX 0.31, with no kernel of its own: the gate and
+  the model run on the host while the device computes the first evaluation (which hides
+  the gate on the fits patched dispatch routes, but not the model, nor the gate on a short
+  directly imported fit; **Performance**), the model's factorizations on one BLAS thread,
+  and the device graph and the stopping test are the diagonal path's — so a fit it turns
+  away is that path bit for bit. Every MLX fit's `fit_event_.extra` says which path it
+  took and why (`preconditioner`, `preconditioner_reason`). Private switch:
+  `MLXLEARN_LBFGS_DENSE_PRECONDITIONER=0`.
 
 ### Removed
 
@@ -1338,25 +1372,64 @@ Where patched dispatch now sends each problem is under **Changed**.
   takes about 1 ms. Where the buffer-cache release triggers — machines with less memory —
   repeated same-shape large queries pay reallocation: a repeated 150 000 × 64 query with
   6 000 queries took 168 ms with the release forced on every call against 162 ms without.
-- `LogisticRegression` on correlated features (**Added**). Measured so far in objective
-  evaluations, which do not depend on the machine — wall-clock figures are pending a
-  measurement on a quiet machine. Over a 582-fit calibration grid
-  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.3) the gate sent 348 fits to the
-  dense path, which took 13 694 evaluations where the diagonal path took 59 313: a
-  median 4.9× fewer, 4.75× over the 223 at sizes patched dispatch routes (from 60 000
-  rows for several classes, 200 000 for two), and up to 50× (one-hot blocks with rare
-  levels, AR(0.99) features, raw breast cancer and digits). It took more on 4 of the 348:
-  +1 to +4 evaluations on three fits of 9-24, and +12 at `tol=1e-6` on a fit whose `tol`
-  is below the float32 floor. Twelve fell back to the diagonal path where they would
-  have stopped short — eight on Cauchy features, three on raw breast cancer, one on raw
-  digits. On 168 more fits whose rows a sample reads wrong (rare one-hot levels, rows
-  ordered by source or label, one column in units of 1e6-1e8, a few heavily weighted
-  rows, a constant column; `C` from 1 to `inf`) it took 2 937 evaluations on the 124 it
-  ran on, where the diagonal path took 22 471, and more on none. The 234 fits of the
-  grid it turned away run the diagonal path unchanged; their only added cost is the
-  gate's host work, done while the device computes the first evaluation. A fit it admits
-  also pays one pass over its rows for the model's floor. No dispatch threshold
-  changed.
+- `LogisticRegression` on correlated features (**Added**). Timed on the GPU of the same M4
+  Max with MLX 0.32.2, under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with
+  1.7.2: patched fits (`max_iter=200`) at sizes patched dispatch routes, the code before
+  and after in one process beside stock scikit-learn, each fit after a garbage collection
+  and a 10 ms idle gap, 18 calls each over every order of the three, "significant" meaning
+  three standard errors apart. On 71 fits the gate admits — AR(0.9) and AR(0.99) features,
+  5 and 20 latent factors, column scales, one-hot blocks and Zipf one-hot levels (those
+  from 64 features), two classes at 200 000 × 16 and × 64 and three, five and ten at
+  60 000 × 16, × 64 and × 256, and breast cancer, raw and standardized, at 200 000 × 30 —
+  a fit took 1.29–4.87× less time than on the diagonal path (median 2.43×) under 1.9.0 and
+  1.19–4.68× less (median 2.32×) under 1.7.2, every one significant, and ran 4.1–39.8× and
+  3.7–38.0× as fast as stock lbfgs, where the diagonal path ran 2.7–13.4×. With the two
+  versions interleaved call by call and no idle gap the gain held at 1.01–5.77× under
+  1.7.2; only the binary fits at 200 000 rows with five latent factors tie. The 71 took
+  1 019 evaluations where the diagonal path took 7 536 — 2.0–27.8× fewer a fit (median
+  6.2×), more on none — and 15 converged that had stopped at `max_iter` or on the float32
+  floor; no objective ended more than 1e-6 relative above the diagonal path's. Random
+  labels on AR(0.9) features, and raw digits in three and five classes, take the dense
+  path too, at 1.34–3.61×. The gate was calibrated in objective evaluations, which do not
+  depend on the machine. Over a 582-fit calibration grid
+  ([`docs/fp32_policy.md`](docs/fp32_policy.md) §2.3) it sent 348 fits to the dense path,
+  which took 13 694 evaluations where the diagonal path took 59 313: a median 4.9× fewer,
+  4.75× over the 223 at sizes patched dispatch routes (from 60 000 rows for several
+  classes, 200 000 for two), and up to 50× (one-hot blocks with rare levels, AR(0.99)
+  features, raw breast cancer and digits). It took more on 4 of the 348: +1 to +4
+  evaluations on three fits of 9-24, and +12 at `tol=1e-6` on a fit whose `tol` is below
+  the float32 floor. Twelve fell back to the diagonal path where they would have stopped
+  short — eight on Cauchy features, three on raw breast cancer, one on raw digits. On 168
+  more fits whose rows a sample reads wrong (rare one-hot levels, rows ordered by source
+  or label, one column in units of 1e6-1e8, a few heavily weighted rows, a constant
+  column; `C` from 1 to `inf`) it took 2 937 evaluations on the 124 it ran on, where the
+  diagonal path took 22 471, and more on none. A fit the gate turns away runs the diagonal
+  path, with the same evaluations and coefficients, but not always in the same time. Its
+  first stage takes 0.1–0.6 ms of host work, which the device's first evaluation hides on
+  the fits patched dispatch routes: the 33 fits of the A/B above it turned away —
+  isotropic features, separable blobs and random labels on isotropic features — ran at
+  0.97–1.08× the code before's speed, none significantly different. A fit the separation
+  limit turns away has built the model first — its sample, the floor's pass over every
+  row, the factorizations and the eigenvalues, 2.2–7.7 ms of host work at these shapes,
+  most of it the floor's pass and, at 256 features, the sample's product — and that
+  outlasts the first evaluation, so the fit pays nearly all of it. Nearly separable blobs
+  with AR(0.9) noise at 60 000–200 000 × 16–256, and raw digits in ten classes at 60 000
+  and 200 000 × 64, ran at 0.79–0.92× the code before's speed under 1.9.0 and 0.69–0.91×
+  under 1.7.2, significantly slower in 9 of 10 fits on each (0.51–0.88× back to back under
+  1.7.2), and still 1.4–2.5× (blobs) and 8.7–16.9× (digits) as fast as stock. No routed
+  fit of the A/B ran slower than stock: the slowest, separable blobs at 60 000 × 256 in
+  three classes, which stock finishes in one iteration, ran at 1.04×–1.08×. A fit the gate
+  admits pays the floor's pass too, and wins it back. A directly imported fit too short
+  for its first evaluation to hide the gate pays the gate as well: isotropic and blob data
+  at 2 000–50 000 rows, 16–1 024 features and 2–10 classes, fits of 1.5–11 ms, ran at
+  0.89–1.00× the code before's speed under 1.9.0 and 0.88–1.00× under 1.7.2 (directly
+  imported, 48 calls each in every order beside other variants, after the same idle gap,
+  with the errstates of **Fixed** grouped), significantly slower on 6 of 10 under 1.9.0
+  and 5 under 1.7.2: two classes at up to 20 000 rows, three at 5 000 × 16, and under
+  1.9.0 5 000 × 1 024 (0.95×), where the gate reads 512 rows of 256 columns. Correlated
+  fits of that size win: AR(0.9) features at 5 000 × 16, 1.56×, and at 10 000 × 32 in
+  three classes, 2.9–3.0×. Patched dispatch sends none of them to MLX. No dispatch
+  threshold changed.
 
 ## [0.1.0a2] — 2026-09-02
 

@@ -433,6 +433,34 @@ def test_the_bookkeeping_never_touches_the_device(monkeypatch):
     assert len(evals) == state.n_fev
 
 
+def test_the_inner_products_share_their_errstates(monkeypatch):
+    """The solver's products report no floating-point flags (``lbfgs._dot``), but not
+    through one ``np.errstate`` per product: entering one costs about half a
+    microsecond on NumPy 2 and two on NumPy 1.23, and one per product — ``2m + 1`` in
+    the two-loop recursion alone — added 8-17 µs to every iteration, 2-11% of a
+    directly imported ``LogisticRegression`` fit of 3-10 ms. One covers the recursion
+    and its slope, one the curvature test, and one each line-search slope, so an
+    iteration with a full history of curvature pairs enters no more of them than the
+    first one does.
+    """
+    real = np.errstate
+    entered = []
+
+    def counting(*args, **kwargs):
+        entered.append(1)
+        return real(*args, **kwargs)
+
+    fun = _quadratic(np.logspace(0.0, 2.0, 40))
+    monkeypatch.setattr(np, "errstate", counting)
+    state = minimize(fun, mx.array(np.ones(40, dtype=np.float32)), LBFGSConfig(tol=1e-3))
+    monkeypatch.undo()
+
+    assert state.converged and state.n_iter > LBFGSConfig().history_size  # a full history
+    # Per iteration: the direction and the curvature test; per evaluation after the
+    # first, its slope; once, the first step's length.
+    assert len(entered) <= 2 * state.n_iter + state.n_fev
+
+
 # ----------------------------------------------------------------- float32 floor
 
 

@@ -750,7 +750,12 @@ def _weight_scale(sample_weight: np.ndarray) -> float:
 #
 # All of it runs on the host while the device computes the first evaluation
 # (_FirstEvaluation), the model's factorizations on one BLAS thread
-# (_one_blas_thread), and the device graph is the one every fit runs.
+# (_one_blas_thread), and the device graph is the one every fit runs. That hides the
+# gate on the fits patched dispatch routes, but not the model: its 2.2-7.7 ms at
+# 60 000-200 000 rows, most of it the floor's pass over every row, outlast the first
+# evaluation, so a fit the separation limit turns away pays nearly all of it (nearly
+# separable blobs, ten-class digits: 0.69-0.92x the diagonal path's speed, and still
+# 1.4-17x stock's; docs/fp32_policy.md §2.3).
 
 #: Narrowest and widest designs the model is built for. At 1 024 features it is a
 #: 1 025 x 1 025 factorization and its inverse.
@@ -1229,15 +1234,14 @@ class _DensePlan:
         n_targets = 1 if self.n_classes == 2 else self.n_classes
 
         def apply(v: np.ndarray) -> np.ndarray:
-            # L-BFGS calls this outside run()'s errstate, on every iteration. The
+            # L-BFGS calls this outside run()'s errstate, on every iteration, and
+            # under the one its two-loop recursion holds (lbfgs._direction). The
             # inverse is finite — factorized from a finite, positive-definite model —
             # and so is v when the gradient is, so a flag NumPy's BLAS raises here is
             # spurious (lbfgs._dot). A direction that really is not finite is found
             # without it: its slope resets the search, and a run it stalls above the
             # float32 floor leaves this operator for the diagonal.
-            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-                product = v.reshape(n_targets, p) @ inverse
-            return product.reshape(-1)
+            return (v.reshape(n_targets, p) @ inverse).reshape(-1)
 
         self.reason = "correlated"
         return DensePreconditioner(apply)

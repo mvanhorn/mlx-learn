@@ -381,7 +381,12 @@ about 3 ms against 7–8 ms for stock, and 1 024 about 33 ms against 180 ms, whe
 about 260 ms before. Every batch won on both versions, 1.44× at worst (4 queries at
 1 000 000 × 64 on 1.7.2) and 1.55× at 16–48 features. At the same shapes the other laws
 of `knn-data` and `knn-structured` and k = 1–50 in `knn-k` won or tied too, wherever the
-fit-time probe below passed the data (1.26×~ at worst; tables below). So patched dispatch
+fit-time probe below passed the data (1.26×~ at worst; tables below). An A/B of the move
+itself — patched queries at 1 000 000 and 1 600 000 × 16, 24, 32 and 48 on Gaussian and
+std-1 cluster data, k = 5, 10 and 50, 1–4 096 queries, after an idle gap on both
+versions, against stock brute force, which had answered them before — found every one of
+its 336 configurations significantly faster, 1.33× at worst (clusters at
+1 000 000 × 24, k = 50; see the CHANGELOG). So patched dispatch
 now hands a fit to scikit-learn whatever its rows only below 16 features
 (`knn_min_features = 16`): to its KD-tree where it would build one, to its brute force
 otherwise ([below](#narrow-data-goes-to-scikit-learn-whatever-its-size)). From 16 features

@@ -375,14 +375,17 @@ dependency — one-hot blocks beside an intercept — and gets the mean curvatur
 `1/ridge` there would amplify the gradient's float32 rounding (‖coef‖ = 1 260 against
 16.7 on one-hot data at `C = inf` without it); and `H₀` is the explicit inverse of the
 factorization. All of it runs on the host while the device computes the first
-evaluation. The model's products and factorizations run with the host's BLAS on one
-thread (on a stack whose NumPy and SciPy each ship an OpenBLAS — NumPy 1.23 and SciPy
-1.10 — a plan of 4 ms otherwise took a median 0.28 s): a process-wide limit, so it is
-held only around the model, only where a pool runs more than one thread, and one plan at
-a time. Another thread's own threadpoolctl limit that begins inside it and ends after it
-still restores its single thread when it ends — the gate, which every fit runs, holds
-none. The device graph and every stopping rule are the diagonal path's, and a fit the
-gate turns away is the diagonal path bit for bit.
+evaluation, which hides the gate's first stage on the fits patched dispatch routes but
+not the model: its 2.2–7.7 ms at 60 000–200 000 rows outlast the evaluation, and a fit
+the separation limit turns away pays them for nothing (below). The model's products and
+factorizations run with the host's BLAS on one thread (on a stack whose NumPy and SciPy
+each ship an OpenBLAS — NumPy 1.23 and SciPy 1.10 — a plan of 4 ms otherwise took a
+median 0.28 s): a process-wide limit, so it is held only around the model, only where a
+pool runs more than one thread, and one plan at a time. Another thread's own
+threadpoolctl limit that begins inside it and ends after it still restores its single
+thread when it ends — the gate, which every fit runs, holds none. The device graph and
+every stopping rule are the diagonal path's, and a fit the gate turns away is the
+diagonal path bit for bit.
 
 **When the model is wrong anyway.** A run on it that would stop above the float32
 floor without converging — a failed line search, or the stall that otherwise ends a run
@@ -420,6 +423,32 @@ took 2 937 evaluations where the diagonal took 22 471, more on none, never stopp
 higher objective, and converged wherever the diagonal did. The 44 it turned away are
 separable classes sorted by label and the heavy weights, which make the weighted classes
 nearly separable.
+
+**In time.** Timed against the code before it on the GPU of an M4 Max with MLX 0.32.2,
+under Python 3.13 with scikit-learn 1.9.0 and Python 3.10 with 1.7.2, with patched fits
+at sizes patched dispatch routes (two classes at 200 000 × 16, 30 and 64; three, five
+and ten at 60 000 × 16, 64 and 256; `max_iter=200`), each after a garbage collection and
+a 10 ms idle gap, 18 calls each over every order of the two and stock scikit-learn,
+significant at three standard errors. On 71 fits the gate admits — AR(0.9/0.99), five
+and twenty latent factors, column scales, one-hot blocks, Zipf one-hot levels and breast
+cancer — a fit took 1.29–4.87× less time (median 2.43×) under 1.9.0 and 1.19–4.68×
+(median 2.32×) under 1.7.2, every one significant, with 1 019 evaluations where the
+diagonal took 7 536, and ran 4.1–39.8× as fast as stock lbfgs (3.7–38.0× under 1.7.2)
+where the diagonal ran 2.7–13.4×. A fit the first stage turns away pays 0.1–0.6 ms of
+host work there, which the first evaluation hides: 33 fits of isotropic features,
+separable blobs and random labels on isotropic features ran at 0.97–1.08× the code
+before's speed, none significantly different. A fit the separation limit turns away has
+built the model first, 2.2–7.7 ms of host work at these shapes — most of it the floor's
+pass over every row and, at 256 features, the sample's product — which outlasts the
+first evaluation: nearly separable blobs with AR(0.9) noise at 60 000–200 000 × 16–256
+and raw ten-class digits at 60 000 and 200 000 × 64 ran at 0.79–0.92× the code before's
+speed under 1.9.0 and 0.69–0.91× under 1.7.2, significantly slower in 9 of 10 fits on
+each, with the same evaluations and coefficients — still 1.4–2.5× (blobs) and 8.7–16.9×
+(digits) as fast as stock. A directly imported fit too short to hide the gate pays it:
+two classes of isotropic features at 2 000–20 000 rows and 16–64 features, fits of
+1.5–4.5 ms, ran at 0.88–0.96× the code before's speed, and the model wins where the gate
+admits a fit that size (AR(0.9) features at 5 000 × 16, 1.56×). The CHANGELOG has the
+figures in full.
 
 The objective and the stopping test are unchanged, but on an ill-conditioned problem at
 the default `tol` a different path stops at a different point. Of the 335 fits the dense

@@ -272,9 +272,11 @@ class DensePreconditioner:
     """A dense symmetric positive-definite initial inverse Hessian ``P``, as ``v ↦ Pv``.
 
     ``apply`` takes and returns a flat float64 vector the size of the parameter. The
-    solver never forms ``P``; it multiplies by it, twice per iteration. ``−Pg`` is
-    taken to be scaled like a Newton step for the caller's model, so an iteration
-    without curvature pairs tries the unit step along it.
+    solver never forms ``P``; it multiplies by it, twice per iteration, under the
+    errstate of the two-loop recursion (``_direction``), so floating-point flags
+    ``apply`` raises are not reported. ``−Pg`` is taken to be scaled like a Newton
+    step for the caller's model, so an iteration without curvature pairs tries the
+    unit step along it.
     """
 
     apply: Callable[[np.ndarray], np.ndarray]
@@ -643,8 +645,7 @@ def minimize(
     # Every pass either accepts a step, returns, or — once at most — leaves the dense
     # operator and tries again from the same point, so this counts accepted steps.
     while n_iter < config.max_iter:
-        direction = _two_loop(grad, s_history, y_history, rho_history, diagonal, dense)
-        gtd = _dot(grad, direction)
+        direction, gtd = _direction(grad, s_history, y_history, rho_history, diagonal, dense)
         if not gtd < 0.0 or not math.isfinite(gtd):
             # The stored curvature no longer describes this objective — reset to
             # (preconditioned) steepest descent rather than taking a step that
@@ -652,8 +653,9 @@ def minimize(
             s_history.clear()
             y_history.clear()
             rho_history.clear()
-            direction = _two_loop(grad, s_history, y_history, rho_history, diagonal, dense)
-            gtd = _dot(grad, direction)
+            direction, gtd = _direction(
+                grad, s_history, y_history, rho_history, diagonal, dense
+            )
 
         # Unit for a quasi-Newton direction. With no curvature pairs — the first
         # (steepest-descent) iteration — the direction's length is arbitrary, and the
@@ -703,8 +705,12 @@ def minimize(
 
         s = step.x - x
         y = step.g - grad
-        ys = _dot(s, y)
-        if ys > config.min_curvature * math.sqrt(_dot(s, s)) * math.sqrt(_dot(y, y)):
+        with np.errstate(**_QUIET):  # three products, one errstate (_dot)
+            ys = float(s @ y)
+            curved = ys > config.min_curvature * math.sqrt(float(s @ s)) * math.sqrt(
+                float(y @ y)
+            )
+        if curved:
             s_history.append(s)
             y_history.append(y)
             rho_history.append(1.0 / ys)
@@ -741,6 +747,21 @@ def minimize(
     return finish("max_iter")
 
 
+def _direction(grad, s_history, y_history, rho_history, diagonal=None, dense=None):
+    """The two-loop recursion's direction and its slope ``gᵀd``, under one errstate.
+
+    The ``2m + 2`` inner products of the recursion and its slope, and the dense
+    operator's two applications, report no floating-point flags (:func:`_dot` says
+    why that is safe). One ``np.errstate`` around all of them, rather than one per
+    product: entering one costs about half a microsecond on NumPy 2 and two on NumPy
+    1.23, and one per product added 8-17 µs to every iteration — 2-11% of a
+    directly imported fit of 3-10 ms.
+    """
+    with np.errstate(**_QUIET):
+        direction = _two_loop(grad, s_history, y_history, rho_history, diagonal, dense)
+        return direction, float(grad @ direction)
+
+
 def _two_loop(grad, s_history, y_history, rho_history, diagonal=None, dense=None):
     """Nocedal's two-loop recursion: ``-H∇f`` without forming ``H``.
 
@@ -750,7 +771,7 @@ def _two_loop(grad, s_history, y_history, rho_history, diagonal=None, dense=None
     ``gamma = sᵀy / yᵀDy`` from the newest pair, which is what makes the first step
     of each iteration well-scaled. Host NumPy float64 throughout: ``2m + 1`` inner
     products of vectors a few hundred elements long, plus two applications of a
-    dense operator.
+    dense operator. Called under :func:`_direction`'s errstate.
     """
     if not s_history:
         if dense is not None:
@@ -762,29 +783,33 @@ def _two_loop(grad, s_history, y_history, rho_history, diagonal=None, dense=None
     for s, y, rho in zip(
         reversed(s_history), reversed(y_history), reversed(rho_history), strict=True
     ):
-        alpha = rho * _dot(s, q)
+        alpha = rho * float(s @ q)
         alphas.append(alpha)
         q -= alpha * y
 
     y_last = y_history[-1]
     if dense is not None:
-        gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, dense.apply(y_last)), 1e-300))
+        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ dense.apply(y_last)), 1e-300))
         r = gamma * dense.apply(q)
     elif diagonal is None:
-        gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, y_last), 1e-300))
+        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ y_last), 1e-300))
         r = gamma * q
     else:
         y_scaled = diagonal * y_last
-        gamma = 1.0 / (rho_history[-1] * max(_dot(y_last, y_scaled), 1e-300))
+        gamma = 1.0 / (rho_history[-1] * max(float(y_last @ y_scaled), 1e-300))
         r = gamma * (diagonal * q)
 
     for s, y, rho, alpha in zip(
         s_history, y_history, rho_history, reversed(alphas), strict=True
     ):
-        beta = rho * _dot(y, r)
+        beta = rho * float(y @ r)
         r += s * (alpha - beta)
 
     return -r
+
+
+#: The floating-point flags the solver's own products do not report (:func:`_dot`).
+_QUIET = {"divide": "ignore", "over": "ignore", "invalid": "ignore"}
 
 
 def _dot(a: np.ndarray, b: np.ndarray) -> float:
@@ -798,6 +823,10 @@ def _dot(a: np.ndarray, b: np.ndarray) -> float:
     that is not finite resets the direction, a curvature pair that is not finite is
     skipped, and a ``max|g|`` that is not finite never meets ``tol``, so the run
     stops unconverged with it in ``grad_max_abs``. A NaN raises no flag anyway.
+
+    This is for a product on its own: a line-search slope, the first step's length.
+    Products that come together share one errstate: the two-loop recursion with its
+    slope (:func:`_direction`), and the curvature test's three.
     """
-    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+    with np.errstate(**_QUIET):
         return float(a @ b)
