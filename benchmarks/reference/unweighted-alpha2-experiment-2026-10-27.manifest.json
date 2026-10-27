@@ -1,0 +1,26 @@
+{
+  "archive": {
+    "path": "benchmarks/reference/unweighted-alpha2-experiment-2026-10-27.zip",
+    "sha256": "413373b072fc3644f2137c30e51ff1417290c13c446ae0d42b2e197716f299a1"
+  },
+  "recorded_baseline_native_source_sha256": "9e4b1ca13a5124291ae13cf377d287320d14a74ea3f916bba320e996c90d4f00",
+  "source_and_binary_sha256_post_run": {
+    "src/mlxlearn/_solvers/_metal_loop.mm": "9e4b1ca13a5124291ae13cf377d287320d14a74ea3f916bba320e996c90d4f00",
+    "src/mlxlearn/_solvers/native_command.py": "27dc668bd041876f15f806f40a805725142ce21c81c7b5073d27216f81d1de60",
+    "src/mlxlearn/_solvers/native_logistic.py": "b9e599b60f8620c8b85da782ae999587d1a1da476f6209364bd02f47d246738d",
+    "src/mlxlearn/_solvers/logistic.py": "ab5262f4ca1863f53e1974d3dc6a85dda0ffc0c1bd0d30968209edaee05fc6c2",
+    "benchmarks/logistic_wide.py": "30d86be8541a6308a8e0fad9e357c7fcedcf27516eec836a7ccebd8e4d8f8001",
+    "benchmarks/logistic_gpu.py": "e465d3dc7f87a9dbca4cb9856694981a1918f50e34c5cd9bd545da3931c6b0da",
+    "src/mlxlearn/_solvers/_metal_loop.abi3.so": "58cbef4cadda797e8cf228cc9b39a5c12e571a1c4a106757bcf7bb4b08e2ac32",
+    "bench/certified-start/_metal_loop.abi3.so": "c12b37b80a2309d9d4bb2f18b7b93a576e2ab74a30c23e747270639ed1689431"
+  },
+  "integrity_note": "Alpha source and alpha binary hashes were recorded at run start; other source/binary hashes are post-run only.",
+  "result_sha256": "c60fc95bf2611ac60f12e564c68b53502724fb2877decae4528a5f5b9650e29d",
+  "files": {
+    "_metal_loop.mm": "c7d87f3bf586de005383a9675a177c60a1e4b16865e2472ae17a7e3b96b09504",
+    "_metal_loop-baseline.mm": "9e4b1ca13a5124291ae13cf377d287320d14a74ea3f916bba320e996c90d4f00",
+    "alpha2_compare.py": "ba34a7de6c5fd760e711023cee221ed57ab44d56d08a9804e3185f98eadb56b2",
+    "README.md": "8a16f6310287bbcd4f407031e8ceaf5d0fdbd941787a2bdff9b796f1b56c1fdb",
+    "run.log": "f2bd1319d788e499ba0ed20f6dfc7d726b2ca683035fa809ffc8cde0a2fe34cf"
+  }
+}

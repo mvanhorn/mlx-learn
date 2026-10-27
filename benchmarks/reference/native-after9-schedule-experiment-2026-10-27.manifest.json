@@ -1,0 +1,16 @@
+{
+  "description": "Instrumented scratch native scheduling benchmark, including long weighted, rank/near-null, exhausted budget and seeded-sketch controls; 3 warmups plus 8 paired samples per variant. The result contains in-run source/binary hashes and per-fit numerical outputs. Scratch binaries omitted; rebuild with after9_build.py and baseline/adaptive build.py.",
+  "archive": {
+    "filename": "native-after9-schedule-experiment-2026-10-27.zip",
+    "sha256": "083f40bba098b1d8e2f7d97333feea0de8a495d66e9fdd06737a3c82316f4031"
+  },
+  "files": {
+    "after9_build.py": "34c8f5ccb79bac5a0021270186085b3629ac247cd3701fa603abe77e66898800",
+    "after9_panel.py": "ae6cde536d2eae06e12a77f379ff71511f10b828683176de717c919dda926139",
+    "baseline.mm": "86e211a26e79f038afb8dcd51d4bc007350380d7a18e545de8d4028e9b5c07a3",
+    "adaptive16.mm": "dfb303b407ef98a3dba5d09a0ffdfadcf1a1ee41f347b16175bdf7e3ce07c63a",
+    "after9_8.mm": "95b015858f58b8abc3f14cf7724fe1a9e9e3948702ca32d7f6df8369afe27f35",
+    "after9_16.mm": "ae8b0d5d3820ea45fa33d66d4e74a2bfb3bf32c886dc2ee5b9a43ef2a41d1a3b",
+    "after9_16_early.mm": "879796ca6cbb2dd2310c50e174b95e7d62792c30526d1edafc87d95b81f57ebe"
+  }
+}

@@ -1,0 +1,1606 @@
+{
+  "method": "balanced complete fits; frozen four-pair sketch; one-thread sklearn; independent float64 scores after timing",
+  "parameters": {
+    "case": [
+      "ill_conditioned_4096",
+      "weighted_ill_conditioned_4096"
+    ],
+    "seed": null,
+    "device": true,
+    "tight_reference": true,
+    "input_dtype": "float32",
+    "sketch_size": 4,
+    "previous_sketch_size": 4,
+    "device_sketch_size": 4,
+    "repeats": 2,
+    "warmup": 1,
+    "tol": 0.0001,
+    "max_iter": 200,
+    "reference_archive": "benchmarks/reference/ill-solver-start-2026-10-27.zip",
+    "reference_sources": "benchmarks/reference/ill-solver-start-sources-2026-10-27.zip",
+    "reference_extension": "bench/rank-safe-start/_metal_loop.abi3.so",
+    "output": "benchmarks/results/rank-safe-integrated-screen-2026-10-27.json"
+  },
+  "environment": {
+    "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "mlx": "0.32.2",
+    "numpy": "2.5.2",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.0",
+    "cpu": "Apple M4 Max",
+    "memory_bytes": 137438953472,
+    "cores": 16,
+    "device": "mlx 0.32.2 on gpu (128 GiB)",
+    "mlxlearn": "0.1.0a2",
+    "threadpools": [
+      {
+        "user_api": "openmp",
+        "internal_api": "openmp",
+        "num_threads": 16,
+        "prefix": "libomp",
+        "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+        "version": null
+      }
+    ],
+    "numpy_configuration": "Build Dependencies:\n  blas:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\n  lapack:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\nCompilers:\n  c:\n    commands: cc\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  c++:\n    commands: c++\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  cython:\n    commands: cython\n    linker: cython\n    name: cython\n    version: 3.2.9\nMachine Information:\n  build:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\n  host:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\nPython Information:\n  path: /private/var/folders/g3/pffjr_y96bq06blnkf72x_hw0000gn/T/build-env-jzdn7by7/bin/python\n  version: '3.13'\nSIMD Extensions:\n  baseline:\n  - NEON\n  - NEON_FP16\n  - NEON_VFPV4\n  - ASIMD\n  found:\n  - ASIMDHP\n  - ASIMDDP\n  not found:\n  - ASIMDFHM\n\n",
+    "tuning": {
+      "knn_min_train_samples": 256,
+      "knn_min_work": 2048,
+      "logreg_min_samples": 20000,
+      "logreg_min_work": 20000000,
+      "logreg_tall_min_samples": 250000,
+      "logreg_tall_min_work": 8000000,
+      "svc_min_samples": 2048,
+      "svc_min_work": 1000000,
+      "distance_block_bytes": 268435456,
+      "distance_block_bytes_max": 1073741824,
+      "query_block_rows": 1024,
+      "query_block_align": 128,
+      "cpu_distance_block_bytes": 134217728,
+      "cpu_query_block_rows": 256,
+      "lbfgs_history": 10,
+      "lbfgs_sketch_size": 0,
+      "lbfgs_max_line_search": 32,
+      "smo_kernel_cache_fraction": 0.05,
+      "smo_kernel_cache_min_bytes": 33554432,
+      "smo_kernel_cache_max_bytes": 2147483648,
+      "smo_max_iter_factor": 100,
+      "smo_min_iter_budget": 10000000,
+      "force_backend": "",
+      "diagnostics_capacity": 512
+    },
+    "git_head": "fb79a1b11dad401e82808885884fc633da9c3e86",
+    "source_sha256": {
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "137a54c5541323972fc2903d0e358d4d9c67571bd901fd087b20a1ba631b92a4",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+      "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd"
+    }
+  },
+  "source_integrity_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/rank-safe-start/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "dfa9efc28708b9bc15b95de2292b1720704c51eaf6de84be4876529787769064",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.manifest.json": "5b2c4353584139cc456c8e5ec5e5614782a34d84ec55907cc797847bcc00b41b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.zip": "8eac5e9c3d38c2dc11593a545672309b6596bdeafc9e11d8f04e130c3d67cb66",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-sources-2026-10-27.manifest.json": "d22dfc51438c3487766a430fd8102bb57b8097ff0aa60ca2b95df3169c3ee318",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-sources-2026-10-27.zip": "d62553b523c04aba5d59adc82ab12397b9a4c2b77b0272f4635a577e60907583",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/sketch_weighted.py": "278d4b7c1096a2d335f660192b6e13b6f405928080e8c405f628df3ac92d6d22",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "7580361972bf4db760702bd72071183931ec2cbf5a9632be47480f5bd5396675",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "9ead9a843d749d0907a9b610149a2b993cceecc7bd34f87d65f693ab5317d591",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "137a54c5541323972fc2903d0e358d4d9c67571bd901fd087b20a1ba631b92a4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "80062f3a9e67c63f19239b3500b503897b7fa35c8e48adf6cf65f2a12e689dbe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "4ef3c1aa9ca638b7ec505a2b7cabb86604aecff0626724b346b11d767fbe3b53",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "121211a284e7a9dca3b973cb97e7170acfa2d39f2f322424441c68926bb46334",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_newton.py": "4cde7010f65b45a58c1687bd03ec87d63c365f5b9ba9588808092547af558792",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "ill_conditioned_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": false,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 1.0
+      },
+      "input_dtype": "float32",
+      "device_upload_ms": 17.636333941482008,
+      "median_ms": {
+        "baseline": 404.1601045173593,
+        "baseline_sketch": 374.751687515527,
+        "current": 257.5468959985301,
+        "sketch": 213.62466650316492,
+        "sklearn": 566.8387080077082,
+        "device": 224.75175000727177
+      },
+      "samples_ms": {
+        "baseline": [
+          406.3562919618562,
+          401.9639170728624
+        ],
+        "baseline_sketch": [
+          375.1838749740273,
+          374.31950005702674
+        ],
+        "current": [
+          260.4382080025971,
+          254.6555839944631
+        ],
+        "sketch": [
+          213.99395796470344,
+          213.2553750416264
+        ],
+        "sklearn": [
+          575.9696249151602,
+          557.7077911002561
+        ],
+        "device": [
+          229.69879198353738,
+          219.80470803100616
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              173
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 173,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.439819920458831e-05,
+                "objective": 0.2613782369229943
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_metal",
+                "n_iter": 173,
+                "n_fev": 1385,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.439819920458831e-05,
+                "objective": 0.2613782369229943
+              }
+            ],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "5d729665deefc3527dbd5c0a883854838f896d64d261406b4b42e80f1ced1b31"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              173
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 173,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.439819920458831e-05,
+                "objective": 0.2613782369229943
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_metal",
+                "n_iter": 173,
+                "n_fev": 1385,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.439819920458831e-05,
+                "objective": 0.2613782369229943
+              }
+            ],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "5d729665deefc3527dbd5c0a883854838f896d64d261406b4b42e80f1ced1b31"
+          }
+        ],
+        "baseline_sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              165
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 165,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.043749868287705e-05,
+                "objective": 0.26137832587137816
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 165,
+                "n_fev": 1321,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.043749868287705e-05,
+                "objective": 0.26137832587137816
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 165,
+                "final_n_iter": 165,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "parameter_sha256": "0e6cc390e1b9a49d859c2adbc2b3cd2b30c9e1c0521addd873dbe51bd84eaa15"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              165
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 165,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.043749868287705e-05,
+                "objective": 0.26137832587137816
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 165,
+                "n_fev": 1321,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.043749868287705e-05,
+                "objective": 0.26137832587137816
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 165,
+                "final_n_iter": 165,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "parameter_sha256": "0e6cc390e1b9a49d859c2adbc2b3cd2b30c9e1c0521addd873dbe51bd84eaa15"
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.0977184956573183e-06,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0087885158136487,
+                "objective": 0.2631885205942206
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "bfd6069d1930763789df8271cb6ea329c4e019447788c384fe193709b7949f38"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.0977184956573183e-06,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0087885158136487,
+                "objective": 0.2631885205942206
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "bfd6069d1930763789df8271cb6ea329c4e019447788c384fe193709b7949f38"
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.5220134628179949e-06,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0020341179333627224,
+                "objective": 0.2630767429905012
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "f766da0cfa4187976c21cfeca773cd89e10200238fb5a35341fe918b8b02d3a0"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.5220134628179949e-06,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0020341179333627224,
+                "objective": 0.2630767429905012
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "f766da0cfa4187976c21cfeca773cd89e10200238fb5a35341fe918b8b02d3a0"
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              161
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "0982c3cd47cc7c9e5b5a87f9513c3fd18bc044b0e6a8809bc15042204415b501"
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              161
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "0982c3cd47cc7c9e5b5a87f9513c3fd18bc044b0e6a8809bc15042204415b501"
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.5220134628179949e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.5220134628179949e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.2613794159639608,
+        "gradient_max_abs_float64": 6.809879021536763e-05,
+        "nullspace_coefficient_relative": null
+      },
+      "tight_centered_sklearn_reference": {
+        "score": {
+          "objective_float64": 0.26137497946085797,
+          "gradient_max_abs_float64": 6.062755395173172e-08,
+          "nullspace_coefficient_relative": null
+        },
+        "n_iter": [
+          684
+        ],
+        "warnings": []
+      },
+      "device_represented_weight_scores": null,
+      "device_prediction_audit": [
+        {
+          "agreement_with_valid_reference": 0.99995,
+          "agreement_with_own_original_float64_model": 1.0
+        },
+        {
+          "agreement_with_valid_reference": 0.99995,
+          "agreement_with_own_original_float64_model": 1.0
+        }
+      ],
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.26137823975144625,
+            "gradient_max_abs_float64": 3.43967061140638e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.500019675288085e-06,
+            "prediction_agreement_sklearn": 0.99965,
+            "objective_relative_gap_to_trusted_reference": 1.2473613943483189e-05,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.26137823975144625,
+            "gradient_max_abs_float64": 3.43967061140638e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.500019675288085e-06,
+            "prediction_agreement_sklearn": 0.99965,
+            "objective_relative_gap_to_trusted_reference": 1.2473613943483189e-05,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "baseline_sketch": [
+          {
+            "objective_float64": 0.2613783267518256,
+            "gradient_max_abs_float64": 4.04373590462666e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.167168754245527e-06,
+            "prediction_agreement_sklearn": 0.9997,
+            "objective_relative_gap_to_trusted_reference": 1.2806470514240753e-05,
+            "prediction_agreement_trusted_reference": 0.99975
+          },
+          {
+            "objective_float64": 0.2613783267518256,
+            "gradient_max_abs_float64": 4.04373590462666e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.167168754245527e-06,
+            "prediction_agreement_sklearn": 0.9997,
+            "objective_relative_gap_to_trusted_reference": 1.2806470514240753e-05,
+            "prediction_agreement_trusted_reference": 0.99975
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.26137498403535825,
+            "gradient_max_abs_float64": 1.0977181405394275e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.6955920519641163e-05,
+            "prediction_agreement_sklearn": 0.9997,
+            "objective_relative_gap_to_trusted_reference": 1.7501676281377982e-08,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -1.2455956896404187e-05
+          },
+          {
+            "objective_float64": 0.26137498403535825,
+            "gradient_max_abs_float64": 1.0977181405394275e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.6955920519641163e-05,
+            "prediction_agreement_sklearn": 0.9997,
+            "objective_relative_gap_to_trusted_reference": 1.7501676281377982e-08,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -1.2455956896404187e-05
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.2613749861078519,
+            "gradient_max_abs_float64": 1.5220132385411312e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694799145732755e-05,
+            "prediction_agreement_sklearn": 0.9996,
+            "objective_relative_gap_to_trusted_reference": 2.5430873180597976e-08,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -1.2448027798409476e-05,
+            "objective_relative_gap_to_baseline_sketch": -1.2780875963148987e-05
+          },
+          {
+            "objective_float64": 0.2613749861078519,
+            "gradient_max_abs_float64": 1.5220132385411312e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694799145732755e-05,
+            "prediction_agreement_sklearn": 0.9996,
+            "objective_relative_gap_to_trusted_reference": 2.5430873180597976e-08,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -1.2448027798409476e-05,
+            "objective_relative_gap_to_baseline_sketch": -1.2780875963148987e-05
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.2613794159639608,
+            "gradient_max_abs_float64": 6.809879021536763e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.697371000080024e-05,
+            "prediction_agreement_trusted_reference": 0.99965
+          },
+          {
+            "objective_float64": 0.2613794159639608,
+            "gradient_max_abs_float64": 6.809879021536763e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.697371000080024e-05,
+            "prediction_agreement_trusted_reference": 0.99965
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.2613749861078519,
+            "gradient_max_abs_float64": 1.5220132385411312e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694799145732755e-05,
+            "prediction_agreement_sklearn": 0.9996,
+            "objective_relative_gap_to_trusted_reference": 2.5430873180597976e-08,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -1.2448027798409476e-05,
+            "objective_relative_gap_to_baseline_sketch": -1.2780875963148987e-05
+          },
+          {
+            "objective_float64": 0.2613749861078519,
+            "gradient_max_abs_float64": 1.5220132385411312e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694799145732755e-05,
+            "prediction_agreement_sklearn": 0.9996,
+            "objective_relative_gap_to_trusted_reference": 2.5430873180597976e-08,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -1.2448027798409476e-05,
+            "objective_relative_gap_to_baseline_sketch": -1.2780875963148987e-05
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": true,
+        "passed": false,
+        "failures": [
+          {
+            "variant": "sketch",
+            "fit": 0,
+            "reason": "seeded native loop was not used"
+          },
+          {
+            "variant": "sketch",
+            "fit": 1,
+            "reason": "seeded native loop was not used"
+          }
+        ]
+      },
+      "previous_objective_audit": {
+        "reference_available": true,
+        "passed": false,
+        "fits": [
+          {
+            "variant": "baseline",
+            "fit": 0,
+            "relative_objective_gap": 1.2473613943483189e-05,
+            "passed": false
+          },
+          {
+            "variant": "baseline",
+            "fit": 1,
+            "relative_objective_gap": 1.2473613943483189e-05,
+            "passed": false
+          },
+          {
+            "variant": "baseline_sketch",
+            "fit": 0,
+            "relative_objective_gap": 1.2806470514240753e-05,
+            "passed": false
+          },
+          {
+            "variant": "baseline_sketch",
+            "fit": 1,
+            "relative_objective_gap": 1.2806470514240753e-05,
+            "passed": false
+          }
+        ]
+      },
+      "previous_regression_audit": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "case": {
+        "name": "weighted_ill_conditioned_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": true,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 1.0
+      },
+      "input_dtype": "float32",
+      "device_upload_ms": 17.368208966217935,
+      "median_ms": {
+        "baseline": 425.79522903542966,
+        "baseline_sketch": 408.26008352451026,
+        "current": 273.4404584625736,
+        "sketch": 331.412770494353,
+        "sklearn": 664.5562085323036,
+        "device": 340.55520850233734
+      },
+      "samples_ms": {
+        "baseline": [
+          427.4410830112174,
+          424.1493750596419
+        ],
+        "baseline_sketch": [
+          411.77662496920675,
+          404.7435420798138
+        ],
+        "current": [
+          280.5580839049071,
+          266.32283302024007
+        ],
+        "sketch": [
+          332.3864579433575,
+          330.4390830453485
+        ],
+        "sklearn": [
+          680.1960000302643,
+          648.9164170343429
+        ],
+        "device": [
+          346.1214170092717,
+          334.988999995403
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              184
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 184,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.2049352487083524e-05,
+                "objective": 0.2499036794547
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_metal",
+                "n_iter": 184,
+                "n_fev": 1473,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.2049352487083524e-05,
+                "objective": 0.2499036794547
+              }
+            ],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "9d420183ae23d3503dd404dc4f2fc19d3e6fb0bdca7af3a658c5e1bb7a145208"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              184
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 184,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.2049352487083524e-05,
+                "objective": 0.2499036794547
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_metal",
+                "n_iter": 184,
+                "n_fev": 1473,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.2049352487083524e-05,
+                "objective": 0.2499036794547
+              }
+            ],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "9d420183ae23d3503dd404dc4f2fc19d3e6fb0bdca7af3a658c5e1bb7a145208"
+          }
+        ],
+        "baseline_sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              178
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 178,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.353407348389737e-05,
+                "objective": 0.24990404972440397
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 178,
+                "n_fev": 1425,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.353407348389737e-05,
+                "objective": 0.24990404972440397
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 178,
+                "final_n_iter": 178,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "parameter_sha256": "1ffe898647f80e4c4f4f2e62831bf7dadbe29a9106861186ecb7d504db6cac1f"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              178
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 178,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.353407348389737e-05,
+                "objective": 0.24990404972440397
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 178,
+                "n_fev": 1425,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.353407348389737e-05,
+                "objective": 0.24990404972440397
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 178,
+                "final_n_iter": 178,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "parameter_sha256": "1ffe898647f80e4c4f4f2e62831bf7dadbe29a9106861186ecb7d504db6cac1f"
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.593150614098704e-06,
+                "objective": 0.24989503622055054
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0011947575258091092,
+                "objective": 0.25290363494304285
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "6b6c5c1070612ab8aaf42671202bec84ba1752d72a5e3eb8ec563e66cc8e7d51"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.593150614098704e-06,
+                "objective": 0.24989503622055054
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0011947575258091092,
+                "objective": 0.25290363494304285
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "6b6c5c1070612ab8aaf42671202bec84ba1752d72a5e3eb8ec563e66cc8e7d51"
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 5.040682253820705e-07,
+                "objective": 0.24989497661590576
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.001972912112250924,
+                "objective": 0.25276917376213875
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "a78183ddc86c08e2fcea01bb737ed6d3bdee5f8d26a82f0c53d643d0e4d78d85"
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 5.040682253820705e-07,
+                "objective": 0.24989497661590576
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.001972912112250924,
+                "objective": 0.25276917376213875
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "parameter_sha256": "a78183ddc86c08e2fcea01bb737ed6d3bdee5f8d26a82f0c53d643d0e4d78d85"
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              177
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "b0357ff11e23e9137937b190b719f9e7fbda22281b1c3bc0adc4e9b33be10415"
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              177
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "parameter_sha256": "b0357ff11e23e9137937b190b719f9e7fbda22281b1c3bc0adc4e9b33be10415"
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              35
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 5.040682253820705e-07,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              35
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 5.040682253820705e-07,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.2499070011188274,
+        "gradient_max_abs_float64": 8.246394974563027e-05,
+        "nullspace_coefficient_relative": null
+      },
+      "tight_centered_sklearn_reference": {
+        "score": {
+          "objective_float64": 0.24989498816180722,
+          "gradient_max_abs_float64": 2.0463498983591383e-08,
+          "nullspace_coefficient_relative": null
+        },
+        "n_iter": [
+          679
+        ],
+        "warnings": []
+      },
+      "device_represented_weight_scores": [
+        {
+          "objective_float64": 0.24989498852109066,
+          "gradient_max_abs_float64": 5.040690990723656e-07,
+          "nullspace_coefficient_relative": null
+        },
+        {
+          "objective_float64": 0.24989498852109066,
+          "gradient_max_abs_float64": 5.040690990723656e-07,
+          "nullspace_coefficient_relative": null
+        }
+      ],
+      "device_prediction_audit": [
+        {
+          "agreement_with_valid_reference": 1.0,
+          "agreement_with_own_original_float64_model": 1.0
+        },
+        {
+          "agreement_with_valid_reference": 1.0,
+          "agreement_with_own_original_float64_model": 1.0
+        }
+      ],
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.2499036837811527,
+            "gradient_max_abs_float64": 4.2069917442121886e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.3274288674766225e-05,
+            "prediction_agreement_sklearn": 0.99975,
+            "objective_relative_gap_to_trusted_reference": 3.479709380911691e-05,
+            "prediction_agreement_trusted_reference": 0.99965
+          },
+          {
+            "objective_float64": 0.2499036837811527,
+            "gradient_max_abs_float64": 4.2069917442121886e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.3274288674766225e-05,
+            "prediction_agreement_sklearn": 0.99975,
+            "objective_relative_gap_to_trusted_reference": 3.479709380911691e-05,
+            "prediction_agreement_trusted_reference": 0.99965
+          }
+        ],
+        "baseline_sketch": [
+          {
+            "objective_float64": 0.24990404666830973,
+            "gradient_max_abs_float64": 4.353501268634031e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.1822199876158628e-05,
+            "prediction_agreement_sklearn": 0.99965,
+            "objective_relative_gap_to_trusted_reference": 3.624925241256716e-05,
+            "prediction_agreement_trusted_reference": 0.99965
+          },
+          {
+            "objective_float64": 0.24990404666830973,
+            "gradient_max_abs_float64": 4.353501268634031e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.1822199876158628e-05,
+            "prediction_agreement_sklearn": 0.99965,
+            "objective_relative_gap_to_trusted_reference": 3.624925241256716e-05,
+            "prediction_agreement_trusted_reference": 0.99965
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.24989503153661072,
+            "gradient_max_abs_float64": 1.5928437630672765e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.789614601873723e-05,
+            "prediction_agreement_sklearn": 0.99945,
+            "objective_relative_gap_to_trusted_reference": 1.7357212250624952e-07,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -3.462231693060054e-05
+          },
+          {
+            "objective_float64": 0.24989503153661072,
+            "gradient_max_abs_float64": 1.5928437630672765e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.789614601873723e-05,
+            "prediction_agreement_sklearn": 0.99945,
+            "objective_relative_gap_to_trusted_reference": 1.7357212250624952e-07,
+            "prediction_agreement_trusted_reference": 0.99995,
+            "objective_relative_gap_to_baseline": -3.462231693060054e-05
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.24989498859500006,
+            "gradient_max_abs_float64": 5.037614533328179e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.806797638148803e-05,
+            "prediction_agreement_sklearn": 0.9994,
+            "objective_relative_gap_to_trusted_reference": 1.7334995227181564e-09,
+            "prediction_agreement_trusted_reference": 1.0,
+            "objective_relative_gap_to_baseline": -3.479414957430745e-05,
+            "objective_relative_gap_to_baseline_sketch": -3.6246205015209844e-05
+          },
+          {
+            "objective_float64": 0.24989498859500006,
+            "gradient_max_abs_float64": 5.037614533328179e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.806797638148803e-05,
+            "prediction_agreement_sklearn": 0.9994,
+            "objective_relative_gap_to_trusted_reference": 1.7334995227181564e-09,
+            "prediction_agreement_trusted_reference": 1.0,
+            "objective_relative_gap_to_baseline": -3.479414957430745e-05,
+            "objective_relative_gap_to_baseline_sketch": -3.6246205015209844e-05
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.2499070011188274,
+            "gradient_max_abs_float64": 8.246394974563027e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.807202060576184e-05,
+            "prediction_agreement_trusted_reference": 0.9994
+          },
+          {
+            "objective_float64": 0.2499070011188274,
+            "gradient_max_abs_float64": 8.246394974563027e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.807202060576184e-05,
+            "prediction_agreement_trusted_reference": 0.9994
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.24989498859500006,
+            "gradient_max_abs_float64": 5.037614533328179e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.806797638148803e-05,
+            "prediction_agreement_sklearn": 0.9994,
+            "objective_relative_gap_to_trusted_reference": 1.7334995227181564e-09,
+            "prediction_agreement_trusted_reference": 1.0,
+            "objective_relative_gap_to_baseline": -3.479414957430745e-05,
+            "objective_relative_gap_to_baseline_sketch": -3.6246205015209844e-05
+          },
+          {
+            "objective_float64": 0.24989498859500006,
+            "gradient_max_abs_float64": 5.037614533328179e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -4.806797638148803e-05,
+            "prediction_agreement_sklearn": 0.9994,
+            "objective_relative_gap_to_trusted_reference": 1.7334995227181564e-09,
+            "prediction_agreement_trusted_reference": 1.0,
+            "objective_relative_gap_to_baseline": -3.479414957430745e-05,
+            "objective_relative_gap_to_baseline_sketch": -3.6246205015209844e-05
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": true,
+        "passed": false,
+        "failures": [
+          {
+            "variant": "sketch",
+            "fit": 0,
+            "reason": "seeded native loop was not used"
+          },
+          {
+            "variant": "sketch",
+            "fit": 1,
+            "reason": "seeded native loop was not used"
+          }
+        ]
+      },
+      "previous_objective_audit": {
+        "reference_available": true,
+        "passed": false,
+        "fits": [
+          {
+            "variant": "baseline",
+            "fit": 0,
+            "relative_objective_gap": 3.479709380911691e-05,
+            "passed": false
+          },
+          {
+            "variant": "baseline",
+            "fit": 1,
+            "relative_objective_gap": 3.479709380911691e-05,
+            "passed": false
+          },
+          {
+            "variant": "baseline_sketch",
+            "fit": 0,
+            "relative_objective_gap": 3.624925241256716e-05,
+            "passed": false
+          },
+          {
+            "variant": "baseline_sketch",
+            "fit": 1,
+            "relative_objective_gap": 3.624925241256716e-05,
+            "passed": false
+          }
+        ]
+      },
+      "previous_regression_audit": {
+        "passed": true,
+        "failures": []
+      }
+    }
+  ],
+  "reference": {
+    "archive": "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.zip",
+    "archive_sha256": "8eac5e9c3d38c2dc11593a545672309b6596bdeafc9e11d8f04e130c3d67cb66",
+    "manifest_path": "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.manifest.json",
+    "manifest_sha256": "5b2c4353584139cc456c8e5ec5e5614782a34d84ec55907cc797847bcc00b41b",
+    "native_extension": "/Users/tunguz/Programming/mlxlearn/bench/rank-safe-start/_metal_loop.abi3.so",
+    "native_extension_sha256": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "kernel_name_prefix": "wide_reference_9f4df5cf2b9a_",
+    "namespaced_kernels": [
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_direction",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_forward_search",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_accept",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_backward_bias",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_direct_forward",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_initial",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_logistic_center_stats",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_logistic_center_copy",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_logistic_center_initial",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_copy_finite",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_speculative"
+    ],
+    "eager_kernel_modules": [
+      "_kernels.logistic_input",
+      "_kernels.validation",
+      "_solvers.native_logistic",
+      "_solvers.native_logistic_fused"
+    ]
+  },
+  "source_integrity_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/rank-safe-start/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "dfa9efc28708b9bc15b95de2292b1720704c51eaf6de84be4876529787769064",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.manifest.json": "5b2c4353584139cc456c8e5ec5e5614782a34d84ec55907cc797847bcc00b41b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.zip": "8eac5e9c3d38c2dc11593a545672309b6596bdeafc9e11d8f04e130c3d67cb66",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-sources-2026-10-27.manifest.json": "d22dfc51438c3487766a430fd8102bb57b8097ff0aa60ca2b95df3169c3ee318",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-sources-2026-10-27.zip": "d62553b523c04aba5d59adc82ab12397b9a4c2b77b0272f4635a577e60907583",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/sketch_weighted.py": "278d4b7c1096a2d335f660192b6e13b6f405928080e8c405f628df3ac92d6d22",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "7580361972bf4db760702bd72071183931ec2cbf5a9632be47480f5bd5396675",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "9ead9a843d749d0907a9b610149a2b993cceecc7bd34f87d65f693ab5317d591",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "137a54c5541323972fc2903d0e358d4d9c67571bd901fd087b20a1ba631b92a4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "80062f3a9e67c63f19239b3500b503897b7fa35c8e48adf6cf65f2a12e689dbe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "4ef3c1aa9ca638b7ec505a2b7cabb86604aecff0626724b346b11d767fbe3b53",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "121211a284e7a9dca3b973cb97e7170acfa2d39f2f322424441c68926bb46334",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_newton.py": "4cde7010f65b45a58c1687bd03ec87d63c365f5b9ba9588808092547af558792",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_integrity_pass": true,
+  "quality_audit_pass": false
+}

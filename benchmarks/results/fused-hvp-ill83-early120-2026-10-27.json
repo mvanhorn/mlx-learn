@@ -1,0 +1,1465 @@
+{
+  "case": "ill4096",
+  "seed": 83,
+  "initial_budget": 120,
+  "baseline_ms": 331.30420790985227,
+  "correction_data_preparation_ms": 30.025250045582652,
+  "history": null,
+  "baseline_iter": [
+    120
+  ],
+  "baseline_warnings": [
+    "LogisticRegression failed to converge (max_iter) after 120 iterations; max|gradient| is 0.00165 against tol=5e-05 (internal safety threshold; requested tol=0.0001). Increase max_iter, scale the data, or relax tol."
+  ],
+  "baseline_score": {
+    "objective_float64": 0.26324635436113,
+    "gradient_max_abs_float64": 0.0016493807806349436,
+    "nullspace_coefficient_relative": null
+  },
+  "cg": [
+    {
+      "steps": 80,
+      "ms": 85.9101249370724,
+      "gradient_dot_direction": -0.00011935768998228014,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.0043580384880024785
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.004234859285379669
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.004047368631095908
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.004010313102783288
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0029183632383489645
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.0041894108395287575
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.0025667785909193725
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0038322722177519092
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 0.002543039131473545
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.0031461906490342926
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 0.0024381671966072493
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 0.002430596766553484
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 0.0026959882083360826
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 0.0023400408357516886
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 0.0024159797764612507
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 0.002614484528139663
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 0.0026352090509268065
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 0.0030271581767871464
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 0.0029436283609132387
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0028241834319042876
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.0030921818737463572
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0028253377026568687
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.002335611485057262
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.002148503042943063
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.002170853415168788
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0019735895393926638
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.0016738676871328175
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0014843749263519894
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0014058750138930542
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0013082576868440076
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.0011787590084188651
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0010411446986320412
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.0008833439565647192
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.0008074545992604105
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0007046314991278442
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.0006189798612628984
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.0005247198616059683
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.0004439791352831661
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.00036699287931410743
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00033819684899940287
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.000282206926042934
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00024199487246903247
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00021662256693477273
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001866273017299385
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00016054732636016354
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.000147447266350719
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00013029034095945438
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00011390174308379391
+        },
+        {
+          "iteration": 49,
+          "residual_norm": 0.00010501138298418316
+        },
+        {
+          "iteration": 50,
+          "residual_norm": 9.920136243453022e-05
+        },
+        {
+          "iteration": 51,
+          "residual_norm": 9.303731370344687e-05
+        },
+        {
+          "iteration": 52,
+          "residual_norm": 8.365603201163668e-05
+        },
+        {
+          "iteration": 53,
+          "residual_norm": 8.106352760483694e-05
+        },
+        {
+          "iteration": 54,
+          "residual_norm": 8.119679789083187e-05
+        },
+        {
+          "iteration": 55,
+          "residual_norm": 8.319104903316705e-05
+        },
+        {
+          "iteration": 56,
+          "residual_norm": 8.181196731434835e-05
+        },
+        {
+          "iteration": 57,
+          "residual_norm": 8.821328345359327e-05
+        },
+        {
+          "iteration": 58,
+          "residual_norm": 9.208238119067843e-05
+        },
+        {
+          "iteration": 59,
+          "residual_norm": 9.897322997127782e-05
+        },
+        {
+          "iteration": 60,
+          "residual_norm": 0.0001104871494510093
+        },
+        {
+          "iteration": 61,
+          "residual_norm": 0.00012293405604973378
+        },
+        {
+          "iteration": 62,
+          "residual_norm": 0.00013068602794283606
+        },
+        {
+          "iteration": 63,
+          "residual_norm": 0.00014666717536165376
+        },
+        {
+          "iteration": 64,
+          "residual_norm": 0.0001666770063087078
+        },
+        {
+          "iteration": 65,
+          "residual_norm": 0.00019391497057276823
+        },
+        {
+          "iteration": 66,
+          "residual_norm": 0.00023911517423196184
+        },
+        {
+          "iteration": 67,
+          "residual_norm": 0.0002702257279516769
+        },
+        {
+          "iteration": 68,
+          "residual_norm": 0.00030802771574082424
+        },
+        {
+          "iteration": 69,
+          "residual_norm": 0.0003611509910347161
+        },
+        {
+          "iteration": 70,
+          "residual_norm": 0.0004433478260742567
+        },
+        {
+          "iteration": 71,
+          "residual_norm": 0.0005021674873540183
+        },
+        {
+          "iteration": 72,
+          "residual_norm": 0.0005439816264526528
+        },
+        {
+          "iteration": 73,
+          "residual_norm": 0.000602631150839839
+        },
+        {
+          "iteration": 74,
+          "residual_norm": 0.000683613900363683
+        },
+        {
+          "iteration": 75,
+          "residual_norm": 0.0007770121847189281
+        },
+        {
+          "iteration": 76,
+          "residual_norm": 0.0008521987213530539
+        },
+        {
+          "iteration": 77,
+          "residual_norm": 0.0009495744794270049
+        },
+        {
+          "iteration": 78,
+          "residual_norm": 0.0010419311449520897
+        },
+        {
+          "iteration": 79,
+          "residual_norm": 0.0010973912788788784
+        },
+        {
+          "iteration": 80,
+          "residual_norm": 0.0011368133372757381
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.26318573248521476,
+            "gradient_max_abs_float64": 0.00021118455397844827,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.2632014764987613,
+            "gradient_max_abs_float64": 0.0007812645614344335,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.26322022996141997,
+            "gradient_max_abs_float64": 0.0012142613232248394,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.2632323652514797,
+            "gradient_max_abs_float64": 0.0014315708244739339,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    },
+    {
+      "steps": 96,
+      "ms": 101.80941701401025,
+      "gradient_dot_direction": -0.00012532669643405825,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.0043580384880024785
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.004234859285379669
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.004047368631095908
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.004010313102783288
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0029183632383489645
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.0041894108395287575
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.0025667785909193725
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0038322722177519092
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 0.002543039131473545
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.0031461906490342926
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 0.0024381671966072493
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 0.002430596766553484
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 0.0026959882083360826
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 0.0023400408357516886
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 0.0024159797764612507
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 0.002614484528139663
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 0.0026352090509268065
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 0.0030271581767871464
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 0.0029436283609132387
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0028241834319042876
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.0030921818737463572
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0028253377026568687
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.002335611485057262
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.002148503042943063
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.002170853415168788
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0019735895393926638
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.0016738676871328175
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0014843749263519894
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0014058750138930542
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0013082576868440076
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.0011787590084188651
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0010411446986320412
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.0008833439565647192
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.0008074545992604105
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0007046314991278442
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.0006189798612628984
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.0005247198616059683
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.0004439791352831661
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.00036699287931410743
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00033819684899940287
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.000282206926042934
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00024199487246903247
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00021662256693477273
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001866273017299385
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00016054732636016354
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.000147447266350719
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00013029034095945438
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00011390174308379391
+        },
+        {
+          "iteration": 49,
+          "residual_norm": 0.00010501138298418316
+        },
+        {
+          "iteration": 50,
+          "residual_norm": 9.920136243453022e-05
+        },
+        {
+          "iteration": 51,
+          "residual_norm": 9.303731370344687e-05
+        },
+        {
+          "iteration": 52,
+          "residual_norm": 8.365603201163668e-05
+        },
+        {
+          "iteration": 53,
+          "residual_norm": 8.106352760483694e-05
+        },
+        {
+          "iteration": 54,
+          "residual_norm": 8.119679789083187e-05
+        },
+        {
+          "iteration": 55,
+          "residual_norm": 8.319104903316705e-05
+        },
+        {
+          "iteration": 56,
+          "residual_norm": 8.181196731434835e-05
+        },
+        {
+          "iteration": 57,
+          "residual_norm": 8.821328345359327e-05
+        },
+        {
+          "iteration": 58,
+          "residual_norm": 9.208238119067843e-05
+        },
+        {
+          "iteration": 59,
+          "residual_norm": 9.897322997127782e-05
+        },
+        {
+          "iteration": 60,
+          "residual_norm": 0.0001104871494510093
+        },
+        {
+          "iteration": 61,
+          "residual_norm": 0.00012293405604973378
+        },
+        {
+          "iteration": 62,
+          "residual_norm": 0.00013068602794283606
+        },
+        {
+          "iteration": 63,
+          "residual_norm": 0.00014666717536165376
+        },
+        {
+          "iteration": 64,
+          "residual_norm": 0.0001666770063087078
+        },
+        {
+          "iteration": 65,
+          "residual_norm": 0.00019391497057276823
+        },
+        {
+          "iteration": 66,
+          "residual_norm": 0.00023911517423196184
+        },
+        {
+          "iteration": 67,
+          "residual_norm": 0.0002702257279516769
+        },
+        {
+          "iteration": 68,
+          "residual_norm": 0.00030802771574082424
+        },
+        {
+          "iteration": 69,
+          "residual_norm": 0.0003611509910347161
+        },
+        {
+          "iteration": 70,
+          "residual_norm": 0.0004433478260742567
+        },
+        {
+          "iteration": 71,
+          "residual_norm": 0.0005021674873540183
+        },
+        {
+          "iteration": 72,
+          "residual_norm": 0.0005439816264526528
+        },
+        {
+          "iteration": 73,
+          "residual_norm": 0.000602631150839839
+        },
+        {
+          "iteration": 74,
+          "residual_norm": 0.000683613900363683
+        },
+        {
+          "iteration": 75,
+          "residual_norm": 0.0007770121847189281
+        },
+        {
+          "iteration": 76,
+          "residual_norm": 0.0008521987213530539
+        },
+        {
+          "iteration": 77,
+          "residual_norm": 0.0009495744794270049
+        },
+        {
+          "iteration": 78,
+          "residual_norm": 0.0010419311449520897
+        },
+        {
+          "iteration": 79,
+          "residual_norm": 0.0010973912788788784
+        },
+        {
+          "iteration": 80,
+          "residual_norm": 0.0011368133372757381
+        },
+        {
+          "iteration": 81,
+          "residual_norm": 0.0011792409480502666
+        },
+        {
+          "iteration": 82,
+          "residual_norm": 0.0012328557178605147
+        },
+        {
+          "iteration": 83,
+          "residual_norm": 0.0012063968322959244
+        },
+        {
+          "iteration": 84,
+          "residual_norm": 0.0011668380639333136
+        },
+        {
+          "iteration": 85,
+          "residual_norm": 0.001194669323525369
+        },
+        {
+          "iteration": 86,
+          "residual_norm": 0.0011912472586583659
+        },
+        {
+          "iteration": 87,
+          "residual_norm": 0.0010454523929574163
+        },
+        {
+          "iteration": 88,
+          "residual_norm": 0.0009993225936490505
+        },
+        {
+          "iteration": 89,
+          "residual_norm": 0.0009707225257657086
+        },
+        {
+          "iteration": 90,
+          "residual_norm": 0.0008575944791761839
+        },
+        {
+          "iteration": 91,
+          "residual_norm": 0.0007408426050505258
+        },
+        {
+          "iteration": 92,
+          "residual_norm": 0.0006202815257521935
+        },
+        {
+          "iteration": 93,
+          "residual_norm": 0.0005227761892136439
+        },
+        {
+          "iteration": 94,
+          "residual_norm": 0.00043534671094601997
+        },
+        {
+          "iteration": 95,
+          "residual_norm": 0.0003864997732341471
+        },
+        {
+          "iteration": 96,
+          "residual_norm": 0.00035361522377347387
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.26318275746428116,
+            "gradient_max_abs_float64": 5.586716796678246e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.2631992386429391,
+            "gradient_max_abs_float64": 0.0008325005828747182,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.26321892397000113,
+            "gradient_max_abs_float64": 0.001239963776921304,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.26323166559279476,
+            "gradient_max_abs_float64": 0.0014444233906881195,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    },
+    {
+      "steps": 128,
+      "ms": 135.5637499364093,
+      "gradient_dot_direction": -0.00012549315579235554,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.0043580384880024785
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.004234859285379669
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.004047368631095908
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.004010313102783288
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0029183632383489645
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.0041894108395287575
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.0025667785909193725
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0038322722177519092
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 0.002543039131473545
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.0031461906490342926
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 0.0024381671966072493
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 0.002430596766553484
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 0.0026959882083360826
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 0.0023400408357516886
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 0.0024159797764612507
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 0.002614484528139663
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 0.0026352090509268065
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 0.0030271581767871464
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 0.0029436283609132387
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0028241834319042876
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.0030921818737463572
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0028253377026568687
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.002335611485057262
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.002148503042943063
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.002170853415168788
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0019735895393926638
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.0016738676871328175
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0014843749263519894
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0014058750138930542
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0013082576868440076
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.0011787590084188651
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0010411446986320412
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.0008833439565647192
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.0008074545992604105
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0007046314991278442
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.0006189798612628984
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.0005247198616059683
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.0004439791352831661
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.00036699287931410743
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00033819684899940287
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.000282206926042934
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00024199487246903247
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00021662256693477273
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001866273017299385
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00016054732636016354
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.000147447266350719
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00013029034095945438
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00011390174308379391
+        },
+        {
+          "iteration": 49,
+          "residual_norm": 0.00010501138298418316
+        },
+        {
+          "iteration": 50,
+          "residual_norm": 9.920136243453022e-05
+        },
+        {
+          "iteration": 51,
+          "residual_norm": 9.303731370344687e-05
+        },
+        {
+          "iteration": 52,
+          "residual_norm": 8.365603201163668e-05
+        },
+        {
+          "iteration": 53,
+          "residual_norm": 8.106352760483694e-05
+        },
+        {
+          "iteration": 54,
+          "residual_norm": 8.119679789083187e-05
+        },
+        {
+          "iteration": 55,
+          "residual_norm": 8.319104903316705e-05
+        },
+        {
+          "iteration": 56,
+          "residual_norm": 8.181196731434835e-05
+        },
+        {
+          "iteration": 57,
+          "residual_norm": 8.821328345359327e-05
+        },
+        {
+          "iteration": 58,
+          "residual_norm": 9.208238119067843e-05
+        },
+        {
+          "iteration": 59,
+          "residual_norm": 9.897322997127782e-05
+        },
+        {
+          "iteration": 60,
+          "residual_norm": 0.0001104871494510093
+        },
+        {
+          "iteration": 61,
+          "residual_norm": 0.00012293405604973378
+        },
+        {
+          "iteration": 62,
+          "residual_norm": 0.00013068602794283606
+        },
+        {
+          "iteration": 63,
+          "residual_norm": 0.00014666717536165376
+        },
+        {
+          "iteration": 64,
+          "residual_norm": 0.0001666770063087078
+        },
+        {
+          "iteration": 65,
+          "residual_norm": 0.00019391497057276823
+        },
+        {
+          "iteration": 66,
+          "residual_norm": 0.00023911517423196184
+        },
+        {
+          "iteration": 67,
+          "residual_norm": 0.0002702257279516769
+        },
+        {
+          "iteration": 68,
+          "residual_norm": 0.00030802771574082424
+        },
+        {
+          "iteration": 69,
+          "residual_norm": 0.0003611509910347161
+        },
+        {
+          "iteration": 70,
+          "residual_norm": 0.0004433478260742567
+        },
+        {
+          "iteration": 71,
+          "residual_norm": 0.0005021674873540183
+        },
+        {
+          "iteration": 72,
+          "residual_norm": 0.0005439816264526528
+        },
+        {
+          "iteration": 73,
+          "residual_norm": 0.000602631150839839
+        },
+        {
+          "iteration": 74,
+          "residual_norm": 0.000683613900363683
+        },
+        {
+          "iteration": 75,
+          "residual_norm": 0.0007770121847189281
+        },
+        {
+          "iteration": 76,
+          "residual_norm": 0.0008521987213530539
+        },
+        {
+          "iteration": 77,
+          "residual_norm": 0.0009495744794270049
+        },
+        {
+          "iteration": 78,
+          "residual_norm": 0.0010419311449520897
+        },
+        {
+          "iteration": 79,
+          "residual_norm": 0.0010973912788788784
+        },
+        {
+          "iteration": 80,
+          "residual_norm": 0.0011368133372757381
+        },
+        {
+          "iteration": 81,
+          "residual_norm": 0.0011792409480502666
+        },
+        {
+          "iteration": 82,
+          "residual_norm": 0.0012328557178605147
+        },
+        {
+          "iteration": 83,
+          "residual_norm": 0.0012063968322959244
+        },
+        {
+          "iteration": 84,
+          "residual_norm": 0.0011668380639333136
+        },
+        {
+          "iteration": 85,
+          "residual_norm": 0.001194669323525369
+        },
+        {
+          "iteration": 86,
+          "residual_norm": 0.0011912472586583659
+        },
+        {
+          "iteration": 87,
+          "residual_norm": 0.0010454523929574163
+        },
+        {
+          "iteration": 88,
+          "residual_norm": 0.0009993225936490505
+        },
+        {
+          "iteration": 89,
+          "residual_norm": 0.0009707225257657086
+        },
+        {
+          "iteration": 90,
+          "residual_norm": 0.0008575944791761839
+        },
+        {
+          "iteration": 91,
+          "residual_norm": 0.0007408426050505258
+        },
+        {
+          "iteration": 92,
+          "residual_norm": 0.0006202815257521935
+        },
+        {
+          "iteration": 93,
+          "residual_norm": 0.0005227761892136439
+        },
+        {
+          "iteration": 94,
+          "residual_norm": 0.00043534671094601997
+        },
+        {
+          "iteration": 95,
+          "residual_norm": 0.0003864997732341471
+        },
+        {
+          "iteration": 96,
+          "residual_norm": 0.00035361522377347387
+        },
+        {
+          "iteration": 97,
+          "residual_norm": 0.0003194008422661826
+        },
+        {
+          "iteration": 98,
+          "residual_norm": 0.0002630273621440773
+        },
+        {
+          "iteration": 99,
+          "residual_norm": 0.0002140380137028044
+        },
+        {
+          "iteration": 100,
+          "residual_norm": 0.00016778679978126184
+        },
+        {
+          "iteration": 101,
+          "residual_norm": 0.0001364715475435503
+        },
+        {
+          "iteration": 102,
+          "residual_norm": 0.00012191200142205745
+        },
+        {
+          "iteration": 103,
+          "residual_norm": 0.00011012983209906923
+        },
+        {
+          "iteration": 104,
+          "residual_norm": 9.89798211002929e-05
+        },
+        {
+          "iteration": 105,
+          "residual_norm": 8.488415051178775e-05
+        },
+        {
+          "iteration": 106,
+          "residual_norm": 7.59140940341591e-05
+        },
+        {
+          "iteration": 107,
+          "residual_norm": 6.817676481921929e-05
+        },
+        {
+          "iteration": 108,
+          "residual_norm": 5.8538238339750484e-05
+        },
+        {
+          "iteration": 109,
+          "residual_norm": 4.9312630021593765e-05
+        },
+        {
+          "iteration": 110,
+          "residual_norm": 4.179897498882751e-05
+        },
+        {
+          "iteration": 111,
+          "residual_norm": 3.618508683014868e-05
+        },
+        {
+          "iteration": 112,
+          "residual_norm": 3.2218321268032755e-05
+        },
+        {
+          "iteration": 113,
+          "residual_norm": 2.816359674832756e-05
+        },
+        {
+          "iteration": 114,
+          "residual_norm": 2.413241560166447e-05
+        },
+        {
+          "iteration": 115,
+          "residual_norm": 2.0624520592122438e-05
+        },
+        {
+          "iteration": 116,
+          "residual_norm": 1.7858029912485433e-05
+        },
+        {
+          "iteration": 117,
+          "residual_norm": 1.4278445329048454e-05
+        },
+        {
+          "iteration": 118,
+          "residual_norm": 1.2788902062060304e-05
+        },
+        {
+          "iteration": 119,
+          "residual_norm": 1.0595232846566605e-05
+        },
+        {
+          "iteration": 120,
+          "residual_norm": 9.467238412041114e-06
+        },
+        {
+          "iteration": 121,
+          "residual_norm": 8.928544010609714e-06
+        },
+        {
+          "iteration": 122,
+          "residual_norm": 7.655980034982838e-06
+        },
+        {
+          "iteration": 123,
+          "residual_norm": 6.610752523285177e-06
+        },
+        {
+          "iteration": 124,
+          "residual_norm": 5.945128566541812e-06
+        },
+        {
+          "iteration": 125,
+          "residual_norm": 4.987742023174941e-06
+        },
+        {
+          "iteration": 126,
+          "residual_norm": 4.413228637839636e-06
+        },
+        {
+          "iteration": 127,
+          "residual_norm": 3.861985741984376e-06
+        },
+        {
+          "iteration": 128,
+          "residual_norm": 3.4834614209839766e-06
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.26318267989431926,
+            "gradient_max_abs_float64": 2.402832454555804e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.2631991770661206,
+            "gradient_max_abs_float64": 0.000828375879630797,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.2632188879346031,
+            "gradient_max_abs_float64": 0.0012378921601583085,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.2632316462439662,
+            "gradient_max_abs_float64": 0.0014434087665958187,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    }
+  ],
+  "source_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_experiment.py": "561b5eacdb86640611e79d88560eee752392f69e76cb5082919ebff3bc5490e2",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "6d496e7b07dd3dd4d27eaefd7e958ba08e7bdff0f0bfe5434fb90ae517b9e391",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_experiment.py": "561b5eacdb86640611e79d88560eee752392f69e76cb5082919ebff3bc5490e2",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "6d496e7b07dd3dd4d27eaefd7e958ba08e7bdff0f0bfe5434fb90ae517b9e391",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "integrity": true
+}

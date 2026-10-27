@@ -1,0 +1,12 @@
+{
+  "description": "Exploratory single initial-gradient row-space Hessian probe using one fused matrix traversal. Full-fit eight-repeat panel and float64 audits; not a replacement for four-pair sketch. Failed no-regression gate on ill-conditioned 4096.",
+  "archive": {
+    "filename": "gradient-probe-sketch-experiment-2026-10-27.zip",
+    "sha256": "6d52324b29a6dd9f7d6417b7ca5d944acd90d5d11854952ae2acab3a941e689b"
+  },
+  "files": {
+    "gradient_probe.py": "30bc3d1cdf29290bb53be610a4196aa592641d051948631dcc56759fb1d20666",
+    "compare.py": "4865d8319fcd58a688b07f3d8b3ec357bf5cecbdb0034591aecc760824fe6cd5"
+  },
+  "reproduction": "Extract files into bench/sketch_speed and run PYTHONPATH=. python3 bench/sketch_speed/compare.py; requires Apple GPU and native extension."
+}

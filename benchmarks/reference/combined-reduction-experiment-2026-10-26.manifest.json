@@ -1,0 +1,53 @@
+{
+  "description": "Rejected fused MLX reduction overlay and benchmark reproduction sources; no native command loop.",
+  "measured_at_utc": "2026-10-27T02:09:39.741281+00:00",
+  "archive": {
+    "filename": "combined-reduction-experiment-2026-10-26.zip",
+    "sha256": "8bde08b2c8551821d90a904f1d61b9a530f629d3d117186bc4f64204da4373bc"
+  },
+  "files": {
+    "REPRODUCE.md": "53b1dc29264b0a4e327b01c22c3773ecea10ee61d77f422335ae4dd513fcd710",
+    "benchmarks/__init__.py": "7e870be70e4f3557056e59149729737625ca0fbd45616b264c2571906113649a",
+    "benchmarks/_harness.py": "859431a0e3e6505eba280b0f7081bb4bcc63eae3b441f18ea889a462a5e3b5dc",
+    "benchmarks/logistic_gpu.py": "136e0ebb98c662d624550588fb1aa70f7fb91ad651da7740855e3ab71a2d9058",
+    "benchmarks/logistic_native.py": "b4c203e1ef4aba3ec617036d616df888abb558ae75cc761d70822b8983eacc84",
+    "benchmarks/logistic_wide.py": "5d12096b74c1c265e45a5605087de769a5d4110064d3f5b2d377e0f63d0950c8",
+    "mlxlearn/_solvers/native_logistic_fused.py": "0d2f45cd41ec60867e509831cb81dabb2af8a60e380227a4893c4b8fe2b6620a",
+    "pyproject.toml": "384af53a715d980e6417873728189e31cb5d7c006e18eb68ffc4a77de0157fee",
+    "tests/unit/test_native_combined_reduction.py": "ecf506f6b09d8c770f32c72c14a2964fd8d989ac9b0c4b8d7952634bd086abfc"
+  },
+  "baseline": {
+    "filename": "overhead-logistic-2026-10-26.zip",
+    "sha256": "e519e6bde4cfa1e45213ee43a1739d185d85d6235f1d26c586aea5cbe8a52261",
+    "manifest": "overhead-logistic-2026-10-26.manifest.json",
+    "manifest_sha256": "dd8f1f24670ce49f0f18d5ddd374596fca20f9dadc4aa60f4338e263a1f9bd93"
+  },
+  "result": {
+    "filename": "combined-reduction-experiment-2026-10-26.json",
+    "sha256": "56388a20c9f29bb71e6ebca03d51f6bf3d8bee2d7ea0e20fc345b72a510aeae5"
+  },
+  "candidate_and_runner_verified_against_result": {
+    "mlxlearn/_solvers/native_logistic_fused.py": "0d2f45cd41ec60867e509831cb81dabb2af8a60e380227a4893c4b8fe2b6620a",
+    "benchmarks/logistic_gpu.py": "136e0ebb98c662d624550588fb1aa70f7fb91ad651da7740855e3ab71a2d9058",
+    "benchmarks/logistic_native.py": "b4c203e1ef4aba3ec617036d616df888abb558ae75cc761d70822b8983eacc84",
+    "benchmarks/logistic_wide.py": "5d12096b74c1c265e45a5605087de769a5d4110064d3f5b2d377e0f63d0950c8",
+    "pyproject.toml": "384af53a715d980e6417873728189e31cb5d7c006e18eb68ffc4a77de0157fee"
+  },
+  "not_recorded_in_measurement_source_audit": [
+    "tests/unit/test_native_combined_reduction.py",
+    "benchmarks/_harness.py",
+    "benchmarks/__init__.py",
+    "REPRODUCE.md"
+  ],
+  "quality_audit_at_measurement": {
+    "status": "pass",
+    "passed": true,
+    "completed_cases": 8,
+    "failed_cases": [],
+    "source_integrity": {
+      "passed": true,
+      "files_checked": 80,
+      "changed_or_missing": []
+    }
+  }
+}

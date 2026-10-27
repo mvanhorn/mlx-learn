@@ -1,0 +1,26 @@
+{
+  "note": "Exploratory sequential one-fit diagnostics. Timing is not a controlled benchmark; source hashes were recorded only after runs, not audited during the runs. Ill-conditioned tight sklearn reference reached its iteration limit and is not a trusted objective benchmark. check.json predates the final device polish change; ill_shift.json records the final polish. Test log captures the final source state.",
+  "files": {
+    "bench/weighted_new/trace.py": "5bf118ff99d07945555c24029fbba5a16577982dd7b8d0724a72d613dfc376c5",
+    "bench/weighted_new/trace.json": "c456e308acd496496181b90285990718a58246b07ba7c97d24d1f903cb8e48b4",
+    "bench/weighted_new/check.py": "19b28baccccef65502a97c31658574b9b7214e5b13edc5e2208d0d7e2a12bde5",
+    "bench/weighted_new/check.json": "731f174f4f2d84bc3eb59078a5add87181f3a6f06ceed5a47d1a4757a1df60c1",
+    "bench/weighted_new/ill_shift.py": "36a236b208d7cca272a9ef053962a9aa2dfb3267e85181440c3ad26ca2328c3d",
+    "bench/weighted_new/ill_shift.json": "57156aad2a0236c7ef45df115f622d7543264bc9dcc8919c936786580f93946b",
+    "bench/weighted_new/ill_shift-final.log": "998c02f76ba9b321b91ee149462dcf1a82395a6f9a5b69fb5043e3c1301c89e7",
+    "bench/weighted_new/focused-final.log": "e184120ff7e81e30e1ab6b538fa99fa690d59b23fdf617f5666cb684eebb04f1",
+    "bench/weighted_new/reference-tests.log": "ecebfc1e81aa140e9ef62d899f60843059e89f546149401d116a75609eef822b"
+  },
+  "archive": {
+    "path": "benchmarks/reference/weighted-progress-investigation-2026-10-27.zip",
+    "sha256": "249ce4088150f0fdd8ec1cd2b4b3032927fdfbefdb5950826447dbb03c59ac15"
+  },
+  "post_run_source_sha256": {
+    "src/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "src/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "src/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "src/mlxlearn/_solvers/native_logistic.py": "a9937294e96fb4d427c24764b5913a89cb280bf185c0502d87548f187ac3a94d",
+    "src/mlxlearn/_solvers/logistic.py": "37f6fcb04f600ee7db19d1eec06369374af2286f4fc64e661d8e8c82ad5aff71",
+    "src/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354"
+  }
+}

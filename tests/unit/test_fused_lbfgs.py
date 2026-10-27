@@ -1,0 +1,187 @@
+"""GPU optimizer contracts that estimator-level parity does not exercise."""
+
+from __future__ import annotations
+
+import mlx.core as mx
+import numpy as np
+import pytest
+
+from mlxlearn._common.device import gpu_available, use_device
+from mlxlearn._solvers.fused_lbfgs import minimize
+from mlxlearn._solvers.lbfgs import LBFGSConfig
+
+pytestmark = pytest.mark.gpu
+
+
+@pytest.fixture(autouse=True)
+def _gpu_stream():
+    if not gpu_available():
+        pytest.skip("requires an MLX GPU")
+    with use_device("gpu"):
+        yield
+
+
+def _quadratic(x):
+    return float(mx.sum(x * x)), 2.0 * x
+
+
+def test_zero_budget_evaluates_start_without_taking_a_step():
+    """An evaluation budget of zero must never perform an optimizer update."""
+    x0 = mx.array([[1.0, -2.0], [3.0, -4.0]], dtype=mx.float32)
+    calls = []
+
+    def objective(x):
+        calls.append(np.asarray(x).copy())
+        return _quadratic(x)
+
+    state = minimize(objective, x0, LBFGSConfig(max_iter=0))
+
+    assert len(calls) == state.n_fev == 1
+    assert state.n_iter == 0
+    assert not state.converged
+    assert state.stop_reason == "max_iter"
+    assert state.objective == pytest.approx(30.0)
+    assert state.grad_max_abs == pytest.approx(8.0)
+    np.testing.assert_array_equal(np.asarray(state.x), np.asarray(x0))
+
+
+@pytest.mark.parametrize("budget", [0, 10])
+def test_initial_optimum_is_converged_without_a_step(budget):
+    state = minimize(_quadratic, mx.zeros((2, 3)), LBFGSConfig(max_iter=budget))
+
+    assert state.converged
+    assert state.stop_reason == "gtol"
+    assert state.n_iter == 0
+    assert state.n_fev == 1
+    assert state.grad_max_abs == 0.0
+    assert state.objective == 0.0
+
+
+def test_matrix_parameter_layout_and_input_survive_optimizer():
+    """Compiled updates must preserve the class/feature axes and caller's input."""
+    target_np = np.arange(12, dtype=np.float32).reshape(3, 4) / 7.0
+    target = mx.array(target_np)
+    x0 = mx.full((3, 4), -2.0, dtype=mx.float32)
+    initial = np.asarray(x0).copy()
+    seen_shapes = []
+
+    def objective(x):
+        seen_shapes.append(x.shape)
+        delta = x - target
+        return float(mx.sum(delta * delta)), 2.0 * delta
+
+    state = minimize(objective, x0, LBFGSConfig(tol=1e-5))
+
+    assert state.converged
+    assert state.stop_reason == "gtol"
+    assert state.grad_max_abs <= 1e-5
+    assert state.x.shape == (3, 4)
+    assert set(seen_shapes) == {(3, 4)}
+    np.testing.assert_allclose(np.asarray(state.x), target_np, atol=5e-6, rtol=0)
+    np.testing.assert_array_equal(np.asarray(x0), initial)
+    value, gradient = objective(state.x)
+    assert state.objective == pytest.approx(value, abs=1e-12)
+    assert state.grad_max_abs == pytest.approx(float(mx.max(mx.abs(gradient))), abs=1e-7)
+
+
+def test_iteration_budget_returns_finite_unconverged_progress():
+    scale = mx.array([1.0, 100.0])
+    x0 = mx.array([4.0, 4.0])
+
+    def objective(x):
+        return float(mx.sum(scale * x * x)), 2.0 * scale * x
+
+    state = minimize(objective, x0, LBFGSConfig(max_iter=1, tol=1e-8))
+
+    assert state.n_iter == 1
+    assert state.n_fev >= 2
+    assert not state.converged
+    assert state.stop_reason == "max_iter"
+    assert state.grad_max_abs > 1e-8
+    assert 0.0 < state.objective < objective(x0)[0]
+    assert np.isfinite(np.asarray(state.x)).all()
+
+
+def test_curvature_history_rollover_reaches_anisotropic_minimum():
+    """Repeated compiled updates must retain the correct order of history pairs."""
+    weights_np = np.geomspace(1.0, 100.0, 24).astype(np.float32).reshape(3, 8)
+    weights = mx.array(weights_np)
+    config = LBFGSConfig(max_iter=300, tol=1e-4, history_size=4)
+
+    def objective(x):
+        # Preserve loss resolution while exercising the GPU gradient/update path.
+        terms = weights * x * x
+        gradient = 2.0 * weights * x
+        mx.eval(terms, gradient)
+        return float(np.asarray(terms).astype(np.float64).sum()), gradient
+
+    state = minimize(objective, mx.ones((3, 8)), config)
+
+    assert state.n_iter > config.history_size
+    assert state.converged
+    assert state.stop_reason == "gtol"
+    assert state.grad_max_abs <= config.tol
+    np.testing.assert_allclose(np.asarray(state.x), 0.0, atol=5e-5, rtol=0)
+
+
+def test_float32_function_plateau_is_not_reported_as_convergence():
+    """Equal rounded losses cannot establish gradient convergence."""
+
+    def objective(x):
+        value = mx.array(1e8, dtype=mx.float32) + mx.sum(x * x)
+        return float(value), 2.0 * x
+
+    state = minimize(
+        objective,
+        mx.array([0.25, 0.5]),
+        LBFGSConfig(max_iter=10, max_line_search=4, tol=1e-6),
+    )
+
+    assert not state.converged
+    assert state.stop_reason == "line-search-failure"
+    assert state.grad_max_abs > 1e-6
+    assert np.isfinite(np.asarray(state.x)).all()
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf")])
+def test_nonfinite_initial_objective_stops_before_optimization(bad_value):
+    state = minimize(
+        lambda x: (bad_value, 2.0 * x),
+        mx.array([1.0]),
+        LBFGSConfig(),
+    )
+
+    assert not state.converged
+    assert state.stop_reason == "non-finite-objective"
+    assert state.n_iter == 0
+    assert state.n_fev == 1
+
+
+def test_nonfinite_initial_gradient_cannot_claim_convergence():
+    state = minimize(
+        lambda x: (1.0, mx.full(x.shape, float("nan"))),
+        mx.array([1.0]),
+        LBFGSConfig(),
+    )
+
+    assert not state.converged
+    assert state.stop_reason == "non-finite-objective"
+    assert state.n_iter == 0
+    assert state.n_fev == 1
+
+
+@pytest.mark.parametrize("raise_at", [1, 2])
+def test_objective_exception_propagates_without_another_optimizer(raise_at):
+    error = RuntimeError("device evaluation failed")
+    calls = 0
+
+    def objective(x):
+        nonlocal calls
+        calls += 1
+        if calls == raise_at:
+            raise error
+        return _quadratic(x)
+
+    with pytest.raises(RuntimeError, match="device evaluation failed") as caught:
+        minimize(objective, mx.array([1.0]), LBFGSConfig())
+    assert caught.value is error

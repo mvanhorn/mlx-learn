@@ -1,0 +1,12 @@
+{
+  "description": "Exploratory initial-gradient Hessian probe with 0.25x internal gradient tolerance; 2 warmups and 3 interleaved repeats on 12 cases, independent original-input float64 quality. Ill-conditioned 4096 seed41 fails 1e-5 objective regression gate and both 4096 ill fixtures slow. Not integrated.",
+  "archive": {
+    "filename": "gradient-probe-strict-followup-2026-10-27.zip",
+    "sha256": "d65082ba474787c60d7fdd07a77087ee12b9144f402ad548a59255c6c337fe6c"
+  },
+  "files": {
+    "gradient_probe.py": "30bc3d1cdf29290bb53be610a4196aa592641d051948631dcc56759fb1d20666",
+    "strict_compare.py": "8af668f0ad964eae27bf0dcda737de6986f06832548ab3e341a486e525c32834"
+  },
+  "reproduction": "Extract files into bench/sketch_speed and run PYTHONPATH=. python3 bench/sketch_speed/strict_compare.py; requires Apple GPU and native extension."
+}

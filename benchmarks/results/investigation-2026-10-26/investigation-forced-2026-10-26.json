@@ -1,0 +1,507 @@
+{
+  "environment": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.13.3",
+    "mlx": "0.32.2",
+    "numpy": "2.5.2",
+    "sklearn": "1.9.0",
+    "device": {
+      "device_name": "Apple M4 Max",
+      "max_recommended_working_set_size": 115448725504,
+      "memory_size": 137438953472,
+      "architecture": "applegpu_g16s",
+      "max_buffer_length": 86586540032,
+      "resource_limit": 499000
+    },
+    "threadpools": [
+      {
+        "user_api": "openmp",
+        "internal_api": "openmp",
+        "num_threads": 16,
+        "prefix": "libomp",
+        "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+        "version": null
+      }
+    ],
+    "numpy_config": {
+      "Compilers": {
+        "c": {
+          "name": "clang",
+          "linker": "ld64",
+          "version": "15.0.0",
+          "commands": "cc"
+        },
+        "cython": {
+          "name": "cython",
+          "linker": "cython",
+          "version": "3.2.9",
+          "commands": "cython"
+        },
+        "c++": {
+          "name": "clang",
+          "linker": "ld64",
+          "version": "15.0.0",
+          "commands": "c++"
+        }
+      },
+      "Machine Information": {
+        "host": {
+          "cpu": "aarch64",
+          "family": "aarch64",
+          "endian": "little",
+          "system": "darwin"
+        },
+        "build": {
+          "cpu": "aarch64",
+          "family": "aarch64",
+          "endian": "little",
+          "system": "darwin"
+        }
+      },
+      "Build Dependencies": {
+        "blas": {
+          "name": "accelerate",
+          "found": true,
+          "version": "unknown",
+          "detection method": "system",
+          "include directory": "unknown",
+          "lib directory": "unknown",
+          "openblas configuration": "unknown",
+          "pc file directory": "unknown"
+        },
+        "lapack": {
+          "name": "accelerate",
+          "found": true,
+          "version": "unknown",
+          "detection method": "system",
+          "include directory": "unknown",
+          "lib directory": "unknown",
+          "openblas configuration": "unknown",
+          "pc file directory": "unknown"
+        }
+      },
+      "Python Information": {
+        "path": "/private/var/folders/g3/pffjr_y96bq06blnkf72x_hw0000gn/T/build-env-jzdn7by7/bin/python",
+        "version": "3.13"
+      },
+      "SIMD Extensions": {
+        "baseline": [
+          "NEON",
+          "NEON_FP16",
+          "NEON_VFPV4",
+          "ASIMD"
+        ],
+        "found": [
+          "ASIMDHP",
+          "ASIMDDP"
+        ],
+        "not found": [
+          "ASIMDFHM"
+        ]
+      }
+    },
+    "git_head": "fb79a1b11dad401e82808885884fc633da9c3e86"
+  },
+  "repeats": 7,
+  "logistic_estimators": [
+    {
+      "shape": [
+        5000,
+        32
+      ],
+      "timings": {
+        "current": {
+          "median_ms": 20.522958016954362,
+          "min_ms": 18.52300006430596,
+          "samples_s": [
+            0.01852300006430596,
+            0.019225459080189466,
+            0.019356208038516343,
+            0.020522958016954362,
+            0.023116291034966707,
+            0.02294604096096009,
+            0.023017375031486154
+          ]
+        },
+        "device_two_loop": {
+          "median_ms": 12.85833294969052,
+          "min_ms": 10.398542042821646,
+          "samples_s": [
+            0.013525624992325902,
+            0.011061416938900948,
+            0.010971958981826901,
+            0.010398542042821646,
+            0.014647874981164932,
+            0.01285833294969052,
+            0.014463791972957551
+          ]
+        },
+        "hybrid": {
+          "median_ms": 4.107084008865058,
+          "min_ms": 3.096875036135316,
+          "samples_s": [
+            0.004906667047180235,
+            0.0035804579965770245,
+            0.003096875036135316,
+            0.003444584086537361,
+            0.005001500016078353,
+            0.004107084008865058,
+            0.004960083053447306
+          ]
+        },
+        "sklearn": {
+          "median_ms": 1.4746669912710786,
+          "min_ms": 1.2508329236879945,
+          "samples_s": [
+            0.0014987920876592398,
+            0.0012508329236879945,
+            0.0014324579387903214,
+            0.001276042079553008,
+            0.0014855830231681466,
+            0.0014812910230830312,
+            0.0014746669912710786
+          ]
+        }
+      },
+      "warnings": [],
+      "quality": {
+        "current": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.31621088348693455,
+          "prediction_agreement_sklearn": 0.9998
+        },
+        "device_two_loop": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.3162108834869157,
+          "prediction_agreement_sklearn": 0.9998
+        },
+        "hybrid": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.3162107759152249,
+          "prediction_agreement_sklearn": 1.0
+        },
+        "sklearn": {
+          "n_iter": [
+            8
+          ],
+          "backend": "sklearn",
+          "objective_float64": 0.31621077504399064,
+          "prediction_agreement_sklearn": 1.0
+        }
+      }
+    },
+    {
+      "shape": [
+        20000,
+        128
+      ],
+      "timings": {
+        "current": {
+          "median_ms": 25.137624936178327,
+          "min_ms": 24.716082960367203,
+          "samples_s": [
+            0.03397441701963544,
+            0.025137624936178327,
+            0.024976541055366397,
+            0.02474220807198435,
+            0.025485415942966938,
+            0.024716082960367203,
+            0.025727707892656326
+          ]
+        },
+        "device_two_loop": {
+          "median_ms": 16.752167022787035,
+          "min_ms": 16.260041971690953,
+          "samples_s": [
+            0.020170166972093284,
+            0.016752167022787035,
+            0.01636999996844679,
+            0.023233166080899537,
+            0.01655399997252971,
+            0.016260041971690953,
+            0.016899915994144976
+          ]
+        },
+        "hybrid": {
+          "median_ms": 9.132666978985071,
+          "min_ms": 8.67295905482024,
+          "samples_s": [
+            0.010454790899530053,
+            0.00949004094582051,
+            0.00892491708509624,
+            0.008719332981854677,
+            0.009372500004246831,
+            0.009132666978985071,
+            0.00867295905482024
+          ]
+        },
+        "sklearn": {
+          "median_ms": 5.291207926347852,
+          "min_ms": 4.924083943478763,
+          "samples_s": [
+            0.005306500010192394,
+            0.005254999967291951,
+            0.005291207926347852,
+            0.004924083943478763,
+            0.005427167052403092,
+            0.00511537492275238,
+            0.005375000066123903
+          ]
+        }
+      },
+      "warnings": [],
+      "quality": {
+        "current": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.3175329268546727,
+          "prediction_agreement_sklearn": 0.9999
+        },
+        "device_two_loop": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.3175329268539247,
+          "prediction_agreement_sklearn": 0.9999
+        },
+        "hybrid": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.3175328895069836,
+          "prediction_agreement_sklearn": 1.0
+        },
+        "sklearn": {
+          "n_iter": [
+            8
+          ],
+          "backend": "sklearn",
+          "objective_float64": 0.3175328884500586,
+          "prediction_agreement_sklearn": 1.0
+        }
+      }
+    },
+    {
+      "shape": [
+        20000,
+        1024
+      ],
+      "timings": {
+        "current": {
+          "median_ms": 68.31441691610962,
+          "min_ms": 67.55537493154407,
+          "samples_s": [
+            0.06829400011338294,
+            0.07210491609293967,
+            0.06949020805768669,
+            0.06755537493154407,
+            0.06831441691610962,
+            0.06927387497853488,
+            0.06780816696118563
+          ]
+        },
+        "device_two_loop": {
+          "median_ms": 56.05224997270852,
+          "min_ms": 48.83745894767344,
+          "samples_s": [
+            0.06650241592433304,
+            0.05523087491746992,
+            0.04883745894767344,
+            0.05715466593392193,
+            0.05605224997270852,
+            0.061492000008001924,
+            0.0548309589503333
+          ]
+        },
+        "hybrid": {
+          "median_ms": 44.13612501230091,
+          "min_ms": 35.819250042550266,
+          "samples_s": [
+            0.035819250042550266,
+            0.0443227500654757,
+            0.04311820794828236,
+            0.04413612501230091,
+            0.044883291935548186,
+            0.044513875036500394,
+            0.04397783393505961
+          ]
+        },
+        "sklearn": {
+          "median_ms": 20.068999961949885,
+          "min_ms": 19.419084070250392,
+          "samples_s": [
+            0.02028695901390165,
+            0.019419084070250392,
+            0.020407541072927415,
+            0.019728290964849293,
+            0.020724042085930705,
+            0.019621249986812472,
+            0.020068999961949885
+          ]
+        }
+      },
+      "warnings": [],
+      "quality": {
+        "current": {
+          "n_iter": [
+            10
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.2886907863957867,
+          "prediction_agreement_sklearn": 0.9995
+        },
+        "device_two_loop": {
+          "n_iter": [
+            10
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.2886907863935544,
+          "prediction_agreement_sklearn": 0.9995
+        },
+        "hybrid": {
+          "n_iter": [
+            8
+          ],
+          "backend": "mlx",
+          "objective_float64": 0.28869255087967827,
+          "prediction_agreement_sklearn": 1.0
+        },
+        "sklearn": {
+          "n_iter": [
+            8
+          ],
+          "backend": "sklearn",
+          "objective_float64": 0.28869254673171096,
+          "prediction_agreement_sklearn": 1.0
+        }
+      }
+    }
+  ],
+  "svc": [
+    {
+      "shape": [
+        4000,
+        32
+      ],
+      "timings": {
+        "mlx": {
+          "median_ms": 109.28474995307624,
+          "min_ms": 108.43908309470862,
+          "samples_s": [
+            0.10935024998616427,
+            0.11254483298398554,
+            0.10911816696170717,
+            0.10843908309470862,
+            0.10889754199888557,
+            0.11139058403205127,
+            0.10928474995307624
+          ]
+        },
+        "sklearn": {
+          "median_ms": 116.05816695373505,
+          "min_ms": 115.72870903182775,
+          "samples_s": [
+            0.11640870897099376,
+            0.11810908291954547,
+            0.11605816695373505,
+            0.11576079099904746,
+            0.1168710000347346,
+            0.11572870903182775,
+            0.11574062507133931
+          ]
+        }
+      },
+      "profile": {
+        "gram_s": 0.0037348750047385693,
+        "solver_s": 0.10412495804484934,
+        "total_profiled_s": 0.10891695797909051
+      },
+      "mlx_backend": "mlx",
+      "iterations": {
+        "mlx": [
+          2883
+        ],
+        "sklearn": [
+          2882
+        ]
+      },
+      "fit_status": {
+        "mlx": 0,
+        "sklearn": 0
+      },
+      "mlx_solver_kkt": [
+        0.0009974295249806087
+      ],
+      "prediction_agreement": 1.0
+    },
+    {
+      "shape": [
+        4000,
+        256
+      ],
+      "timings": {
+        "mlx": {
+          "median_ms": 157.90070802904665,
+          "min_ms": 152.94200007338077,
+          "samples_s": [
+            0.1542437500320375,
+            0.16355983295943588,
+            0.15790070802904665,
+            0.15985424991231412,
+            0.15294200007338077,
+            0.1658440420869738,
+            0.15452466695569456
+          ]
+        },
+        "sklearn": {
+          "median_ms": 623.4345410484821,
+          "min_ms": 619.3341669859365,
+          "samples_s": [
+            0.6244084580102935,
+            0.6223015829455107,
+            0.6234345410484821,
+            0.6240015000803396,
+            0.6254273329395801,
+            0.6216276660561562,
+            0.6193341669859365
+          ]
+        }
+      },
+      "profile": {
+        "gram_s": 0.006626583053730428,
+        "solver_s": 0.1438216669484973,
+        "total_profiled_s": 0.15328704204875976
+      },
+      "mlx_backend": "mlx",
+      "iterations": {
+        "mlx": [
+          3950
+        ],
+        "sklearn": [
+          3949
+        ]
+      },
+      "fit_status": {
+        "mlx": 0,
+        "sklearn": 0
+      },
+      "mlx_solver_kkt": [
+        0.0009877691244379073
+      ],
+      "prediction_agreement": 1.0
+    }
+  ]
+}

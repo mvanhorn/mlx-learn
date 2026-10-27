@@ -1,0 +1,14 @@
+{
+  "description": "Experimental FP16 shadow with original FP32 convergence checking; source only.",
+  "archive": {
+    "filename": "fp16-shadow-experiment-2026-10-27.zip",
+    "sha256": "54b8cc489ef1127224eb28e005b94e20ee78400d87ee27ce352c96df79ab755d"
+  },
+  "files": {
+    "README.md": "9f0a38c6fbb87dd059194b28707c318c14584d57922e6812c4c1fc9db884c1fe",
+    "setup.py": "fbbf48d4c22326f0925075126dc6c208edf0a455f720c9c83cbb5558e0adda2e",
+    "_metal_loop.mm": "2f67a61a7f0eeaee4b86fe7918f38c7383d9dd2a5dd7faab77a696dfd143e1f2",
+    "experiment.py": "34abffbb1b9ef9a861ff38ab49b45fd868aab9a292029b1f8a8612849a509c9f",
+    "fused_experiment.py": "5e1f002ca7c9abc3d12c9e69a524a9b55bdf612dd7ec72f70c5de8a4f1d9e572"
+  }
+}

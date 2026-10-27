@@ -1,0 +1,19 @@
+{
+  "description": "Partial prior-bias scratch screen, terminated after a hang on first activated case. Completion stack shows MLX synchronize waiting while a completion callback waits for the GIL. Exact causal operation not proven. No production code changed; ordinary first case only, no demonstrated prior-bias performance.",
+  "archive": {
+    "filename": "prior-bias-hang-experiment-2026-10-27.zip",
+    "sha256": "77e95e6ec81974b2321a4e9f4638a86a9ae2e26fa7af40ef5fa278c981575fb0"
+  },
+  "files": {
+    "prepare.py": "51fa037590dde5f3c0ab0b21535c345ec587c08c3b34f85a1c4aa169c60fb222",
+    "panel.py": "8f3fb6de976f5d33f7bab0b0d1d7c0834f8b551739d9723163b588a6a6850420",
+    "quick.log": "f6c1309d4bc5d3f0510a86c2dee952da466bc9e3a61f3895bd99fae0d820377e",
+    "quick-results.json": "65328e67f0e4ad2e407192e511befdd1cdd1ccbd3f841a13215589bfd2223a26",
+    "sample.txt": "862e4c255493fdfac06b55e35d780090d2d6dc0ad1c109068b71f97e624cec8a",
+    "candidate/mlxlearn/_solvers/_metal_loop.mm": "7e15a3a00f51c475d91964b000c388af8967d6f7d01d824cbfa412a669ad3131",
+    "candidate/mlxlearn/_solvers/native_command.py": "46a9b38fabf78396aa248c2fd098fe0229b536d1d883ef754d161f15f1b0e170"
+  },
+  "candidate_binary_sha256": "aaa597108af73d5c77d238b95522deca5a11d95921ffa312f5374b18cf0c2c68",
+  "baseline_binary_sha256": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+  "terminated": true
+}

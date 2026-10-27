@@ -1,0 +1,1976 @@
+{
+  "source_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/prepare.py": "ec76dabe44aa30cc73279172d53e3d6c5e67cf594fe08ef1f21fd41ee1868759",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/worker.py": "6464d0e250d2657493dbc2c2e86d1b1d5671c7e9e455b25b821851ca8e7704de",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/panel.py": "a7e4d79c6e294306cb41d6b984509c77515dc36fa34e9bf18b6905fbe53a9405",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/native_logistic.py": "ca38ed41a1d35c115b1ed3416d0689fd2382dc9eba6673246aada69ba190898a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/linear_model/_logistic.py": "53095b9dc7829a96a235bb8ab9c9c3727d71aca5ad759064ee11013b4d0c1c42",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/native_logistic.py": "8adba54dc2961054a4476eedad97c1b76d89cadcc954c23c3ad0310173275942",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/_metal_loop.mm": "37b989619dddd5d279b582d3ea72225bbc8e63308ad07185f5262ba7433490cb",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/native_command.py": "f8b2b6059251418b58adf0c832c72cb5fd4e1019a3e95c80840baae4fceaf60e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/logistic.py": "2d0f851c0313077770c8afae91cd400ff90b41e6f592c3dfb99868edfa6ac712",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/_metal_loop.abi3.so": "c399283f6c1325372ce0b5db32d25711b2676376ac467d1654809f4549d36fe1",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/logistic_input.py": "a8ff2d5a82cf84f5ba4bbe6a6240e61c52d23ce3bbb9717f6898c3fa4d4be355",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795"
+  },
+  "method": "interleaved complete fits from two persistent independent processes; two warmups five timings; source verified; tight centered float64 reference",
+  "cases": [
+    {
+      "case": "imbalance",
+      "seed": 41,
+      "median_ms": {
+        "baseline": 25.017458014190197,
+        "candidate": 23.6339169787243
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 27.80941699165851,
+            "n_iter": [
+              37
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 37,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277358283765865,
+              "gradient_max_abs_float64": 1.22187366520588e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.00963888799847e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.317124905996025,
+            "n_iter": [
+              37
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 37,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277358283765865,
+              "gradient_max_abs_float64": 1.22187366520588e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.00963888799847e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.42916703876108,
+            "n_iter": [
+              37
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 37,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277358283765865,
+              "gradient_max_abs_float64": 1.22187366520588e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.00963888799847e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.017458014190197,
+            "n_iter": [
+              37
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 37,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277358283765865,
+              "gradient_max_abs_float64": 1.22187366520588e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.00963888799847e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.067124933935702,
+            "n_iter": [
+              37
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 37,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277358283765865,
+              "gradient_max_abs_float64": 1.22187366520588e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.00963888799847e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 24.922624928876758,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277372153060783,
+              "gradient_max_abs_float64": 3.481254251892273e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.359144290585052e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 22.74845796637237,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277372153060783,
+              "gradient_max_abs_float64": 3.481254251892273e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.359144290585052e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.346166010014713,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277372153060783,
+              "gradient_max_abs_float64": 3.481254251892273e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.359144290585052e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.6339169787243,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277372153060783,
+              "gradient_max_abs_float64": 3.481254251892273e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.359144290585052e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.76808295957744,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277372153060783,
+              "gradient_max_abs_float64": 3.481254251892273e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.359144290585052e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.010277317075435655,
+        "gradient_max_abs_float64": 1.0903761382429826e-09,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": true,
+      "failures": []
+    },
+    {
+      "case": "imbalance",
+      "seed": 83,
+      "median_ms": {
+        "baseline": 25.061332969926298,
+        "candidate": 24.21108295675367
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 24.355709087103605,
+            "n_iter": [
+              38
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 38,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273438719172282,
+              "gradient_max_abs_float64": 8.085834184327194e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.6100487374936682e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.061332969926298,
+            "n_iter": [
+              38
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 38,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273438719172282,
+              "gradient_max_abs_float64": 8.085834184327194e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.6100487374936682e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.537374963983893,
+            "n_iter": [
+              38
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 38,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273438719172282,
+              "gradient_max_abs_float64": 8.085834184327194e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.6100487374936682e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.50816594157368,
+            "n_iter": [
+              38
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 38,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273438719172282,
+              "gradient_max_abs_float64": 8.085834184327194e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.6100487374936682e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.324749993160367,
+            "n_iter": [
+              38
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 38,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273438719172282,
+              "gradient_max_abs_float64": 8.085834184327194e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.6100487374936682e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 23.852708050981164,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": -2.2071666717529297,
+                "init_loss": 0.32312031038685
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273443808012494,
+              "gradient_max_abs_float64": 7.894977055620971e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 3.105389551148502e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.76270806416869,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": -2.2071666717529297,
+                "init_loss": 0.32312031038685
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273443808012494,
+              "gradient_max_abs_float64": 7.894977055620971e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 3.105389551148502e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.294457980431616,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": -2.2071666717529297,
+                "init_loss": 0.32312031038685
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273443808012494,
+              "gradient_max_abs_float64": 7.894977055620971e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 3.105389551148502e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.21108295675367,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": -2.2071666717529297,
+                "init_loss": 0.32312031038685
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273443808012494,
+              "gradient_max_abs_float64": 7.894977055620971e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 3.105389551148502e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.64720793068409,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": -2.2071666717529297,
+                "init_loss": 0.32312031038685
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010273443808012494,
+              "gradient_max_abs_float64": 7.894977055620971e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 3.105389551148502e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.01027341190506651,
+        "gradient_max_abs_float64": 1.5323202955398407e-09,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": true,
+      "failures": []
+    },
+    {
+      "case": "imbalance",
+      "seed": 2027,
+      "median_ms": {
+        "baseline": 23.92683399375528,
+        "candidate": 23.740625008940697
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 23.792374995537102,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565721196512199,
+              "gradient_max_abs_float64": 5.674323039426914e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.561697614081582e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.92683399375528,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565721196512199,
+              "gradient_max_abs_float64": 5.674323039426914e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.561697614081582e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.429083987139165,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565721196512199,
+              "gradient_max_abs_float64": 5.674323039426914e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.561697614081582e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.958500009030104,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565721196512199,
+              "gradient_max_abs_float64": 5.674323039426914e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.561697614081582e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.946084082126617,
+            "n_iter": [
+              36
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 36,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565721196512199,
+              "gradient_max_abs_float64": 5.674323039426914e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.561697614081582e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 23.740625008940697,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.206141471862793,
+                "init_loss": 0.3233223509834049
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565693663814909,
+              "gradient_max_abs_float64": 1.0348413163967513e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.9558319181285373e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.64041598048061,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.206141471862793,
+                "init_loss": 0.3233223509834049
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565693663814909,
+              "gradient_max_abs_float64": 1.0348413163967513e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.9558319181285373e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 24.107459001243114,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.206141471862793,
+                "init_loss": 0.3233223509834049
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565693663814909,
+              "gradient_max_abs_float64": 1.0348413163967513e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.9558319181285373e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.503417032770813,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.206141471862793,
+                "init_loss": 0.3233223509834049
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565693663814909,
+              "gradient_max_abs_float64": 1.0348413163967513e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.9558319181285373e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 23.910499992780387,
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 35,
+                "status": 1,
+                "bias": -2.206141471862793,
+                "init_loss": 0.3233223509834049
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010565693663814909,
+              "gradient_max_abs_float64": 1.0348413163967513e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.9558319181285373e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.010565662433492651,
+        "gradient_max_abs_float64": 9.136346694403931e-10,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": true,
+      "failures": []
+    },
+    {
+      "case": "rare",
+      "seed": 2027,
+      "median_ms": {
+        "baseline": 26.593209011480212,
+        "candidate": 27.15570793952793
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 27.39049994852394,
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 40,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.0021713836013464638,
+              "gradient_max_abs_float64": 4.057403963722982e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.6290050914288966e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 26.593209011480212,
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 40,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.0021713836013464638,
+              "gradient_max_abs_float64": 4.057403963722982e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.6290050914288966e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 26.946457917802036,
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 40,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.0021713836013464638,
+              "gradient_max_abs_float64": 4.057403963722982e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.6290050914288966e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 26.50091703981161,
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 40,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.0021713836013464638,
+              "gradient_max_abs_float64": 4.057403963722982e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.6290050914288966e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.632584001868963,
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 40,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.0021713836013464638,
+              "gradient_max_abs_float64": 4.057403963722982e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 5.6290050914288966e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 29.78754206560552,
+            "n_iter": [
+              39
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 39,
+                "status": 1,
+                "bias": -3.9293651580810547,
+                "init_loss": 0.09521274791681035
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.002171380351914625,
+              "gradient_max_abs_float64": 4.3821837726512804e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.132516802729414e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 27.15570793952793,
+            "n_iter": [
+              39
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 39,
+                "status": 1,
+                "bias": -3.9293651580810547,
+                "init_loss": 0.09521274791681035
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.002171380351914625,
+              "gradient_max_abs_float64": 4.3821837726512804e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.132516802729414e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 27.45924994815141,
+            "n_iter": [
+              39
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 39,
+                "status": 1,
+                "bias": -3.9293651580810547,
+                "init_loss": 0.09521274791681035
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.002171380351914625,
+              "gradient_max_abs_float64": 4.3821837726512804e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.132516802729414e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.692083057947457,
+            "n_iter": [
+              39
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 39,
+                "status": 1,
+                "bias": -3.9293651580810547,
+                "init_loss": 0.09521274791681035
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.002171380351914625,
+              "gradient_max_abs_float64": 4.3821837726512804e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.132516802729414e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 25.35062492825091,
+            "n_iter": [
+              39
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 39,
+                "status": 1,
+                "bias": -3.9293651580810547,
+                "init_loss": 0.09521274791681035
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.002171380351914625,
+              "gradient_max_abs_float64": 4.3821837726512804e-07,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 4.132516802729414e-06,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.0021713713786859178,
+        "gradient_max_abs_float64": 1.419164617094161e-09,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": true,
+      "failures": []
+    },
+    {
+      "case": "ordinary",
+      "seed": 41,
+      "median_ms": {
+        "baseline": 9.169124998152256,
+        "candidate": 9.359749965369701
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 9.0938750654459,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 9.730541030876338,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 9.169124998152256,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 9.226499940268695,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 8.627541013993323,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 9.359749965369701,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 9.37566696666181,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 9.493250050581992,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 8.662541978992522,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 8.94525006879121,
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 11,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.28031150814433514,
+              "gradient_max_abs_float64": 2.0498230554734064e-06,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 9.159590580733868e-09,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.2803115055767965,
+        "gradient_max_abs_float64": 7.393238444447037e-10,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": true,
+      "failures": []
+    },
+    {
+      "case": "shifted",
+      "seed": 41,
+      "median_ms": {
+        "baseline": 38.364707957953215,
+        "candidate": 31.786833074875176
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 38.411667104810476,
+            "n_iter": [
+              56
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 56,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277250840301965,
+              "gradient_max_abs_float64": 7.721628811398342e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 1.2086392208372703e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 38.364707957953215,
+            "n_iter": [
+              56
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 56,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277250840301965,
+              "gradient_max_abs_float64": 7.721628811398342e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 1.2086392208372703e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 37.88183396682143,
+            "n_iter": [
+              56
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 56,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277250840301965,
+              "gradient_max_abs_float64": 7.721628811398342e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 1.2086392208372703e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 38.4997499641031,
+            "n_iter": [
+              56
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 56,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277250840301965,
+              "gradient_max_abs_float64": 7.721628811398342e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 1.2086392208372703e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 38.16966607701033,
+            "n_iter": [
+              56
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 56,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277250840301965,
+              "gradient_max_abs_float64": 7.721628811398342e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 1.2086392208372703e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 33.29391696024686,
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 44,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277252598245544,
+              "gradient_max_abs_float64": 5.749921333641549e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.919158715485396e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 31.92474995739758,
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 44,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277252598245544,
+              "gradient_max_abs_float64": 5.749921333641549e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.919158715485396e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 31.635166029445827,
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 44,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277252598245544,
+              "gradient_max_abs_float64": 5.749921333641549e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.919158715485396e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 31.786833074875176,
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 44,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277252598245544,
+              "gradient_max_abs_float64": 5.749921333641549e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.919158715485396e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          },
+          {
+            "ms": 31.721125007607043,
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 44,
+                "status": 1,
+                "bias": -2.2013988494873047,
+                "init_loss": 0.32425809087384033
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.010277252598245544,
+              "gradient_max_abs_float64": 5.749921333641549e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.919158715485396e-07,
+              "prediction_agreement_sklearn": 1.0
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.01027724959815327,
+        "gradient_max_abs_float64": 7.981008525523974e-07,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": false,
+      "failures": [
+        {
+          "reference_invalid": {
+            "objective_float64": 0.01027724959815327,
+            "gradient_max_abs_float64": 7.981008525523974e-07,
+            "nullspace_coefficient_relative": null
+          },
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "case": "ill",
+      "seed": 83,
+      "median_ms": {
+        "baseline": 76.50220894720405,
+        "candidate": 76.78983290679753
+      },
+      "samples": {
+        "baseline": [
+          {
+            "ms": 76.80958299897611,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 76.73908397555351,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 76.43254194408655,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 76.50220894720405,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 76.33320905733854,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 77.93529203627259,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 76.78983290679753,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 78.74074997380376,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 76.49987493641675,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          },
+          {
+            "ms": 75.84399997722358,
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "native": [
+              {
+                "n_iter": 143,
+                "status": 1,
+                "bias": 0.0,
+                "init_loss": 0.6931471805599453
+              }
+            ],
+            "backend": "mlx",
+            "score": {
+              "objective_float64": 0.3031276629817299,
+              "gradient_max_abs_float64": 4.8118025864593096e-05,
+              "nullspace_coefficient_relative": null,
+              "objective_relative_gap_to_sklearn": 2.522782974287232e-05,
+              "prediction_agreement_sklearn": 0.9997
+            }
+          }
+        ]
+      },
+      "reference": {
+        "objective_float64": 0.30312001592157656,
+        "gradient_max_abs_float64": 4.384241451447603e-07,
+        "nullspace_coefficient_relative": null
+      },
+      "reference_valid": false,
+      "failures": [
+        {
+          "reference_invalid": {
+            "objective_float64": 0.30312001592157656,
+            "gradient_max_abs_float64": 4.384241451447603e-07,
+            "nullspace_coefficient_relative": null
+          },
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "lbfgs failed to converge after 3000 iteration(s) (status=1):\nSTOP: TOTAL NO. OF ITERATIONS REACHED LIMIT\n\nIncrease the number of iterations to improve the convergence (max_iter=3000).\nYou might also want to scale the data as shown in:\n    https://scikit-learn.org/stable/modules/preprocessing.html\nPlease also refer to the documentation for alternative solver options:\n    https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "source_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/prepare.py": "ec76dabe44aa30cc73279172d53e3d6c5e67cf594fe08ef1f21fd41ee1868759",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/worker.py": "6464d0e250d2657493dbc2c2e86d1b1d5671c7e9e455b25b821851ca8e7704de",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/panel.py": "a7e4d79c6e294306cb41d6b984509c77515dc36fa34e9bf18b6905fbe53a9405",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/native_logistic.py": "ca38ed41a1d35c115b1ed3416d0689fd2382dc9eba6673246aada69ba190898a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/baseline/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/linear_model/_logistic.py": "53095b9dc7829a96a235bb8ab9c9c3727d71aca5ad759064ee11013b4d0c1c42",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/native_logistic.py": "8adba54dc2961054a4476eedad97c1b76d89cadcc954c23c3ad0310173275942",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/_metal_loop.mm": "37b989619dddd5d279b582d3ea72225bbc8e63308ad07185f5262ba7433490cb",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/native_command.py": "f8b2b6059251418b58adf0c832c72cb5fd4e1019a3e95c80840baae4fceaf60e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/logistic.py": "2d0f851c0313077770c8afae91cd400ff90b41e6f592c3dfb99868edfa6ac712",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/_metal_loop.abi3.so": "c399283f6c1325372ce0b5db32d25711b2676376ac467d1654809f4549d36fe1",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/logistic_input.py": "a8ff2d5a82cf84f5ba4bbe6a6240e61c52d23ce3bbb9717f6898c3fa4d4be355",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/prior_fused/candidate/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795"
+  },
+  "source_integrity_pass": true
+}

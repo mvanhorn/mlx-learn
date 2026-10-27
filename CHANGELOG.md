@@ -6,6 +6,171 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Rechecked the three original tall-data fixtures after the solver changes:
+  complete GPU fits reached 5.24×, 3.05× and 2.64× stock sklearn on the
+  measured M4 Max, with independent accuracy checks on every measured fit.
+  The [rerun report](docs/tall-logistic-recheck-2026-10-27.md) records the
+  method and raw results; the full suite passes 1,118 tests.
+
+- Wide GPU L-BFGS directions now use a cooperative 256-thread recurrence,
+  retaining the scalar metric and 32-thread narrow path. Selected strongly
+  scale-skewed wide binary fits use a bounded L-BFGS warm start followed by
+  native Metal Newton-CG, with a numerical dual-gap diagnostic and compensated
+  original-input gradient check. Weakly regularized inputs retain L-BFGS.
+  The [development report](docs/rank-safe-newton-performance-2026-10-27.md)
+  records the final timing panels, independent accuracy references, general
+  rank-deficiency checks and validation status. Ordinary 20,000 × 4,096 fits
+  are about twice as fast as the frozen implementation and default sklearn
+  on the measured Apple M4 Max; gains are not uniform across all workloads.
+- Added a private NumPy-free GPU Hessian-vector building block and additional
+  4,096-feature benchmark stress cases. It was initially kept separate from
+  model fitting. The [ill-conditioned solver investigation](docs/ill-conditioned-hvp-investigation-2026-10-27.md)
+  documents the remaining objective gap and candidate solver limitations.
+- Wide binary GPU fits now use a stricter relative loss-progress check, and
+  seeded resident-device fits use a small reserve in their native stopping
+  tolerance while retaining the independent compensated certificate. The
+  [wide accuracy report](docs/wide-accuracy-device-repair-2026-10-27.md)
+  records the runtime cost and a remaining ill-conditioned objective gap.
+- Weighted binary GPU fits now require an additional two-step relative loss
+  progress check before convergence is reported. The GPU generic fallback uses
+  a stricter weighted gradient threshold. Both are empirical safeguards, not
+  objective-error bounds; iteration limits and nonconvergence warnings remain.
+  A failed managed native line search is no longer promoted by a small direct
+  gradient alone. See the [weighted accuracy investigation](docs/weighted-wide-investigation-2026-10-27.md).
+- Long native binary GPU fits now submit up to 16 optimizer iterations per
+  command buffer after the first 32 accepted steps, capped by the remaining
+  budget. Earlier checks, optimization math, and convergence criteria remain
+  unchanged. The [investigation](docs/sketch-weighted-optimization-2026-10-27.md)
+  records both the weighted improvement and unresolved sketch and accuracy limits.
+- Added an experimental NumPy-free `mlxlearn_device.fit_logistic` runtime path
+  for binary float32 MLX arrays and GPU Hessian-sketch L-BFGS history seeding.
+  The device check uses compensated GPU arithmetic without a formal error bound;
+  unsupported data and unsuccessful fits are reported explicitly. The existing
+  distribution continues to depend on NumPy and scikit-learn.
+- The sklearn-compatible binary GPU solver supports an opt-in sketch via private
+  tuning, and tightens the internal gradient threshold for strongly scale-skewed
+  prepared inputs. This fixes the reproduced objective gaps but is not a general
+  objective-parity guarantee. See the [device and Hessian-sketch report](docs/gpu-hessian-device-logistic-2026-10-27.md).
+- Native binary optimization now accounts for attempted iterations and resumes
+  from the checked parameters with only the remaining budget; it never silently
+  restarts an exhausted fit. Strongly skewed, wide, unseeded fits use the GPU
+  managed loop directly to avoid spending their budget on a problematic native
+  trajectory. The device score uses coalesced compensated gradient reductions
+  with a bounded-workspace fallback.
+
+- Logistic convergence checks now account for the original feature coordinates
+  after centering, without changing the centered optimization objective or search
+  gradients. When a heuristic indicates rounding risk, a selective CPU float64
+  certificate evaluates the returned model against the caller's input. Stalled
+  centered fits may refine intercepts within the existing iteration budget;
+  unresolved cases report nonconvergence. The certificate trigger is not a
+  global rounding-error bound, and some heavily shifted multinomial stress cases
+  still do not converge at the requested tolerance.
+- A two-step average of accepted loss progress is used as an
+  additional stopping condition for native binary fits with at least 2,048
+  features. This remains a heuristic, not a general guarantee of objective
+  parity. See
+  the [convergence investigation](docs/convergence-accuracy-2026-10-27.md).
+- Added an optional Apple Silicon native Metal command loop for prepared wide
+  binary logistic fits. It retains MLX arrays, DLPack capsules and pending
+  command buffers until completion is known, including exceptional and
+  interpreter-teardown paths. Only stable MLX 0.32.x uses this bridge; other
+  versions and unavailable extensions retain the established solver.
+- Native command submission now checks after eight steps, then after one more,
+  then in bounded groups of four. This reduces redundant dispatches when a
+  weighted fit converges on its ninth step; final direct certification remains.
+- Apple Silicon development wheels now include a CPython stable-ABI extension;
+  source builds without the optional extension retain the existing solver.
+- Wide logistic GPU preparation now combines input validation and centering with
+  native binary initialization, removing separate matrix passes. Large contiguous
+  float64 inputs use bit-equivalent NumPy conversion in temporary worker blocks.
+  Borrowed input storage remains alive through GPU evaluation and cleanup;
+  that preparation change retained the then-current convergence checks.
+- The wide benchmark accepts a complete frozen-package reference archive, isolates
+  lazily imported Metal kernels, and preserves failed quality rows. Stage profiling
+  accounts for preparation moved outside the optimizer timer.
+- Wide binary GPU logistic steps now fuse line-search loss differences with the
+  first candidate's gradient in one matrix pass. Acceptance selects that gradient
+  only when the corresponding step is accepted; backtracking retains a separate
+  gradient evaluation, and direct final convergence verification remains required.
+- GPU logistic input validation combines finiteness checking with an owned copy
+  of float32 inputs. Float64 inputs reuse their checked private conversion without
+  a second CPU scan or upload copy. Caller-owned inputs remain isolated from fit.
+- Added `python -m benchmarks.logistic_wide --profile full --dtype both --threads 1`
+  with a source-hashed frozen baseline, and `python -m benchmarks.logistic_profile`
+  for reproducible stage profiling.
+- Binary GPU logistic regression now uses handwritten Metal C++ kernels for
+  L-BFGS history and directions, fused directional projection and batched Armijo
+  search, residual updates, and tiled gradient reductions. A curvature-scaled
+  first step reduces matrix passes; a direct final objective and gradient check
+  certifies convergence. CPU and multinomial fits retain the fused solver.
+- Float64 range validation avoids matrix-sized masked and absolute-value copies.
+  Logistic centering now runs on the selected device and corrects the intercept
+  using the exact float32 shift that was applied.
+- Added `python -m benchmarks.logistic_native --profile full --dtype both` for
+  fresh-fit comparisons with the prior fused solver and stock scikit-learn.
+- Logistic regression now keeps optimizer vectors and curvature history on the
+  selected MLX device and uses kernel fusion for the L-BFGS recursion, updates,
+  loss, gradient, and directional derivative. It synchronizes small statistics
+  batches at control decisions, preserving adaptive strong-Wolfe line search,
+  host float64 loss accumulation, centering and gradient-based convergence.
+- Signed binary logits and explicitly shifted multinomial logits reduce loss
+  cancellation in float32. Exact unit weights use the unweighted compiled graph.
+- Added a reproducible full-fit comparison against the previous solver and stock
+  scikit-learn, including convergence and independent float64 quality checks:
+  `python -m benchmarks.logistic_gpu --profile full`.
+
+### Measured
+
+- The revised rule passed 700 tests and a 30-repeat targeted benchmark; 20k ×
+  4,096 fits were 12.9–14.1% slower than the frozen baseline, while remaining
+  1.52×–2.44× faster than sklearn. The 14-case full panel also passed its
+  audits and measured 12.1–14.5% slower 4,096-feature fits than the frozen baseline.
+  The following performance comparisons predate the convergence changes. An earlier
+  single-step rule cost about 9–11% at 20,000 × 4,096 in two panels and did
+  not pass a separate `C=10` objective comparison. Details and limits are in
+  the [convergence investigation](docs/convergence-accuracy-2026-10-27.md).
+- In the preceding 30-repeat targeted comparison, 20,000 × 1,024 float32 fits
+  measured 6.555 ms versus 6.925 ms for the prior solver and 12.829 ms for
+  sklearn; weighted fits measured 6.921 ms versus 7.806 ms and 13.944 ms.
+  All 120 targeted fits passed independent quality checks. The broader panel
+  also shows regressions and timing variability, and the first native fit has
+  additional shader-compilation cost. That historical version retained a
+  default-tolerance objective gap at 4,096 features and an original-coordinate
+  gradient limitation on heavily shifted inputs. See the
+  [native loop report](docs/native-loop-optimization-2026-10-26.md).
+- An earlier experimental direct Metal command loop measured 7.203 ms versus 7.567 ms
+  for the existing solver at 20,000 × 1,024 float32 in a 30-repeat comparison,
+  with regressions on weighted inputs. That prototype was not included because
+  gains were mixed and exceptional buffer-lifetime paths needed further work. See the
+  [experiment report](docs/metal-command-benchmarks.md) for all timings,
+  accuracy checks, and a source-only reproduction archive.
+- The final 30-repeat overhead panel reaches 1.68× sklearn at 20,000 × 1,024
+  float32 (7.647 ms versus 12.884 ms), a 1.10× gain over the frozen previous
+  implementation in the same run. At 60,000 × 1,024, speedups reach 2.61× for
+  float32 and 3.15× for float64. All 583 tests pass. The existing default-tolerance
+  objective gap at 4,096 features remains; a shared `tol=1e-5` passes the strict
+  comparison. See the [overhead results](docs/overhead-logistic-benchmarks.md) for
+  every case, timing spread, failed default rows, and stricter comparisons.
+- Wide float32 binary logistic fits now reach 2.11× over sklearn at 60,000 × 1,024
+  (16.702 ms versus 35.182 ms), up from the preceding 1.38× result. The smaller
+  20,000 × 1,024 case reaches 1.41×. At 4,096 features, the expanded panel exposes
+  an existing objective-parity limitation at default tolerance; all three solvers
+  pass the stricter comparison at `tol=1e-5`, with a 2.44× float64 GPU speedup.
+  See the [wide results](docs/wide-logistic-benchmarks.md) for every shape, variance,
+  profiling, and the retained failed default-tolerance rows. All 514 tests pass.
+- Native binary GPU logistic fits reach 4.86× over stock scikit-learn and 5.56×
+  over the previous fused implementation on the measured M4 Max. The largest
+  gains are on tall data; small inputs still favor scikit-learn. Complete fits,
+  all measured shapes and quality checks are in the
+  [native results](docs/native-logistic-benchmarks.md).
+- The preceding fused GPU logistic fits were 1.12–3.79× faster than the original solver across
+  six workloads and float32/float64 input panels on M4 Max. Weighted multiclass
+  beat stock scikit-learn by 1.31–1.68×; binary cases in that earlier run favored
+  scikit-learn. See the [historical fusion comparison](docs/gpu-logistic-benchmarks.md).
+
 ## [0.1.0a2] — 2026-09-02
 
 ### Changed
