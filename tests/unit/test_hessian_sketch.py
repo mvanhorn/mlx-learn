@@ -143,8 +143,11 @@ def test_native_seed_history_and_device_output(weight_mode):
         blocks = (n + (groups // fg) * rows - 1) // ((groups // fg) * rows)
         source = native_command._source(n, d, d + 1, 10, 8, blocks, groups, rows, fg, weighted)
         weighted_argument = (1,) if weighted else ()
+        # Match the bridge's stricter internal weighted tolerance while still
+        # certifying the returned model against the original requested tol.
+        native_tol = native_command._native_loop_tol(1e-4, weighted)
         raw, iterations, status, *_ = native_command._metal_loop.run(
-            source, caps, n, d, d + 1, 10, blocks, groups, 100, float(n), 1e-4,
+            source, caps, n, d, d + 1, 10, blocks, groups, 100, float(n), native_tol,
             1e-4, 1e-12, owners, b"", seed_caps, count, device_caps, *weighted_argument,
         )
         assert raw is None and status == 1
@@ -156,7 +159,7 @@ def test_native_seed_history_and_device_output(weight_mode):
             bad_caps = (center_value.__dlpack__(), output_value.__dlpack__())
             bad_owners = (caps, *values, seed_caps, hs, hy, hc, bad_caps, center_value, output_value)
             return native_command._metal_loop.run(
-                source, caps, n, d, d + 1, 10, blocks, groups, 100, float(n), 1e-4,
+                source, caps, n, d, d + 1, 10, blocks, groups, 100, float(n), native_tol,
                 1e-4, 1e-12, bad_owners, b"", seed_caps, count, bad_caps, *weighted_argument,
             )
 

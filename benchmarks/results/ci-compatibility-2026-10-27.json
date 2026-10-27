@@ -1,0 +1,2742 @@
+{
+  "method": "balanced complete fits; one-thread sklearn; independent original-input float64 score after timing",
+  "parameters": {
+    "case": [
+      "wide_4096",
+      "weighted_ill_1024",
+      "shifted_1024",
+      "rank_deficient_1024",
+      "ill_conditioned_4096"
+    ],
+    "device": true,
+    "sketch_size": 4,
+    "device_sketch_size": 4,
+    "repeats": 2,
+    "warmup": 1,
+    "tol": 0.0001,
+    "max_iter": 200,
+    "reference_archive": "benchmarks/reference/ill-solver-start-2026-10-27.zip",
+    "reference_extension": "bench/rank-safe-start/_metal_loop.abi3.so",
+    "output": "bench/ci-fix/accuracy-panel-final.json"
+  },
+  "environment": {
+    "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "mlx": "0.32.4",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.0",
+    "cpu": "Apple M4 Max",
+    "memory_bytes": 137438953472,
+    "cores": 16,
+    "device": "mlx 0.32.4 on gpu (128 GiB)",
+    "mlxlearn": "0.1.0a2",
+    "threadpools": [
+      {
+        "user_api": "openmp",
+        "internal_api": "openmp",
+        "num_threads": 16,
+        "prefix": "libomp",
+        "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+        "version": null
+      }
+    ],
+    "numpy_configuration": "Build Dependencies:\n  blas:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\n  lapack:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\nCompilers:\n  c:\n    commands: cc\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  c++:\n    commands: c++\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  cython:\n    commands: cython\n    linker: cython\n    name: cython\n    version: 3.3.0\nMachine Information:\n  build:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\n  host:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\nPython Information:\n  path: /private/var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/build-env-q3ulyt3x/bin/python\n  version: '3.13'\nSIMD Extensions:\n  baseline:\n  - NEON\n  - NEON_FP16\n  - NEON_VFPV4\n  - ASIMD\n  found:\n  - ASIMDHP\n  - ASIMDDP\n  not found:\n  - ASIMDFHM\n\n",
+    "tuning": {
+      "knn_min_train_samples": 256,
+      "knn_min_work": 2048,
+      "logreg_min_samples": 20000,
+      "logreg_min_work": 20000000,
+      "logreg_tall_min_samples": 250000,
+      "logreg_tall_min_work": 8000000,
+      "svc_min_samples": 2048,
+      "svc_min_work": 1000000,
+      "distance_block_bytes": 268435456,
+      "distance_block_bytes_max": 1073741824,
+      "query_block_rows": 1024,
+      "query_block_align": 128,
+      "cpu_distance_block_bytes": 134217728,
+      "cpu_query_block_rows": 256,
+      "lbfgs_history": 10,
+      "lbfgs_sketch_size": 0,
+      "lbfgs_max_line_search": 32,
+      "smo_kernel_cache_fraction": 0.05,
+      "smo_kernel_cache_min_bytes": 33554432,
+      "smo_kernel_cache_max_bytes": 2147483648,
+      "smo_max_iter_factor": 100,
+      "smo_min_iter_budget": 10000000,
+      "force_backend": "",
+      "diagnostics_capacity": 512
+    },
+    "git_head": "95517d680c1121ae8fddb2dc05a62b644a31024b",
+    "source_sha256": {
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "7b863efcc0edcba56914d242598405dadfd2667c33b0d7cd3e6d7600a3778c14",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+      "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd"
+    }
+  },
+  "source_integrity_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/rank-safe-start/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "bae2db39c7624dc53ec92b12a62eff9667f14c1894b6e9795b6c63dd2597ac35",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "efc2e98bf947df81e6c57475adbe7b419cb678c4e2bc1f15823c6dfc17ba0ea7",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.manifest.json": "5b2c4353584139cc456c8e5ec5e5614782a34d84ec55907cc797847bcc00b41b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.zip": "8eac5e9c3d38c2dc11593a545672309b6596bdeafc9e11d8f04e130c3d67cb66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "113793457303200aec092367c8eaccfce00de1aa01977c341b05a2318cf69430",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "7b863efcc0edcba56914d242598405dadfd2667c33b0d7cd3e6d7600a3778c14",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "b812ab0414a9dceac18503a54b065bd86c1182021aa26b459d8e61bcd8b0daf2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "2d29bef53f82706628a0af493568915ec7c9d1924734f8c60ed3f9fc4cb9cfda",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "cf82ae705003dc8f11719384604f1b678baf1a3e52c9d78977ac3439ec0d5b9c",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "9b927079c0a71281418b852fe5868e2f59a2d9f1654dacc5d6f954cca1d9d2d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "wide_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": false,
+        "shifted": false,
+        "ill_conditioned": false,
+        "rank_deficient": false,
+        "C": 1.0
+      },
+      "device_upload_ms": 17.856999998912215,
+      "median_ms": {
+        "baseline": 58.099812478758395,
+        "current": 29.129624948836863,
+        "sketch": 32.22066693706438,
+        "sklearn": 67.72952049504966,
+        "device": 35.30324954772368
+      },
+      "samples_ms": {
+        "baseline": [
+          58.44870791770518,
+          57.75091703981161
+        ],
+        "current": [
+          28.82162493187934,
+          29.437624965794384
+        ],
+        "sketch": [
+          32.39504189696163,
+          32.04629197716713
+        ],
+        "sklearn": [
+          72.081791004166,
+          63.377249985933304
+        ],
+        "device": [
+          33.86508300900459,
+          36.74141608644277
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              24
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 24,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.723828053305624e-06,
+                "objective": 0.18779202874451875
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 24,
+                "n_fev": 193,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.723828053305624e-06,
+                "objective": 0.18779202874451875
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 24,
+                "final_n_iter": 24,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              24
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 24,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.723828053305624e-06,
+                "objective": 0.18779202874451875
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 24,
+                "n_fev": 193,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.723828053305624e-06,
+                "objective": 0.18779202874451875
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 24,
+                "final_n_iter": 24,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              24
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 24,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.724925813410664e-06,
+                "objective": 0.18779203397855163
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 24,
+                "n_fev": 193,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.724925813410664e-06,
+                "objective": 0.18779203397855163
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 24,
+                "final_n_iter": 24,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              24
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 24,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.724925813410664e-06,
+                "objective": 0.18779203397855163
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 24,
+                "n_fev": 193,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 5.724925813410664e-06,
+                "objective": 0.18779203397855163
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 24,
+                "final_n_iter": 24,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              24
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 24,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 1.3520416359824594e-05,
+                "objective": 0.18779201570209117
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 24,
+                "n_fev": 193,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 1.3520416359824594e-05,
+                "objective": 0.18779201570209117
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 24,
+                "final_n_iter": 24,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              24
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 24,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 1.3520416359824594e-05,
+                "objective": 0.18779201570209117
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 24,
+                "n_fev": 193,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 1.3520416359824594e-05,
+                "objective": 0.18779201570209117
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 24,
+                "final_n_iter": 24,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              15
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              15
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              24
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 1.3520601896743756e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              24
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 1.3520601896743756e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.1878292178599881,
+        "gradient_max_abs_float64": 9.862497050782689e-05,
+        "nullspace_coefficient_relative": null
+      },
+      "tight_centered_sklearn_reference": null,
+      "device_represented_weight_scores": null,
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.18779203307181527,
+            "gradient_max_abs_float64": 5.724478755078634e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019797126664578113,
+            "prediction_agreement_sklearn": 0.9988
+          },
+          {
+            "objective_float64": 0.18779203307181527,
+            "gradient_max_abs_float64": 5.724478755078634e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019797126664578113,
+            "prediction_agreement_sklearn": 0.9988
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.18779203306949,
+            "gradient_max_abs_float64": 5.7247084921391255e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019797127902553165,
+            "prediction_agreement_sklearn": 0.9988
+          },
+          {
+            "objective_float64": 0.18779203306949,
+            "gradient_max_abs_float64": 5.7247084921391255e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019797127902553165,
+            "prediction_agreement_sklearn": 0.9988
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.18779201822039157,
+            "gradient_max_abs_float64": 1.3520602116959884e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019805033540766574,
+            "prediction_agreement_sklearn": 0.99875
+          },
+          {
+            "objective_float64": 0.18779201822039157,
+            "gradient_max_abs_float64": 1.3520602116959884e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019805033540766574,
+            "prediction_agreement_sklearn": 0.99875
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.1878292178599881,
+            "gradient_max_abs_float64": 9.862497050782689e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          },
+          {
+            "objective_float64": 0.1878292178599881,
+            "gradient_max_abs_float64": 9.862497050782689e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.18779201822039157,
+            "gradient_max_abs_float64": 1.3520602116959884e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019805033540766574,
+            "prediction_agreement_sklearn": 0.99875
+          },
+          {
+            "objective_float64": 0.18779201822039157,
+            "gradient_max_abs_float64": 1.3520602116959884e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.00019805033540766574,
+            "prediction_agreement_sklearn": 0.99875
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": false,
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "case": {
+        "name": "weighted_ill_1024",
+        "rows": 20000,
+        "features": 1024,
+        "seed": 83,
+        "weighted": true,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 1.0
+      },
+      "device_upload_ms": 3.2188340555876493,
+      "median_ms": {
+        "baseline": 75.56933298474178,
+        "current": 75.77579154167324,
+        "sketch": 78.07497843168676,
+        "sklearn": 211.96104196133092,
+        "device": 83.56464555254206
+      },
+      "samples_ms": {
+        "baseline": [
+          73.90545797534287,
+          77.23320799414068
+        ],
+        "current": [
+          74.87600005697459,
+          76.6755830263719
+        ],
+        "sketch": [
+          79.15504090487957,
+          76.99491595849395
+        ],
+        "sklearn": [
+          198.34537501446903,
+          225.5767089081928
+        ],
+        "device": [
+          82.63954101130366,
+          84.48975009378046
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 143,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.812494807993062e-05,
+                "objective": 0.3031276585342609
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 143,
+                "n_fev": 1145,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.812494807993062e-05,
+                "objective": 0.3031276585342609
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 143,
+                "final_n_iter": 143,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              143
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 143,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.812494807993062e-05,
+                "objective": 0.3031276585342609
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 143,
+                "n_fev": 1145,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.812494807993062e-05,
+                "objective": 0.3031276585342609
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 143,
+                "final_n_iter": 143,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              144
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 144,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.122687849099748e-05,
+                "objective": 0.30312765683487825
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 144,
+                "n_fev": 1153,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.122687849099748e-05,
+                "objective": 0.30312765683487825
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 144,
+                "final_n_iter": 144,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              144
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 144,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.122687849099748e-05,
+                "objective": 0.30312765683487825
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 144,
+                "n_fev": 1153,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.122687849099748e-05,
+                "objective": 0.30312765683487825
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 144,
+                "final_n_iter": 144,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              141
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 141,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.386072760098614e-05,
+                "objective": 0.3031261195254248
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 141,
+                "n_fev": 1129,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.386072760098614e-05,
+                "objective": 0.3031261195254248
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 141,
+                "final_n_iter": 141,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              141
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 141,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.386072760098614e-05,
+                "objective": 0.3031261195254248
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 141,
+                "n_fev": 1129,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.386072760098614e-05,
+                "objective": 0.3031261195254248
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 141,
+                "final_n_iter": 141,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              170
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              170
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              145
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 1.7945401850738563e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              145
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 1.7945401850738563e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.30312529907602037,
+        "gradient_max_abs_float64": 7.613192014952487e-05,
+        "nullspace_coefficient_relative": null
+      },
+      "tight_centered_sklearn_reference": null,
+      "device_represented_weight_scores": [
+        {
+          "objective_float64": 0.3031260798051729,
+          "gradient_max_abs_float64": 1.794540203830867e-05,
+          "nullspace_coefficient_relative": null
+        },
+        {
+          "objective_float64": 0.3031260798051729,
+          "gradient_max_abs_float64": 1.794540203830867e-05,
+          "nullspace_coefficient_relative": null
+        }
+      ],
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 7.798444130919518e-06,
+            "prediction_agreement_sklearn": 0.99975
+          },
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 7.798444130919518e-06,
+            "prediction_agreement_sklearn": 0.99975
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.3031276559322208,
+            "gradient_max_abs_float64": 3.1226584574857625e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 7.775188041411072e-06,
+            "prediction_agreement_sklearn": 0.99975
+          },
+          {
+            "objective_float64": 0.3031276559322208,
+            "gradient_max_abs_float64": 3.1226584574857625e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 7.775188041411072e-06,
+            "prediction_agreement_sklearn": 0.99975
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.30312611538450296,
+            "gradient_max_abs_float64": 4.384856791681706e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 2.692973780399245e-06,
+            "prediction_agreement_sklearn": 0.99975
+          },
+          {
+            "objective_float64": 0.30312611538450296,
+            "gradient_max_abs_float64": 4.384856791681706e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 2.692973780399245e-06,
+            "prediction_agreement_sklearn": 0.99975
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.30312529907602037,
+            "gradient_max_abs_float64": 7.613192014952487e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          },
+          {
+            "objective_float64": 0.30312529907602037,
+            "gradient_max_abs_float64": 7.613192014952487e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.3031260799737425,
+            "gradient_max_abs_float64": 1.794545638850513e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 2.576154892160802e-06,
+            "prediction_agreement_sklearn": 0.9998
+          },
+          {
+            "objective_float64": 0.3031260799737425,
+            "gradient_max_abs_float64": 1.794545638850513e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 2.576154892160802e-06,
+            "prediction_agreement_sklearn": 0.9998
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": false,
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "case": {
+        "name": "shifted_1024",
+        "rows": 20000,
+        "features": 1024,
+        "seed": 41,
+        "weighted": false,
+        "shifted": true,
+        "ill_conditioned": false,
+        "rank_deficient": false,
+        "C": 1.0
+      },
+      "device_upload_ms": 3.331625019200146,
+      "median_ms": {
+        "baseline": 13.264687440823764,
+        "current": 13.50214600097388,
+        "sketch": 13.438395515549928,
+        "sklearn": 17.71458302391693,
+        "device": 12.240062525961548
+      },
+      "samples_ms": {
+        "baseline": [
+          13.269082992337644,
+          13.260291889309883
+        ],
+        "current": [
+          13.287834008224308,
+          13.716457993723452
+        ],
+        "sketch": [
+          13.531791046261787,
+          13.344999984838068
+        ],
+        "sklearn": [
+          17.73800002411008,
+          17.69116602372378
+        ],
+        "device": [
+          11.96029200218618,
+          12.519833049736917
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.5108469140222956e-05,
+                "objective": 0.28939029337401595
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.377407822175883e-05,
+                "objective": 0.28939029202074745
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.5108469140222956e-05,
+                "objective": 0.28939029337401595
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.377407822175883e-05,
+                "objective": 0.28939029202074745
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.5108469140222956e-05,
+                "objective": 0.28939029337401595
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.377407822175883e-05,
+                "objective": 0.2893902983865235
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.5108469140222956e-05,
+                "objective": 0.28939029337401595
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.377407822175883e-05,
+                "objective": 0.2893902983865235
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              9
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 9,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 2.313490921014818e-05,
+                "objective": 0.28939032851538715
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 9,
+                "n_fev": 73,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 2.282448622281663e-05,
+                "objective": 0.2893903326585423
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 9,
+                "final_n_iter": 9,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              9
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 9,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 2.313490921014818e-05,
+                "objective": 0.28939032851538715
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 9,
+                "n_fev": 73,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 2.282448622281663e-05,
+                "objective": 0.2893903326585423
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 9,
+                "final_n_iter": 9,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              2
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              2
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              11
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 1.182990126835648e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              11
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 1.182990126835648e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.6931029998929893,
+        "gradient_max_abs_float64": 0.35094623292328453,
+        "nullspace_coefficient_relative": null
+      },
+      "tight_centered_sklearn_reference": {
+        "score": {
+          "objective_float64": 0.2893902928843651,
+          "gradient_max_abs_float64": 6.140483876165322e-08,
+          "nullspace_coefficient_relative": null
+        },
+        "n_iter": [
+          18
+        ],
+        "warnings": []
+      },
+      "device_represented_weight_scores": null,
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.289390293374016,
+            "gradient_max_abs_float64": 4.510846914058675e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.582471445919732,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.692008830124595e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.289390293374016,
+            "gradient_max_abs_float64": 4.510846914058675e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.582471445919732,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.692008830124595e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.289390293374016,
+            "gradient_max_abs_float64": 4.510846914058675e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.582471445919732,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.692008830124595e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.289390293374016,
+            "gradient_max_abs_float64": 4.510846914058675e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.582471445919732,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.692008830124595e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.2893903285153872,
+            "gradient_max_abs_float64": 2.3134909214866183e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.5824713952182183,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.2312445513510543e-07,
+            "prediction_agreement_trusted_reference": 0.9999
+          },
+          {
+            "objective_float64": 0.2893903285153872,
+            "gradient_max_abs_float64": 2.3134909214866183e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.5824713952182183,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.2312445513510543e-07,
+            "prediction_agreement_trusted_reference": 0.9999
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.6931029998929893,
+            "gradient_max_abs_float64": 0.35094623292328453,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.3950457805090934,
+            "prediction_agreement_trusted_reference": 0.5066
+          },
+          {
+            "objective_float64": 0.6931029998929893,
+            "gradient_max_abs_float64": 0.35094623292328453,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.3950457805090934,
+            "prediction_agreement_trusted_reference": 0.5066
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.28939029335403105,
+            "gradient_max_abs_float64": 1.1829841600035706e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.5824714459485659,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.6229499894370484e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.28939029335403105,
+            "gradient_max_abs_float64": 1.1829841600035706e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -0.5824714459485659,
+            "prediction_agreement_sklearn": 0.5066,
+            "objective_relative_gap_to_trusted_reference": 1.6229499894370484e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": false,
+        "trusted_centered_reference_used": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "case": {
+        "name": "rank_deficient_1024",
+        "rows": 20000,
+        "features": 1024,
+        "seed": 41,
+        "weighted": false,
+        "shifted": false,
+        "ill_conditioned": false,
+        "rank_deficient": true,
+        "C": 1000000.0
+      },
+      "device_upload_ms": 3.358124988153577,
+      "median_ms": {
+        "baseline": 9.332020475994796,
+        "current": 9.257520956452936,
+        "sketch": 11.09212450683117,
+        "sklearn": 15.05445851944387,
+        "device": 11.506771086715162
+      },
+      "samples_ms": {
+        "baseline": [
+          9.609957924112678,
+          9.054083027876914
+        ],
+        "current": [
+          9.68112493865192,
+          8.833916974253953
+        ],
+        "sketch": [
+          11.478291009552777,
+          10.705958004109561
+        ],
+        "sklearn": [
+          15.054750023409724,
+          15.054167015478015
+        ],
+        "device": [
+          11.381750111468136,
+          11.631792061962187
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605357932965
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605357932965
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605357932965
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605357932965
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605425465028
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605425465028
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              11
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 11,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605425465028
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 11,
+                "n_fev": 89,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 6.766581645933911e-05,
+                "objective": 0.3034605425465028
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 11,
+                "final_n_iter": 11,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              10
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 10,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.288323568995111e-05,
+                "objective": 0.3034599056588304
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 10,
+                "n_fev": 81,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.288323568995111e-05,
+                "objective": 0.3034599056588304
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 10,
+                "final_n_iter": 10,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              10
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 10,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.288323568995111e-05,
+                "objective": 0.3034599056588304
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 10,
+                "n_fev": 81,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 3.288323568995111e-05,
+                "objective": 0.3034599056588304
+              }
+            ],
+            "native_loop_calls": [
+              "completed"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 1,
+                "native_n_iter": 10,
+                "final_n_iter": 10,
+                "native_converged": true,
+                "outcome": "completed"
+              }
+            ],
+            "newton_calls": []
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              10
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              10
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              11
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 2.0578916519298218e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              11
+            ],
+            "converged": true,
+            "stop_reason": "gtol",
+            "gradient_max_abs": 2.0578916519298218e-05,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 0,
+            "newton_hvp_count": 0,
+            "relative_duality_gap": null,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.3034599041250907,
+        "gradient_max_abs_float64": 4.39732523368788e-05,
+        "nullspace_coefficient_relative": 0.0
+      },
+      "tight_centered_sklearn_reference": null,
+      "device_represented_weight_scores": null,
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.3034605385105642,
+            "gradient_max_abs_float64": 6.766963803171571e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": 2.090508383026174e-06,
+            "prediction_agreement_sklearn": 0.9996
+          },
+          {
+            "objective_float64": 0.3034605385105642,
+            "gradient_max_abs_float64": 6.766963803171571e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": 2.090508383026174e-06,
+            "prediction_agreement_sklearn": 0.9996
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.3034605385105642,
+            "gradient_max_abs_float64": 6.766963803171571e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": 2.090508383026174e-06,
+            "prediction_agreement_sklearn": 0.9996
+          },
+          {
+            "objective_float64": 0.3034605385105642,
+            "gradient_max_abs_float64": 6.766963803171571e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": 2.090508383026174e-06,
+            "prediction_agreement_sklearn": 0.9996
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.303459902224181,
+            "gradient_max_abs_float64": 3.2881920957259475e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": -6.264121492096846e-09,
+            "prediction_agreement_sklearn": 1.0
+          },
+          {
+            "objective_float64": 0.303459902224181,
+            "gradient_max_abs_float64": 3.2881920957259475e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": -6.264121492096846e-09,
+            "prediction_agreement_sklearn": 1.0
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.3034599041250907,
+            "gradient_max_abs_float64": 4.39732523368788e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          },
+          {
+            "objective_float64": 0.3034599041250907,
+            "gradient_max_abs_float64": 4.39732523368788e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.3034598345331854,
+            "gradient_max_abs_float64": 2.0578915498428808e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": -2.2932817267779657e-07,
+            "prediction_agreement_sklearn": 0.9999
+          },
+          {
+            "objective_float64": 0.3034598345331854,
+            "gradient_max_abs_float64": 2.0578915498428808e-05,
+            "nullspace_coefficient_relative": 0.0,
+            "objective_relative_gap_to_sklearn": -2.2932817267779657e-07,
+            "prediction_agreement_sklearn": 0.9999
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": false,
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "case": {
+        "name": "ill_conditioned_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": false,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 1.0
+      },
+      "device_upload_ms": 12.484500068239868,
+      "median_ms": {
+        "baseline": 400.4227920086123,
+        "current": 251.9932920113206,
+        "sketch": 215.65708349226043,
+        "sklearn": 545.5753334681503,
+        "device": 218.84687501005828
+      },
+      "samples_ms": {
+        "baseline": [
+          401.07958402950317,
+          399.76599998772144
+        ],
+        "current": [
+          252.7248749975115,
+          251.26170902512968
+        ],
+        "sketch": [
+          218.81666698027402,
+          212.49750000424683
+        ],
+        "sklearn": [
+          540.2537919580936,
+          550.896874978207
+        ],
+        "device": [
+          206.60687505733222,
+          231.08687496278435
+        ]
+      },
+      "fit_details": {
+        "baseline": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              173
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 173,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.3860633013537154e-05,
+                "objective": 0.26137751185595987
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_metal",
+                "n_iter": 173,
+                "n_fev": 1385,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.3860633013537154e-05,
+                "objective": 0.26137751185595987
+              }
+            ],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              173
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 173,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.3860633013537154e-05,
+                "objective": 0.26137751185595987
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_metal",
+                "n_iter": 173,
+                "n_fev": 1385,
+                "converged": true,
+                "stop_reason": "gtol",
+                "grad_max_abs": 4.3860633013537154e-05,
+                "objective": 0.26137751185595987
+              }
+            ],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          }
+        ],
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 7.926608418529213e-07,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.008788276463747025,
+                "objective": 0.26318852878268806
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 3,
+                "n_fev": 7,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26137498021125793,
+                "grad_max_abs": 7.926608418529213e-07,
+                "relative_duality_gap": 5.276222054817481e-06,
+                "hvp_count": 256,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              35
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 35,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 7.926608418529213e-07,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.008788276463747025,
+                "objective": 0.26318852878268806
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 3,
+                "n_fev": 7,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26137498021125793,
+                "grad_max_abs": 7.926608418529213e-07,
+                "relative_duality_gap": 5.276222054817481e-06,
+                "hvp_count": 256,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.2802737501260708e-06,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0020341179333627224,
+                "objective": 0.26307674918640406
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26137498021125793,
+                "grad_max_abs": 1.2802737501260708e-06,
+                "relative_duality_gap": 8.561236427340191e-06,
+                "hvp_count": 206,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.2802737501260708e-06,
+                "objective": 0.26137498021125793
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0020341179333627224,
+                "objective": 0.26307674918640406
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26137498021125793,
+                "grad_max_abs": 1.2802737501260708e-06,
+                "relative_duality_gap": 8.561236427340191e-06,
+                "hvp_count": 206,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "sklearn": [
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              161
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          },
+          {
+            "backend": "sklearn",
+            "n_iter": [
+              161
+            ],
+            "warnings": [],
+            "sketch_calls": [],
+            "solutions": [],
+            "solver_calls": [],
+            "native_loop_calls": [],
+            "native_loop_attempts": [],
+            "newton_calls": []
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.2802737501260708e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 2,
+            "newton_hvp_count": 206,
+            "relative_duality_gap": 8.561236427340191e-06,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.2802737501260708e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 2,
+            "newton_hvp_count": 206,
+            "relative_duality_gap": 8.561236427340191e-06,
+            "warnings": []
+          }
+        ]
+      },
+      "sklearn_reference_score": {
+        "objective_float64": 0.2613794159639608,
+        "gradient_max_abs_float64": 6.809879021536763e-05,
+        "nullspace_coefficient_relative": null
+      },
+      "tight_centered_sklearn_reference": null,
+      "device_represented_weight_scores": null,
+      "quality_each_fit": {
+        "baseline": [
+          {
+            "objective_float64": 0.26137751325578973,
+            "gradient_max_abs_float64": 4.385305467772707e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -7.279487422750052e-06,
+            "prediction_agreement_sklearn": 0.9996
+          },
+          {
+            "objective_float64": 0.26137751325578973,
+            "gradient_max_abs_float64": 4.385305467772707e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -7.279487422750052e-06,
+            "prediction_agreement_sklearn": 0.9996
+          }
+        ],
+        "current": [
+          {
+            "objective_float64": 0.2613749840811412,
+            "gradient_max_abs_float64": 7.926590074998076e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.6955745360733447e-05,
+            "prediction_agreement_sklearn": 0.99965
+          },
+          {
+            "objective_float64": 0.2613749840811412,
+            "gradient_max_abs_float64": 7.926590074998076e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.6955745360733447e-05,
+            "prediction_agreement_sklearn": 0.99965
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.2613749861040799,
+            "gradient_max_abs_float64": 1.280273407912169e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694800588860257e-05,
+            "prediction_agreement_sklearn": 0.99965
+          },
+          {
+            "objective_float64": 0.2613749861040799,
+            "gradient_max_abs_float64": 1.280273407912169e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694800588860257e-05,
+            "prediction_agreement_sklearn": 0.99965
+          }
+        ],
+        "sklearn": [
+          {
+            "objective_float64": 0.2613794159639608,
+            "gradient_max_abs_float64": 6.809879021536763e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          },
+          {
+            "objective_float64": 0.2613794159639608,
+            "gradient_max_abs_float64": 6.809879021536763e-05,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 0.0,
+            "prediction_agreement_sklearn": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.2613749861040799,
+            "gradient_max_abs_float64": 1.280273407912169e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694800588860257e-05,
+            "prediction_agreement_sklearn": 0.99965
+          },
+          {
+            "objective_float64": 0.2613749861040799,
+            "gradient_max_abs_float64": 1.280273407912169e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": -1.694800588860257e-05,
+            "prediction_agreement_sklearn": 0.99965
+          }
+        ]
+      },
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": false,
+        "passed": true,
+        "failures": []
+      }
+    }
+  ],
+  "reference": {
+    "archive": "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.zip",
+    "archive_sha256": "8eac5e9c3d38c2dc11593a545672309b6596bdeafc9e11d8f04e130c3d67cb66",
+    "manifest_path": "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.manifest.json",
+    "manifest_sha256": "5b2c4353584139cc456c8e5ec5e5614782a34d84ec55907cc797847bcc00b41b",
+    "native_extension": "/Users/tunguz/Programming/mlxlearn/bench/rank-safe-start/_metal_loop.abi3.so",
+    "native_extension_sha256": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "kernel_name_prefix": "wide_reference_9f4df5cf2b9a_",
+    "namespaced_kernels": [
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_direction",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_forward_search",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_accept",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_backward_bias",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_direct_forward",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_initial",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_logistic_center_stats",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_logistic_center_copy",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_logistic_center_initial",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_copy_finite",
+      "wide_reference_9f4df5cf2b9a_mlxlearn_native_lbfgs_speculative"
+    ],
+    "eager_kernel_modules": [
+      "_kernels.logistic_input",
+      "_kernels.validation",
+      "_solvers.native_logistic",
+      "_solvers.native_logistic_fused"
+    ]
+  },
+  "source_integrity_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/rank-safe-start/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "bae2db39c7624dc53ec92b12a62eff9667f14c1894b6e9795b6c63dd2597ac35",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "efc2e98bf947df81e6c57475adbe7b419cb678c4e2bc1f15823c6dfc17ba0ea7",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.manifest.json": "5b2c4353584139cc456c8e5ec5e5614782a34d84ec55907cc797847bcc00b41b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/ill-solver-start-2026-10-27.zip": "8eac5e9c3d38c2dc11593a545672309b6596bdeafc9e11d8f04e130c3d67cb66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "113793457303200aec092367c8eaccfce00de1aa01977c341b05a2318cf69430",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "7b863efcc0edcba56914d242598405dadfd2667c33b0d7cd3e6d7600a3778c14",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "b812ab0414a9dceac18503a54b065bd86c1182021aa26b459d8e61bcd8b0daf2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "2d29bef53f82706628a0af493568915ec7c9d1924734f8c60ed3f9fc4cb9cfda",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "cf82ae705003dc8f11719384604f1b678baf1a3e52c9d78977ac3439ec0d5b9c",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "9b927079c0a71281418b852fe5868e2f59a2d9f1654dacc5d6f954cca1d9d2d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_integrity_pass": true,
+  "quality_audit_pass": true
+}

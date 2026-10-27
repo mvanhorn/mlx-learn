@@ -29,8 +29,23 @@ inline float expm1_small(float x) {
     // one float32 ULP; factoring out x also preserves very small changes.
     return x*(1.0f+x*(0.5f+x*(1.0f/6.0f+x*(1.0f/24.0f+x*(1.0f/120.0f+x*(1.0f/720.0f+x*(1.0f/5040.0f+x/40320.0f)))))));
 }
+inline float log1p_stable(float x) {
+    // The loss-difference path has x in (exp(-0.5)-1, exp(0.5)-1),
+    // and softplus uses x in [0, 1]. In [-0.5, 1], r=x/(2+x) has
+    // |r| <= 1/3; the omitted atanh term is below 1.1e-9 in absolute
+    // value. This form retains x even when 1+x rounds to 1, and does not
+    // depend on the compiler preserving a compensated log(1+x) expression.
+    // Outside that interval (including near -1), use the standard logarithm.
+    if (x < -0.5f || x > 1.0f) return log(1.0f+x);
+    float r=x/(2.0f+x), z=r*r;
+    float p=1.0f/15.0f;
+    p=fma(z,p,1.0f/13.0f); p=fma(z,p,1.0f/11.0f);
+    p=fma(z,p,1.0f/9.0f);  p=fma(z,p,1.0f/7.0f);
+    p=fma(z,p,1.0f/5.0f);  p=fma(z,p,1.0f/3.0f);
+    return (2.0f*r)*fma(z,p,1.0f);
+}
 inline float softplus_stable(float z) {
-    return max(z,0.0f)+log1p(exp(-abs(z)));
+    return max(z,0.0f)+log1p_stable(exp(-abs(z)));
 }
 """
 
@@ -177,7 +192,7 @@ if(lane<CAND){float value=0;
  if(row<N && stats[1]==0 && sw[row]>0){
   float alpha=stats[8]*exp2(-float(lane)),sign=1.0f-2.0f*y[row];
   float u=sign*raw[row],dz=sign*z*alpha;
-  float diff=abs(dz)<0.5f?log1p(sigmoid_stable(u)*expm1_small(dz)):softplus_stable(u+dz)-softplus_stable(u);
+  float diff=abs(dz)<0.5f?log1p_stable(sigmoid_stable(u)*expm1_small(dz)):softplus_stable(u+dz)-softplus_stable(u);
   value=sw[row]*diff/denom;
  }
  shared[sg*CAND+lane]=value;

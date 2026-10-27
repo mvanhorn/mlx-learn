@@ -87,6 +87,21 @@ jobs:
           assert Version(mx.__version__) >= Version("0.29"), mx.__version__
           print("sklearn", sklearn.__version__, "numpy", numpy.__version__, "mlx", mx.__version__)
           PY
+      - name: GPU numerical and subinterpreter regressions
+        run: >-
+          python -m pytest -q
+          tests/unit/test_native_log1p.py
+          tests/unit/test_device_seeded_tolerance.py
+          tests/unit/test_hessian_sketch.py
+          tests/unit/test_native_command.py
+          tests/unit/test_native_logistic.py
+          tests/unit/test_native_logistic_wide.py
+          tests/unit/test_shifted_convergence.py
+          tests/unit/test_shifted_bias_precision.py
+          tests/unit/test_multinomial_bias_precision.py
+          tests/unit/test_shifted_gpu_accuracy.py
+          tests/unit/test_weighted_objective_progress.py
+          tests/unit/test_weighted_native_tolerance.py
       - name: Test
         run: python -m pytest -q --durations=25
       - name: Locked two-liner runs verbatim

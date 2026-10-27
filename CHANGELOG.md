@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Stabilized small Metal logistic loss differences against fast-math
+  reassociation so line searches retain meaningful decreases across GPU and
+  macOS versions. Weighted native fits use a small internal stopping reserve
+  to account for rounding in the running loss estimate; convergence still
+  requires the existing independent gradient and objective checks. Native
+  command-loop initialization now supports
+  isolated Python 3.12+ subinterpreters while preserving the Python 3.10
+  stable ABI and per-interpreter buffer ownership. The [compatibility report](docs/ci-compatibility-2026-10-27.md)
+  records the tests and supplemental accuracy panel.
+- Binary and multinomial intercept refinement now preserve small represented
+  loss changes with explicit stable arithmetic. This lets shifted weighted
+  softmax fits certify their original-coordinate gradients across Metal
+  implementations without changing the requested stopping tolerance.
+
 - Rechecked the three original tall-data fixtures after the solver changes:
   complete GPU fits reached 5.24×, 3.05× and 2.64× stock sklearn on the
   measured M4 Max, with independent accuracy checks on every measured fit.

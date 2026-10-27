@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import mlx.core as mx
 import numpy as np
 import pytest
@@ -99,6 +101,23 @@ def test_stalled_shifted_fit_polishes_bias_and_certifies_original_gradient(monke
     weights = rng.uniform(0.25, 3.0, n) if weighted else None
     config = LogisticConfig(C=1.0, tol=1e-4, max_iter=300, device="cpu")
 
+    # Depending on the floating-point reduction order, the unmodified fit can
+    # already converge and need no polish. Force a reproducible stalled state
+    # by perturbing the centered intercept of the actual optimizer result.
+    # Both paths therefore exercise the same represented starting parameters.
+    original_minimize = logistic.minimize
+
+    def stalled(fun, theta, optimizer_config, **kwargs):
+        state = original_minimize(fun, theta, optimizer_config, **kwargs)
+        delta = mx.zeros_like(state.x)
+        delta[0, -1] = mx.array(1e-3, dtype=state.x.dtype)
+        candidate = state.x + delta
+        value, gradient = fun(candidate)
+        return replace(state, x=candidate, objective=value,
+                       grad_max_abs=float(mx.max(mx.abs(gradient))),
+                       converged=False, stop_reason="line-search-failure")
+
+    monkeypatch.setattr(logistic, "minimize", stalled)
     original_polish = logistic._polish_binary_intercept
     monkeypatch.setattr(logistic, "_polish_binary_intercept", lambda *args: args[-1])
     before = solve_logistic(X, y, n_classes=2, sample_weight=weights, config=config)

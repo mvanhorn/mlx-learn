@@ -351,6 +351,29 @@ def test_concurrent_submissions_reap_independently_after_delayed_completion():
     assert all(ref() is None for _, refs in submissions for ref in refs)
 
 
+def test_separate_module_instances_have_independent_retention_registries():
+    loop = native_command._metal_loop
+    if loop is None:
+        pytest.skip("optional native command extension is not built")
+    spec = importlib.util.spec_from_file_location("_metal_loop", loop.__file__)
+    other = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(other)
+    loop._reap_completed()
+    before = loop._test_retained_count()
+    assert other._test_retained_count() == 0
+    token = loop._test_begin_retention(tuple(object() for _ in range(6)))
+    try:
+        loop._test_fail_waits(token, 2, 0)
+        assert loop._test_retained_count() == before + 1
+        other._reap_completed()
+        assert other._test_retained_count() == 0
+        assert loop._test_retained_count() == before + 1
+    finally:
+        loop._test_set_terminal(token)
+        loop._reap_completed()
+    assert loop._test_retained_count() == before
+
+
 def test_subinterpreter_teardown_cannot_reap_another_interpreters_owners():
     loop = native_command._metal_loop
     if loop is None:
@@ -361,7 +384,7 @@ def test_subinterpreter_teardown_cannot_reap_another_interpreters_owners():
 import importlib.util
 try:
     import _interpreters as si
-    def create(): return si.create("legacy")
+    def create(): return si.create("isolated")
 except ImportError:
     import _xxsubinterpreters as si
     def create(): return si.create()
@@ -393,6 +416,79 @@ assert si.run_string(second, "loop._reap_completed(); assert loop._test_retained
 si.destroy(second)
 main._reap_completed()
 assert main._test_retained_count() == 0
+'''.replace("__MODULE_PATH__", repr(str(Path(loop.__file__).resolve())))
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_abi3_none_returns_keep_reference_counts_balanced():
+    loop = native_command._metal_loop
+    if loop is None:
+        pytest.skip("optional native command extension is not built")
+    script = r'''
+import importlib.util
+import sys
+spec = importlib.util.spec_from_file_location('_metal_loop', __MODULE_PATH__)
+loop = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(loop)
+token = loop._test_begin_retention(tuple(object() for _ in range(6)))
+loop._test_fail_waits(token, 2, 0)
+loop._test_set_terminal(token)
+loop._reap_completed()
+before = sys.getrefcount(None)
+for _ in range(1000):
+    loop._test_set_terminal(token)
+    loop._reap_completed()
+after = sys.getrefcount(None)
+assert after >= before - 10, (before, after)
+'''.replace("__MODULE_PATH__", repr(str(Path(loop.__file__).resolve())))
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="per-interpreter GIL requires Python 3.12")
+def test_subinterpreter_registries_are_safe_during_concurrent_execution():
+    loop = native_command._metal_loop
+    if loop is None:
+        pytest.skip("optional native command extension is not built")
+    if not any(importlib.util.find_spec(name) for name in ("_interpreters", "_xxsubinterpreters")):
+        pytest.skip("this Python has no subinterpreter module")
+    script = r'''
+import threading
+try:
+    import _interpreters as si
+    def create(): return si.create("isolated")
+except ImportError:
+    import _xxsubinterpreters as si
+    def create(): return si.create()
+interpreters = [create() for _ in range(2)]
+source = """
+import importlib.util
+spec = importlib.util.spec_from_file_location('_metal_loop', %r)
+loop = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(loop)
+for _ in range(50):
+    token = loop._test_begin_retention(tuple(object() for _ in range(6)))
+    loop._test_fail_waits(token, 2, 0)
+    assert loop._test_retained_count() == 1
+    loop._test_set_terminal(token)
+    loop._reap_completed()
+    assert loop._test_retained_count() == 0
+""" % __MODULE_PATH__
+barrier = threading.Barrier(3)
+errors = []
+def execute(interpreter):
+    try:
+        barrier.wait()
+        si.run_string(interpreter, source)
+    except BaseException as error:
+        errors.append(repr(error))
+threads = [threading.Thread(target=execute, args=(interpreter,)) for interpreter in interpreters]
+for thread in threads: thread.start()
+barrier.wait()
+for thread in threads: thread.join()
+for interpreter in interpreters: si.destroy(interpreter)
+assert not errors, errors
 '''.replace("__MODULE_PATH__", repr(str(Path(loop.__file__).resolve())))
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
