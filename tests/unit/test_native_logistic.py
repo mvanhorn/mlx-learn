@@ -348,9 +348,26 @@ def test_native_direct_objective_matches_generic_for_tail_blocks(weighted, fit_i
     value, gradient = native(theta)
     expected_value, expected_gradient = generic(theta)
 
-    assert value == pytest.approx(expected_value, abs=5e-8, rel=1e-7)
+    # Two independent float32 reductions can differ by more than either one's
+    # rounding error, especially across GPU generations. Check both against
+    # the represented input and parameter values in float64. Two float32 ULPs
+    # at the loss magnitude permit the observed reduction rounding while still
+    # detecting an incorrect objective or penalty.
+    represented = np.asarray(theta, dtype=np.float64)
+    coef = represented[:, :X.shape[1]]
+    intercept = represented[:, -1] if fit_intercept else np.zeros(1)
+    exact = reference_objective(
+        coef, intercept, X, y.astype(int), n_classes=2, C=C, sample_weight=weights,
+    )
+    objective_atol = 2 * abs(float(np.spacing(np.float32(exact))))
+    assert value == pytest.approx(exact, abs=objective_atol, rel=0)
+    assert expected_value == pytest.approx(exact, abs=objective_atol, rel=0)
     np.testing.assert_allclose(
         np.asarray(gradient), np.asarray(expected_gradient), atol=1e-7, rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        np.asarray(gradient)[0], _float64_gradient(theta, X, y, weights, l2, fit_intercept),
+        atol=1e-7, rtol=1e-6,
     )
 
 

@@ -60,7 +60,8 @@ def test_production_shifted_fit_certifies_original_gradient(
 
     assert model.execution_backend_ == "mlx"
     assert 0 < int(model.n_iter_[0]) <= 200
-    assert not [w for w in seen if issubclass(w.category, ConvergenceWarning)]
+    convergence_warnings = [str(w.message) for w in seen if issubclass(w.category, ConvergenceWarning)]
+    assert not convergence_warnings, convergence_warnings
     if n_classes == 2 and native_command._metal_loop is not None and native_command._supports_metal_dlpack():
         # The command loop may legitimately return None when a direct check
         # needs reanchoring; in that case the established GPU solver continues.

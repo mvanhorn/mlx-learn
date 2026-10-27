@@ -67,10 +67,8 @@ def _source(n, d, p, m, cand, blocks, groups, rows, feature_groups, weighted=Fal
     if direction_threads not in (32, 256):
         raise ValueError("unsupported direction thread count")
     defines = f"#define DIRECTION_THREADS {direction_threads}\n#define THREADS DIRECTION_THREADS\n#define N {n}\n#define D {d}\n#define P {p}\n#define M {m}\n#define CAND {cand}\n#define B {blocks}\n#define GROUPS {groups}\n#define ROWS {rows}\n#define FEATURE_GROUPS {feature_groups}\n#define WEIGHTED {int(weighted)}\n"
-    # The MLX JIT includes its own accurate log1p helper; the two call sites
-    # here use finite arguments between -1 and 1. Preserve small increments.
-    log1p = "inline float log1p(float x){float y=1.0f+x;return y==1.0f?x:x*(log(y)/(y-1.0f));}\n"
-    header = "#include <metal_stdlib>\nusing namespace metal;\n" + defines + log1p + _kernel_source(core, "_REDUCE") + _kernel_source(core, "_DIRECTION_REDUCE")
+    # Both MLX and the command loop use the same explicit small-loss helper.
+    header = "#include <metal_stdlib>\nusing namespace metal;\n" + defines + _kernel_source(core, "_REDUCE") + _kernel_source(core, "_DIRECTION_REDUCE")
     def inputs(*names):
         return [("device const float*", name) for name in names]
 
@@ -148,6 +146,22 @@ def _supports_metal_dlpack():
     return re.fullmatch(r"0\.32\.(?:0|[1-9]\d{0,2})", version) is not None
 
 
+def _native_loop_tol(requested, weighted):
+    """Reserve weighted progress margin and round down to float32.
+
+    The native running loss is an estimate; the caller recomputes the final
+    objective independently. A tighter internal tolerance leaves room for
+    their rounding difference without relaxing the final acceptance check.
+    Never increase a subnormal requested tolerance to the normal minimum.
+    """
+    minimum_normal = np.finfo(np.float32).tiny
+    target = max(min(requested, minimum_normal), 0.95 * requested) if weighted else requested
+    rounded = np.float32(target)
+    if float(rounded) > target:
+        rounded = np.nextafter(rounded, np.float32(0))
+    return float(rounded)
+
+
 def run_native_loop(
     X, y, sw, sw_sum, l2, fit_intercept, config, fun, *, initial_parts=None,
     convergence_center=None, initial_history=None, return_attempt=False,
@@ -222,11 +236,9 @@ def run_native_loop(
     # source specialization consistent until that extension is rebuilt.
     direction_threads = 256 if d >= 2048 and hasattr(_metal_loop, "run_cg") else 32
     src = _source(n, d, p, config.history_size, 8, blocks, groups, rows, feature_groups, weighted, direction_threads)
-    tol = np.float32(config.tol)
-    if float(tol) > config.tol:
-        tol = np.nextafter(tol, np.float32(0))
+    tol = _native_loop_tol(config.tol, weighted)
     arguments = (src, capsules, n, d, p, config.history_size, blocks, groups,
-                 config.max_iter, float(np.float32(sw_sum)), float(tol), config.c1,
+                 config.max_iter, float(np.float32(sw_sum)), tol, config.c1,
                  config.min_curvature, owners, center.tobytes())
     if weighted:
         arguments += (seed_capsules, seed_count, None, 1)

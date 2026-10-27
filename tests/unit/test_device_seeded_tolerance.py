@@ -103,7 +103,10 @@ def test_ill_conditioned_weighted_sketch_passes_independent_certificate():
         warnings.simplefilter("always")
         model = fit_logistic(mx.array(X), mx.array(y), sample_weight=mx.array(weights), max_iter=200, sketch_size=4)
         unseeded = fit_logistic(mx.array(X), mx.array(y), sample_weight=mx.array(weights), max_iter=200, sketch_size=0)
-        assert not caught and model.converged and unseeded.converged
+        assert not caught and model.converged and unseeded.converged, (
+            [str(w.message) for w in caught], model.stop_reason, unseeded.stop_reason,
+            model.gradient_max_abs, unseeded.gradient_max_abs,
+        )
         assert not model.used_unsketched_fallback_ and model.n_iter <= 200
 
         def score(fit):

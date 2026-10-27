@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <list>
@@ -253,13 +254,17 @@ static PyObject* test_set_terminal(PyObject*, PyObject* capsule) {
     if (!token) return nullptr;
     token->buffer->current_status.store(MTLCommandBufferStatusCompleted);
     token->buffer->status_failures.store(0);
-    Py_RETURN_NONE;
+    // A wheel built with Python 3.13 headers can run on Python 3.10/3.11,
+    // where None is not immortal. Py_RETURN_NONE in 3.13 assumes immortality.
+    Py_IncRef(Py_None);
+    return Py_None;
 }
 
 static PyObject* reap_completed(PyObject* module, PyObject*) {
     try { reap_retained_work(module_registry(module)); }
     catch (const std::exception& e) { PyErr_SetString(PyExc_RuntimeError,e.what()); return nullptr; }
-    Py_RETURN_NONE;
+    Py_IncRef(Py_None);
+    return Py_None;
 }
 
 static PyObject* test_retained_count(PyObject* module, PyObject*) {
@@ -590,7 +595,9 @@ static PyObject* run(PyObject* module, PyObject* args) {
         }
         }
         if(!failure.empty()) throw std::runtime_error(failure);
-        PyObject* bytes=device_io ? Py_NewRef(Py_None) : PyBytes_FromStringAndSize(static_cast<const char*>(w[cur].contents()),Py_ssize_t(p)*4);
+        PyObject* bytes;
+        if(device_io) { Py_IncRef(Py_None); bytes=Py_None; }
+        else bytes=PyBytes_FromStringAndSize(static_cast<const char*>(w[cur].contents()),Py_ssize_t(p)*4);
         if (!bytes) return nullptr;
         float* final_meta=static_cast<float*>(meta[cur].contents());
         PyObject* result=Py_BuildValue("Niiidd",bytes,n_iter,status,n_fev,double(final_meta[10]),double(final_meta[4]));
@@ -637,18 +644,45 @@ static void free_module(void* instance) {
     if (!has_unresolved) delete registry;
 }
 
-static struct PyModuleDef module={PyModuleDef_HEAD_INIT,"_metal_loop",nullptr,sizeof(ModuleState),methods,nullptr,nullptr,nullptr,free_module};
-PyMODINIT_FUNC PyInit__metal_loop(void) {
-    PyObject* result = PyModule_Create(&module);
-    if (!result) return nullptr;
+// Multi-phase initialization is required for import in Python 3.12's
+// subinterpreters. Each module instance has its own registry, including when
+// a subinterpreter is destroyed and another is created in the same process.
+// Py_mod_exec and PyModuleDef_Init are part of the Python 3.10 limited ABI.
+static int exec_module(PyObject* instance) {
     try {
-        auto* state = static_cast<ModuleState*>(PyModule_GetState(result));
+        auto* state = static_cast<ModuleState*>(PyModule_GetState(instance));
         if (!state) throw std::runtime_error("cannot initialize Metal retention registry");
-        state->registry = new std::shared_ptr<RetentionRegistry>(std::make_shared<RetentionRegistry>());
+        if (!state->registry)
+            state->registry = new std::shared_ptr<RetentionRegistry>(std::make_shared<RetentionRegistry>());
     } catch (const std::exception& e) {
-        Py_DECREF(result);
         PyErr_SetString(PyExc_RuntimeError,e.what());
+        return -1;
+    }
+    return 0;
+}
+
+static PyModuleDef_Slot legacy_slots[] = {
+    {Py_mod_exec, reinterpret_cast<void*>(exec_module)},
+    {0, nullptr}
+};
+// Python 3.12 isolated subinterpreters have their own GIL. The extension's
+// owner registries are per-module and its process-wide pipeline caches are
+// protected by mutexes, so it supports those interpreters. The new slot and
+// its value are ABI constants (3 and 2), but are hidden from headers compiled
+// with the Python 3.10 limited API. Do not pass the new slot to Python 3.10 or
+// 3.11, which reject unrecognized slots.
+static PyModuleDef_Slot isolated_slots[] = {
+    {Py_mod_exec, reinterpret_cast<void*>(exec_module)},
+    {3, reinterpret_cast<void*>(2)},  // Py_mod_multiple_interpreters, per-interpreter GIL
+    {0, nullptr}
+};
+static struct PyModuleDef legacy_module={PyModuleDef_HEAD_INIT,"_metal_loop",nullptr,sizeof(ModuleState),methods,legacy_slots,nullptr,nullptr,free_module};
+static struct PyModuleDef isolated_module={PyModuleDef_HEAD_INIT,"_metal_loop",nullptr,sizeof(ModuleState),methods,isolated_slots,nullptr,nullptr,free_module};
+PyMODINIT_FUNC PyInit__metal_loop(void) {
+    int major=0, minor=0;
+    if (std::sscanf(Py_GetVersion(), "%d.%d", &major, &minor) != 2) {
+        PyErr_SetString(PyExc_RuntimeError,"cannot determine Python runtime version");
         return nullptr;
     }
-    return result;
+    return PyModuleDef_Init((major>3 || (major==3 && minor>=12)) ? &isolated_module : &legacy_module);
 }

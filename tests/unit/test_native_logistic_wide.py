@@ -122,7 +122,9 @@ def test_step_uses_the_accepted_candidates_gradient(inverse_scale, alpha, candid
     # The rank-one fixture cancels residuals from both classes almost exactly.
     # The unchanged fallback reduction accumulates longer same-sign blocks,
     # losing a few ULPs relative to float64. Require it to match a fresh native
-    # evaluation exactly; the shorter speculative sums meet a tighter bound.
+    # evaluation exactly. For the speculative path, the residuals being summed
+    # are close to +/-0.5: two float32 ULPs at that magnitude bound the
+    # observed cancellation error across GPU generations.
     if not first:
         direct = _native_binary_objective(mx.array(X), mx.array(y), None, float(len(X)), 0.0, False)
         _, direct_gradient = direct(w.reshape(1, -1))
@@ -131,8 +133,14 @@ def test_step_uses_the_accepted_candidates_gradient(inverse_scale, alpha, candid
         np.asarray(gradient),
         expected,
         rtol=2e-4,
-        atol=8e-8 if first else 8 * np.finfo(np.float32).eps,
+        atol=2 * float(np.spacing(np.float32(0.5))) if first else 8 * np.finfo(np.float32).eps,
     )
+    if first and alpha == 2.0**-8:
+        # The accepted candidate nearly cancels the initial gradient. This
+        # must not pass by reusing the zero-parameter or unit-step gradient.
+        assert abs(float(gradient[0]) - (0.5 - y).mean()) > 1e-3
+        wrong_raw = -inverse_scale * (0.5 - y).mean() * X.shape[1]
+        assert abs(float(gradient[0]) - (expit(wrong_raw) - y.mean())) > 1e-3
     if not first:
         original_gradient = (0.5 - y).mean()
         wrong_raw = -inverse_scale * original_gradient * X.shape[1]

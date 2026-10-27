@@ -330,7 +330,9 @@ def fit_logistic(
                 owners += (seed_capsules, *seed_values)
             device_buffers = (center.__dlpack__(), output.__dlpack__())
             owners += (device_buffers, center, output)
-            native_tol = _seeded_native_tol(device_tol) if seed_values is not None and seed_count else device_tol
+            # Reserve once for seeded or weighted execution. The compensated
+            # final score and its original safety margin remain authoritative.
+            native_tol = _seeded_native_tol(device_tol) if (weighted or (seed_values is not None and seed_count)) else device_tol
             arguments = (
                 source, capsules, n, d, d + 1, 10, blocks, groups, budget,
                 sw_sum, native_tol, 1e-4, 1e-12, owners, b"",

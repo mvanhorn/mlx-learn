@@ -59,7 +59,7 @@ for(uint rr=0;rr<ROWS;++rr){
   float sign=1-2*y[row],u=sign*raw[row];
   if(fs==0 && lane<CAND){
    float alpha=alpha0*exp2(-float(lane)),dz=sign*z*alpha;
-   float diff=abs(dz)<.5f?log1p(sigmoid_stable(u)*expm1_small(dz)):softplus_stable(u+dz)-softplus_stable(u);
+   float diff=abs(dz)<.5f?log1p_stable(sigmoid_stable(u)*expm1_small(dz)):softplus_stable(u+dz)-softplus_stable(u);
    local_loss+=sw[row]*diff/denom;
   }
   if(lane==0){first_residual=sw[row]*sign*sigmoid_stable(sign*fma(alpha0,z,raw[row]));if(fs==0)local_bias+=first_residual;}
