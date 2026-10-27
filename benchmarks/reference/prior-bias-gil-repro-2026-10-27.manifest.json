@@ -1,0 +1,20 @@
+{
+  "description": "Isolated hard-timeout MLX prior-bias hang reproductions. Original and explicit-intermediate-retention variants both exceeded 15 seconds and were killed; Python stacks locate the blocking mx.synchronize. No production code changed. A C stack in the separate prior-bias-hang archive indicates completion callback waits for GIL.",
+  "archive": {
+    "filename": "prior-bias-gil-repro-2026-10-27.zip",
+    "sha256": "b6ef40e54bba2e918c5c3cea5016bba3b22c074964c80ba59ad62604561df75d"
+  },
+  "files": {
+    "run_repro.py": "514faac28619cffac030ef96c4236887dc7760a88ef329c652c10ac5ab82cdeb",
+    "test_single.py": "8bd29ede8d0f3e0d08ae902e30b21b33c4e588e90ae0691d1017fda7c520aafd",
+    "repro.log": "fec14dfd45aa2c34b4b3815e90b0a0fbb46457d1f17440e7f304073488173025",
+    "repro-results.json": "e08deac8c9bbdc6683a3ca852a12b41a454f71f46d9f4ea5cac0ec5e42e0c3ee",
+    "candidate-repro.log": "1b10a58f78b3c81f008556c95c0a99cf1edcadca3fe7f1198de0f7440dad9f61",
+    "pinned-repro.log": "11a2b28961f95a96cc0ba7f74f65eff257058b0db7eb33aaa5db15e92684407a",
+    "candidate/mlxlearn/_solvers/native_command.py": "46a9b38fabf78396aa248c2fd098fe0229b536d1d883ef754d161f15f1b0e170",
+    "candidate/mlxlearn/_solvers/_metal_loop.mm": "7e15a3a00f51c475d91964b000c388af8967d6f7d01d824cbfa412a669ad3131",
+    "pinned/mlxlearn/_solvers/native_command.py": "28acdf5414d543cf464886ef449a3d023c699e040dd26ff4715957c305365e67"
+  },
+  "candidate_binary_sha256": "aaa597108af73d5c77d238b95522deca5a11d95921ffa312f5374b18cf0c2c68",
+  "pinned_binary_sha256": "aaa597108af73d5c77d238b95522deca5a11d95921ffa312f5374b18cf0c2c68"
+}

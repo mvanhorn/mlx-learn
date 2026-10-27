@@ -1,10 +1,62 @@
 # Benchmarks
 
-Every number here was measured. Reproduce with:
+The [rerun of the three original tall datasets](tall-logistic-recheck-2026-10-27.md)
+measures 5.24×, 3.05× and 2.64× sklearn speedups for 500,000 × 32,
+500,000 × 128 and 60,000 × 1,024, with every measured fit independently
+checked for accuracy. It follows the 1,118-test full-suite pass.
+
+For the latest development logistic GPU implementation, completed benchmark
+panels and validation status, see the
+[cooperative L-BFGS and guarded Newton report](rank-safe-newton-performance-2026-10-27.md).
+It includes independent tight references and general rank-deficiency tests,
+with remaining speed limitations and failed historical comparisons retained. The
+[preceding ill-conditioned solver investigation](ill-conditioned-hvp-investigation-2026-10-27.md)
+records the earlier unresolved gap and rejected correction candidates.
+The previous [wide accuracy and device-sketch report](wide-accuracy-device-repair-2026-10-27.md)
+records the preceding development measurements.
+
+The development version uses native Metal C++ kernels for binary GPU logistic
+regression. The [earlier overhead comparison](overhead-logistic-benchmarks.md)
+measures complete fits against a frozen copy of the previous wide implementation
+and stock scikit-learn, with all raw samples, stage profiling, timing variability,
+and convergence/quality diagnostics. Its reproduction commands include the exact
+reference archive. The [native command-loop comparison](native-loop-optimization-2026-10-26.md)
+records the subsequent lifetime fix, adaptive scheduling, accuracy checks and mixed timings.
+The [earlier prototype comparison](metal-command-benchmarks.md) is historical.
+The [previous wide comparison](wide-logistic-benchmarks.md)
+records the preceding matrix-kernel changes.
+The [preceding native comparison](native-logistic-benchmarks.md) records the
+earlier optimizer changes and tall-data results.
+The [earlier fusion comparison](gpu-logistic-benchmarks.md) remains available as
+the intermediate optimization baseline.
+The measurements below describe the **0.1.0a2 baseline**, including the earlier
+logistic solver. Current dispatch decisions are documented with the wide results.
+
+The linked timing panels are historical and predate the current shifted-input
+convergence changes. The [convergence investigation](convergence-accuracy-2026-10-27.md)
+records an earlier single-step wide progress rule, including a 9–11% slowdown
+on tested 20,000 × 4,096 fits, a separate `C=10` counterexample, and the
+revised two-step average. The revised rule passed the full suite and targeted
+panel, with 12.9–14.1% slower 4,096-feature fits than the frozen baseline; the
+full panel also passed, with 12.1–14.5% slower 4,096-feature fits. The stopping
+condition and selective CPU float64 certificate are
+heuristics rather than universal accuracy guarantees; four severely shifted
+multinomial stress cases still report nonconvergence. The original-coordinate
+certificate may add host scoring passes when it is triggered.
+
+The later [device and Hessian-sketch report](gpu-hessian-device-logistic-2026-10-27.md)
+describes the new GPU sketch and NumPy-free runtime path; its final validation
+and same-input measurements supersede the historical panels for those paths.
+
+The current dispatch benchmark can be run with:
 
 ```bash
 python -m benchmarks.run --profile smoke --report bench/report.md
 ```
+
+Reproducing the historical measurements below requires the 0.1.0a2 source and
+its recorded environment; running that command on development code measures the
+updated implementation.
 
 ## Method
 

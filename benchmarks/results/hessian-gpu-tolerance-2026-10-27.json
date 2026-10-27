@@ -1,0 +1,334 @@
+[
+  {
+    "kind": "weighted_ill1024",
+    "sklearn": {
+      "objective": 0.30312529907602037,
+      "gradient_max": 7.613192014952487e-05,
+      "gradient_l2": 0.00030423994398105
+    },
+    "sklearn_warnings": [],
+    "models": [
+      {
+        "factor": 1,
+        "ms": 110.41583400219679,
+        "iterations": [
+          46
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.3040051437251289,
+          "gradient_max": 7.524886674637039e-05,
+          "gradient_l2": 0.0005192070160781995,
+          "relative_gap_to_sklearn": 0.0029025774219124238
+        }
+      },
+      {
+        "factor": 0.5,
+        "ms": 80.80741704907268,
+        "iterations": [
+          143
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.3031276629817299,
+          "gradient_max": 4.8118025864593096e-05,
+          "gradient_l2": 0.00020860534179419958,
+          "relative_gap_to_sklearn": 7.798444130919518e-06
+        }
+      },
+      {
+        "factor": 0.25,
+        "ms": 83.04362499620765,
+        "iterations": [
+          148
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.3031276194624917,
+          "gradient_max": 2.0565712190211933e-05,
+          "gradient_l2": 0.00010760092617721787,
+          "relative_gap_to_sklearn": 7.654875651844196e-06
+        }
+      },
+      {
+        "factor": 0.1,
+        "ms": 241.15579202771187,
+        "iterations": [
+          200
+        ],
+        "warnings": [
+          "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 0.000582 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+        ],
+        "quality": {
+          "objective": 0.3031271932488715,
+          "gradient_max": 0.0005818394403483887,
+          "gradient_l2": 0.0012274172106508782,
+          "relative_gap_to_sklearn": 6.2488114878512665e-06
+        }
+      },
+      {
+        "factor": 0.05,
+        "ms": 231.7977499915287,
+        "iterations": [
+          200
+        ],
+        "warnings": [
+          "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 0.000582 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+        ],
+        "quality": {
+          "objective": 0.3031271932488715,
+          "gradient_max": 0.0005818394403483887,
+          "gradient_l2": 0.0012274172106508782,
+          "relative_gap_to_sklearn": 6.2488114878512665e-06
+        }
+      }
+    ]
+  },
+  {
+    "kind": "ill4096",
+    "sklearn": {
+      "objective": 0.2613794159639608,
+      "gradient_max": 6.809879021536763e-05,
+      "gradient_l2": 0.000735506479810254
+    },
+    "sklearn_warnings": [],
+    "models": [
+      {
+        "factor": 1,
+        "ms": 398.22049997746944,
+        "iterations": [
+          159
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.26138459340607156,
+          "gradient_max": 6.849034906806382e-05,
+          "gradient_l2": 0.000568018767269847,
+          "relative_gap_to_sklearn": 1.9808147828571308e-05
+        }
+      },
+      {
+        "factor": 0.5,
+        "ms": 844.7334169177338,
+        "iterations": [
+          173
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.26137823975144625,
+          "gradient_max": 3.43967061140638e-05,
+          "gradient_l2": 0.000213053027671977,
+          "relative_gap_to_sklearn": -4.500019675288085e-06
+        }
+      },
+      {
+        "factor": 0.25,
+        "ms": 851.859207963571,
+        "iterations": [
+          177
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.26137820063288864,
+          "gradient_max": 2.4951351840210025e-05,
+          "gradient_l2": 0.00013842860602632115,
+          "relative_gap_to_sklearn": -4.6496816426283e-06
+        }
+      },
+      {
+        "factor": 0.1,
+        "ms": 912.3050830094144,
+        "iterations": [
+          200
+        ],
+        "warnings": [
+          "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 4.8e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+        ],
+        "quality": {
+          "objective": 0.26137813907912727,
+          "gradient_max": 4.798535394050494e-05,
+          "gradient_l2": 0.00018436595919429956,
+          "relative_gap_to_sklearn": -4.885177468260673e-06
+        }
+      },
+      {
+        "factor": 0.05,
+        "ms": 902.0776250399649,
+        "iterations": [
+          200
+        ],
+        "warnings": [
+          "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 4.8e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+        ],
+        "quality": {
+          "objective": 0.26137813907912727,
+          "gradient_max": 4.798535394050494e-05,
+          "gradient_l2": 0.00018436595919429956,
+          "relative_gap_to_sklearn": -4.885177468260673e-06
+        }
+      }
+    ]
+  },
+  {
+    "kind": "normal1024",
+    "sklearn": {
+      "objective": 0.2886925467210108,
+      "gradient_max": 6.149074610478589e-05,
+      "gradient_l2": 0.0006660188415021581
+    },
+    "sklearn_warnings": [],
+    "models": [
+      {
+        "factor": 1,
+        "ms": 10.245874989777803,
+        "iterations": [
+          8
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886928342019951,
+          "gradient_max": 7.336463016347949e-05,
+          "gradient_l2": 0.0007353766967086029,
+          "relative_gap_to_sklearn": 9.958032777807386e-07
+        }
+      },
+      {
+        "factor": 0.5,
+        "ms": 7.4581250082701445,
+        "iterations": [
+          9
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907868872581,
+          "gradient_max": 5.9542220662051614e-06,
+          "gradient_l2": 5.7660235376683124e-05,
+          "relative_gap_to_sklearn": -6.095875257992987e-06
+        }
+      },
+      {
+        "factor": 0.25,
+        "ms": 8.610666962340474,
+        "iterations": [
+          9
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907868872581,
+          "gradient_max": 5.9542220662051614e-06,
+          "gradient_l2": 5.7660235376683124e-05,
+          "relative_gap_to_sklearn": -6.095875257992987e-06
+        }
+      },
+      {
+        "factor": 0.1,
+        "ms": 9.15662501938641,
+        "iterations": [
+          9
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907868872581,
+          "gradient_max": 5.9542220662051614e-06,
+          "gradient_l2": 5.7660235376683124e-05,
+          "relative_gap_to_sklearn": -6.095875257992987e-06
+        }
+      },
+      {
+        "factor": 0.05,
+        "ms": 10.183417005464435,
+        "iterations": [
+          10
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907704473605,
+          "gradient_max": 2.302660743031787e-06,
+          "gradient_l2": 2.0978586333857905e-05,
+          "relative_gap_to_sklearn": -6.152821298828209e-06
+        }
+      }
+    ]
+  },
+  {
+    "kind": "shift1024",
+    "sklearn": {
+      "objective": 0.6931273326945622,
+      "gradient_max": 0.3614812626967132,
+      "gradient_l2": 0.3783811119053983
+    },
+    "sklearn_warnings": [],
+    "models": [
+      {
+        "factor": 1,
+        "ms": 14.61583306081593,
+        "iterations": [
+          9
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.288690776356362,
+          "gradient_max": 7.958553735871874e-05,
+          "gradient_l2": 0.0023707967003469025,
+          "relative_gap_to_sklearn": -0.5834953222316825
+        }
+      },
+      {
+        "factor": 0.5,
+        "ms": 14.822458033449948,
+        "iterations": [
+          11
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907564208044,
+          "gradient_max": 7.625480781189253e-06,
+          "gradient_l2": 0.00022279824727202476,
+          "relative_gap_to_sklearn": -0.5834953509934362
+        }
+      },
+      {
+        "factor": 0.25,
+        "ms": 15.306584071367979,
+        "iterations": [
+          11
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907564208044,
+          "gradient_max": 7.625480781189253e-06,
+          "gradient_l2": 0.00022279824727202476,
+          "relative_gap_to_sklearn": -0.5834953509934362
+        }
+      },
+      {
+        "factor": 0.1,
+        "ms": 15.584958950057626,
+        "iterations": [
+          11
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907564208044,
+          "gradient_max": 7.625480781189253e-06,
+          "gradient_l2": 0.00022279824727202476,
+          "relative_gap_to_sklearn": -0.5834953509934362
+        }
+      },
+      {
+        "factor": 0.05,
+        "ms": 23.94008298870176,
+        "iterations": [
+          15
+        ],
+        "warnings": [],
+        "quality": {
+          "objective": 0.2886907560222198,
+          "gradient_max": 9.63799438454771e-07,
+          "gradient_l2": 3.045276259066407e-05,
+          "relative_gap_to_sklearn": -0.5834953515684888
+        }
+      }
+    ]
+  }
+]

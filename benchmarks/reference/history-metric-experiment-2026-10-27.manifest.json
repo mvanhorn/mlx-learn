@@ -1,0 +1,11 @@
+{
+  "description": "Exploratory scalar-metric native L-BFGS history sizes, source only.",
+  "archive": {
+    "filename": "history-metric-experiment-2026-10-27.zip",
+    "sha256": "027d6d73b41bb425769c6a2545a9d3d09a26d919a8cb3e66ceaf803ba64b5540"
+  },
+  "files": {
+    "README.md": "8314ed957730d9e088f2633eed692a7b2919e9a56d9707c4f5771168dd4f7717",
+    "experiment.py": "49b3eed61c46b76acf2b0427ce50f34b04f38490e38858ead704fed809174cd9"
+  }
+}

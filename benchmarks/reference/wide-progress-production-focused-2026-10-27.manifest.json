@@ -1,0 +1,22 @@
+{
+  "description": "Production wide-progress source, regression tests and focused build/test evidence, captured immediately after test.",
+  "archive": {
+    "filename": "wide-progress-production-focused-2026-10-27.zip",
+    "sha256": "c68ef2a332e347c0f3ee3b8b7bd8efb9fba22b670e0cbe0637d5a08f083d044a"
+  },
+  "files": {
+    "src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "tests/unit/test_wide_tight_objective.py": "33db1058303f009b3b96873916617e43f5b952a9eaafcfc5f15d77ab59ee406a",
+    "tests/unit/test_logistic_wide_objective_regression.py": "7de0086624ab04cdbd179ac79b676c6dc5d0a409b1a3455c6fe001b93d62f0b0",
+    "tests/unit/test_native_command.py": "5d4dac91f559c3febe3989fac75e499049a02df2a050815be91b9533aed914a7",
+    "tests/unit/test_device_logistic.py": "ac5fe4e5d6451672a7878ecebfd266cb7a32dd0cfd5d86bf3bcc668edcd126c6",
+    "bench/wide_accuracy_candidate/production-build.log": "41a549381530dfc49430a0388c35d8edb6cb9a3fd8a25715cc41d361ca73c816",
+    "bench/wide_accuracy_candidate/production-focused-final.log": "a5b5ffe7b256937e9478492045f4219cbef050e5571748e7924e0a41efab2956"
+  },
+  "native_binary_sha256": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+  "provenance": "Source hashes were captured after the test, not compared before and after the test."
+}

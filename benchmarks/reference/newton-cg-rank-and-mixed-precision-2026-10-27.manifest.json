@@ -1,0 +1,43 @@
+{
+  "description": "Scratch fused FP32 and FP16-HVP/refinement continuation; both rejected as a general solver because exact 3-way rank null-space was not preserved.",
+  "archive": {
+    "filename": "newton-cg-rank-and-mixed-precision-2026-10-27.zip",
+    "sha256": "9a5399f43374cdb2237edb805f442096d55bbab2f70f2b0e8c6ac99832b08120"
+  },
+  "files": {
+    "continuation_mixed.py": "f1b35ac66eaebaf08a268a994bdf8e735b81774a17cee2d03e0c108f1745ebd1",
+    "continuation_mixed-v1.py": "36a726abab4f3c79aa74feec22a6cc44cd129b8cb56efbd16806e91febf8b8f3",
+    "continuation_mixed-v2.py": "d67c142a4247882d8ef8669e6e9adaeca340f46cf141869b444bdfa36d0cbed2",
+    "continuation_fp32_general.py": "1c2703000ceefd3fe6d58993b17512224ccd5882a4a5d4916cbf39bd513d7fb0",
+    "continuation_fp32_general-v1.py": "889da069213dfe21d144bd258324c005083fc3a124e633b2ad8779ce76cc8de9",
+    "mixed_experiment.py": "a3b0f4f9b6fd598e52087546192f9c7c1a11ca8b947de6b169e341d7f4546ef7",
+    "fused_experiment_stable.py": "7f44bc92c868efb10348073760ed868748fa81465e6b5cef5c5718d4e5bace05",
+    "fused_hvp_mixed.py": "8c740ff85781f1be4fd3d90d45e740a7b3f93a9f16602bb65c4b5380c28e98d3",
+    "fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "tight_reference.py": "18e0f84b7eaf8da5f5ac9c0d20b12de64a25ccfb7fac27be5557de738ee854da",
+    "tight-reference.log": "b2e301e0a415dbdb9ccefcc88de36a3e62454d854108d2c350ff21ffff45c68f",
+    "tight-reference.json": "a7ec6fd016aab6cd92bd059371ac306039d0593ffaf78bdaeac14ce318122260",
+    "mixed-ill41.json": "8286b5bd98c89a8d2af70c32fb2af065f8ab885f9b3c53f127bf05fbf8aa7915",
+    "mixed-ill41.log": "1dfe63639b703ac677f15968336c532f06cee5ecc15e8af030019fe7d361d297",
+    "mixed-rankgeneral41.json": "1de1435d5eb12c101eadb37392085f9607a99c409ca4bd7e04ac89985f2b5334",
+    "mixed-rankgeneral41.log": "cbfc327c6b078dd78b81198f7930933e64148cf85d7df881e18832580db4c7e8",
+    "fp32-rankgeneral41.json": "0030815466f214481ac7f78cc3d9c123b10fe190a2164d723c179eb1da34b4fa",
+    "fp32-rankgeneral41.log": "611b374f5081478aca970c97654171afca7755c4b15e8b69512aca758cb1108a",
+    "fp32-rankgeneral41-early80.json": "14a7db94ebd4857d4a582f87986b239f27ba6a771f654b8acd3a92679afb2c4e",
+    "fp32-rankgeneral41-early80.log": "2976ab39e29f3c62b99da7ad158eb24dc34a1ed9d6f611f9df368ff85ab3de44",
+    "fp32-rankgeneral41-noisy.json": "f290a4d9edaadb928f5f1483f0f07e156734722af0d6bb36c38c9b64cd821478",
+    "fp32-rankgeneral41-noisy.log": "e84a769b6c05408d1c9ea92dc62d8ea0765e473c84091e9d1f8f4f8017116034",
+    "fp32-rankgeneral41-C1.json": "16c316052d6a1ade424405e29d4cff146f4055a9f83cfcdc2fa3af5cdb61a890",
+    "fp32-rankgeneral41-C1.log": "ea2bb1f7566cea228f7ea2609734b93889e1c0688bd6244684a549763e9b9cea"
+  },
+  "limitations": [
+    "Single exploratory runs; timings not controlled repeats or production comparisons.",
+    "The mixed-rankgeneral41 run uses the v1 fixture with many additional exact duplicated column pairs; after changing three of those columns, the generic pairwise nullspace metric is inapplicable, but its separately reported three_column_null_ratio refers to an exact validated 3-column relation and is valid.",
+    "The FP32 noisy rankgeneral runs use a clean three-column relation, no duplicated half-column fixture, and independent original float64 scoring.",
+    "Three-way relation and fp16 mismatch rows are constructed and verified by the archived driver; retained source hashes were checked during each run.",
+    "FP32 C=1e6 output continued successfully in gradient/progress terms but its nullspace coefficient ratio grew to 0.999664; this is a numerical correctness failure, not a timing optimization.",
+    "Mixed ill uses 48 half-HVP + 1 full residual + 48 half-HVP; its final loss still exceeds the tight objective reference by ~1.08e-5.",
+    "The no-intercept and native sketched bridge were not covered by this exploratory panel.",
+    "tight-reference.json contains cases whose reference gradients exceed 1e-7; those must not be treated as valid strict references."
+  ]
+}

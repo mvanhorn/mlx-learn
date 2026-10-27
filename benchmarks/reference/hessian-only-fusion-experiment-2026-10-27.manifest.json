@@ -1,0 +1,13 @@
+{
+  "description": "One-pass Hessian action research, S bitwise unchanged but Y rounding changes solver outcomes. Both raw quality audits fail and preserve all warnings/objective regressions. No production promotion. Measured source and native binary hashes are in raw results; README captured after measurement.",
+  "archive": {
+    "filename": "hessian-only-fusion-experiment-2026-10-27.zip",
+    "sha256": "79280d67b51a5da1787c9195c65ef37c8e3c9814e5dcb590de71e115b342316a"
+  },
+  "files": {
+    "fusion.py": "40897abacb9862ffbd1cd5dd8bb46ca10d10f672da217cd25b9bb72b4adfcdde",
+    "audit.py": "55a5d9aa3b3a7ce75a6c0ca1d1cdac6290a17e7ee9e713789270c4da37382479",
+    "benchmark.py": "5b345426e59868139784f3880924dcae544cbf45a96b8124353bfda4f17cac14",
+    "README.md": "c7c6a8958b66aa5c8bb2bf10c5d82b32289d43c603e34a1ebc6e5edaf364a71f"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "description": "Source-only unweighted one-pass and one-candidate experiments; timing results preserve failures.",
+  "archive": {
+    "path": "benchmarks/reference/unweighted-first-step-experiments-2026-10-27.zip",
+    "sha256": "340ef3c5a6fd8ed88ccdf9a1c791b0c83c0c87e3a06eeebde07dbd1872e2ebe2"
+  },
+  "frozen_source_sha256": "84df0359f9045d8cad9f6dd0b12699596e70de6f7f914d0f554d98eccc771e48",
+  "observed_binary_sha256_post_run": "c12b37b80a2309d9d4bb2f18b7b93a576e2ab74a30c23e747270639ed1689431",
+  "integrity_note": "Source experiment hashes recorded in JSON at run start; frozen binary hash calculated after runs.",
+  "files": {
+    "onepass.py": "a4db8d73ed764a2561c800d120643da2803c5f2d1ca6860cbf26f8ed90743e84",
+    "compare.py": "492c52ba7281d5ca27d650842dde03c16c62fece672f062254e98de59dd632ff",
+    "one_candidate.py": "bd02b8f2e84d71b4a169ef25843bdfc72a79211baddbb56b45cc515819cddb9f",
+    "README.md": "42eb561ca1e42cd777c73580681272c831b0fd7af3fbc058787d0ba489caee39"
+  },
+  "result_sha256": {
+    "benchmarks/results/unweighted-onepass-2026-10-27.json": "5efc6882117b868adaa2613fbe624beda23c52b62949449cfdb00a4f4601aca3",
+    "benchmarks/results/unweighted-one-candidate-2026-10-27.json": "661bd3cfe28bc00e2ec128bdc329579647e01f5aab3e582e0fa3f06de7008044"
+  }
+}

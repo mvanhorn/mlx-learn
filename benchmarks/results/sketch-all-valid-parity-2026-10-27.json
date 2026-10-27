@@ -1,0 +1,103 @@
+[
+  {
+    "case": "all_valid",
+    "n": 1024,
+    "d": 512,
+    "intercept": true,
+    "weighted": false,
+    "history": 10,
+    "sketch_size": 4,
+    "count": 4,
+    "fast_count": 4,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "case": "all_valid",
+    "n": 2049,
+    "d": 513,
+    "intercept": true,
+    "weighted": true,
+    "history": 10,
+    "sketch_size": 4,
+    "count": 4,
+    "fast_count": 4,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "case": "all_valid",
+    "n": 3073,
+    "d": 1024,
+    "intercept": false,
+    "weighted": true,
+    "history": 10,
+    "sketch_size": 4,
+    "count": 4,
+    "fast_count": 4,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "case": "all_valid",
+    "n": 2048,
+    "d": 512,
+    "intercept": true,
+    "weighted": false,
+    "history": 4,
+    "sketch_size": 4,
+    "count": 4,
+    "fast_count": 4,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "case": "all_valid",
+    "n": 3073,
+    "d": 2049,
+    "intercept": true,
+    "weighted": true,
+    "history": 10,
+    "sketch_size": 4,
+    "count": 4,
+    "fast_count": 4,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "case": "zero_valid",
+    "count": 0,
+    "fast_count": 0,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "case": "partial_valid",
+    "seed": 0,
+    "count": 3,
+    "fast_count": 3,
+    "bitwise_equal": [
+      true,
+      true,
+      true
+    ]
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "description": "Source for 64-case shifted-input stress sweep; results are recorded separately.",
+  "archive": {
+    "filename": "shifted-stress-2026-10-27.zip",
+    "sha256": "fefbf43934b630925221a7aff2c8c7504ad1a96c7f5a88e0b43c11c525972db5"
+  },
+  "files": {
+    "run.py": "561e377ceb0ea9f8f0f14c4d881a142a07f0ae363b67190605021276963f4126"
+  }
+}

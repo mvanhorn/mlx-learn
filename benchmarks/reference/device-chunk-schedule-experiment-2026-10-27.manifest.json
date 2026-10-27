@@ -1,0 +1,13 @@
+{
+  "description": "Instrumented resident-device GPU scheduling comparison; 3 warmups, 8 paired fits, sketch sizes 0 and 4; exact model/status/fallback equality checked. Weighted ill seed41 sketch4 reports nonconvergence equally in both variants and remains recorded. In-run source/binary hashes are included in result. Binary omitted.",
+  "archive": {
+    "filename": "device-chunk-schedule-experiment-2026-10-27.zip",
+    "sha256": "640430eeed78409edcd8f4d2383bd8b250a6473fb5b9a73b636c43733fbbff60"
+  },
+  "files": {
+    "device_panel.py": "a67605af9ac2208be9487aa4d12a8609dc491e05e54e05dd0e475fb303e06f38",
+    "build.py": "2cbeeaf8aff08eabdc0a133f1c21940f6aeaa6193632623775101e75c638f3f5",
+    "baseline.mm": "86e211a26e79f038afb8dcd51d4bc007350380d7a18e545de8d4028e9b5c07a3",
+    "adaptive16.mm": "dfb303b407ef98a3dba5d09a0ffdfadcf1a1ee41f347b16175bdf7e3ce07c63a"
+  }
+}

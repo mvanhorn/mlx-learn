@@ -1,0 +1,5325 @@
+{
+  "repeats": 12,
+  "order": "balanced alternating, 2 warmups each",
+  "native_extension": {
+    "module": "mlxlearn._solvers._metal_loop",
+    "path": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so",
+    "sha256": "49b9a212d45dfba74fda89096510a7f66f50a8686d4d00cb01bf0737a6588a6d"
+  },
+  "source_hashes": {
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "019de6e0eb439a277c6013a3edc486f47073fc62a12d307ad402ae68f53adfcb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "7f9de273556aa1f71fe044c5e6f2641f52fc54c01248a9c637628880420355ae",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "bfd815573e64bb413704dbcfdb132c4f46df3e23286e63807fbf7b16f60b4083",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "f9be9b8f46df82407e37d3f74fe416942a6e8b65f207b6d7e7bd3cba7bc0e968",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "a1422c004960b761838a4d5562aea1a6f7aac6e9ec03df5fe5ee0d9b7888b88e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "8df54c8cc760d9f7727c5047874b966685a9f6acb1214c43ecb6271f9b8b76f0",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/fused_direct/full_fit.py": "cc560be610bb943acc5289d55f2863f44c170fd9f0659d1013ac3f5677d41a24",
+    "/Users/tunguz/Programming/mlxlearn/bench/fused_direct/fused.py": "ce46c30b0eb4b7915b086591618fae97f20a8c40f446ad694f0133ba768db08a"
+  },
+  "source_integrity_passed": true,
+  "cases": [
+    {
+      "name": "unweighted",
+      "shape": [
+        20000,
+        1024
+      ],
+      "weighted": false,
+      "shift": 0.0,
+      "tol": 0.0001,
+      "seed": 41,
+      "sklearn": {
+        "details": {
+          "backend": "sklearn",
+          "n_iter": [
+            8
+          ],
+          "implementation": "sklearn",
+          "warnings": [],
+          "solutions": [],
+          "solver_calls": [],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.2886925467210108,
+          "gradient_max": 6.149074610478684e-05
+        }
+      },
+      "observations": {
+        "baseline": [
+          {
+            "seconds": 0.006360332947224379,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.007349165971390903,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.0075146249728277326,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006734333001077175,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.01399712497368455,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.007415166939608753,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006802082993090153,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006184583064168692,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.0063806670950725675,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006708458997309208,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.0064646250102669,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006661584018729627,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336520502576604e-05,
+                  "objective": 0.28869283117405137
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.007821208913810551,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.00765325000975281,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.008615583996288478,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.007819749996997416,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.007800749968737364,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.007356291986070573,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006434292066842318,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006420791964046657,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006583875045180321,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.0061839589616283774,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006389333982951939,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          },
+          {
+            "seconds": 0.006424500024877489,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                8
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 8,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 8,
+                  "n_fev": 65,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.336463022511452e-05,
+                  "objective": 0.28869283158532344
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2886928342019951,
+              "gradient_max": 7.336463016347895e-05,
+              "prediction_agreement": 0.99965,
+              "relative_objective_gap_sklearn": 9.958032777807386e-07
+            }
+          }
+        ]
+      },
+      "median_ms": {
+        "baseline": 6.7213959991931915,
+        "fused": 6.970083515625447
+      },
+      "summary": {
+        "baseline": {
+          "gradient_max_range": [
+            7.336463016347895e-05,
+            7.336463016347895e-05
+          ],
+          "objective_gap_range": [
+            9.958032777807386e-07,
+            9.958032777807386e-07
+          ],
+          "prediction_agreement_min": 0.99965,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        },
+        "fused": {
+          "gradient_max_range": [
+            7.336463016347895e-05,
+            7.336463016347895e-05
+          ],
+          "objective_gap_range": [
+            9.958032777807386e-07,
+            9.958032777807386e-07
+          ],
+          "prediction_agreement_min": 0.99965,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        }
+      }
+    },
+    {
+      "name": "weighted",
+      "shape": [
+        20000,
+        1024
+      ],
+      "weighted": true,
+      "shift": 0.0,
+      "tol": 0.0001,
+      "seed": 41,
+      "sklearn": {
+        "details": {
+          "backend": "sklearn",
+          "n_iter": [
+            9
+          ],
+          "implementation": "sklearn",
+          "warnings": [],
+          "solutions": [],
+          "solver_calls": [],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.2832817687747309,
+          "gradient_max": 1.533537553030993e-05
+        }
+      },
+      "observations": {
+        "baseline": [
+          {
+            "seconds": 0.007070624968037009,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.008675375021994114,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007319666910916567,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007035584072582424,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007376209017820656,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007299624965526164,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.0074928749818354845,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007310291985049844,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007735957973636687,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007649792009033263,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007670750026591122,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.00800729205366224,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.896796316548716e-06,
+                  "objective": 0.2832816504889385
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.007242916966788471,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007624167017638683,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.00726520805619657,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007469667005352676,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.008230083039961755,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007077832939103246,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.00754916702862829,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007076209061779082,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007619792013429105,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007860791054554284,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007346458965912461,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          },
+          {
+            "seconds": 0.007383416988886893,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 8.897789484763052e-06,
+                  "objective": 0.2832816527269624
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.28328165369253966,
+              "gradient_max": 8.898630332375771e-06,
+              "prediction_agreement": 0.99995,
+              "relative_objective_gap_sklearn": -4.062463734210243e-07
+            }
+          }
+        ]
+      },
+      "median_ms": {
+        "baseline": 7.43454199982807,
+        "fused": 7.426541997119784
+      },
+      "summary": {
+        "baseline": {
+          "gradient_max_range": [
+            8.898630332375771e-06,
+            8.898630332375771e-06
+          ],
+          "objective_gap_range": [
+            -4.062463734210243e-07,
+            -4.062463734210243e-07
+          ],
+          "prediction_agreement_min": 0.99995,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        },
+        "fused": {
+          "gradient_max_range": [
+            8.898630332375771e-06,
+            8.898630332375771e-06
+          ],
+          "objective_gap_range": [
+            -4.062463734210243e-07,
+            -4.062463734210243e-07
+          ],
+          "prediction_agreement_min": 0.99995,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        }
+      }
+    },
+    {
+      "name": "wide4096",
+      "shape": [
+        20000,
+        4096
+      ],
+      "weighted": false,
+      "shift": 0.0,
+      "tol": 0.0001,
+      "seed": 41,
+      "sklearn": {
+        "details": {
+          "backend": "sklearn",
+          "n_iter": [
+            15
+          ],
+          "implementation": "sklearn",
+          "warnings": [],
+          "solutions": [],
+          "solver_calls": [],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18782921785998807,
+          "gradient_max": 9.862497050782712e-05
+        }
+      },
+      "observations": {
+        "baseline": [
+          {
+            "seconds": 0.046370540978387,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04478216602001339,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04497691604774445,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.042901291977614164,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04344187502283603,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.043333875015378,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04396420798730105,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04324287502095103,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04299975000321865,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.042486832942813635,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.043168250005692244,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04287670797202736,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.53623530222103e-05,
+                  "objective": 0.18780716348271817
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.044943375047296286,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.042639416991733015,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04707337508443743,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04212050000205636,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04375304200220853,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.042064249981194735,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04572858405299485,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04234549996908754,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.042353417025879025,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04225204198155552,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04308545892126858,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          },
+          {
+            "seconds": 0.04206341702956706,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                17
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 17,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 17,
+                  "n_fev": 137,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.536387369735166e-05,
+                  "objective": 0.18780715874191373
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1878071635679647,
+              "gradient_max": 9.536282022014377e-05,
+              "prediction_agreement": 0.9987,
+              "relative_objective_gap_sklearn": -0.0001174167271452465
+            }
+          }
+        ]
+      },
+      "median_ms": {
+        "baseline": 43.288375018164515,
+        "fused": 42.49641700880602
+      },
+      "summary": {
+        "baseline": {
+          "gradient_max_range": [
+            9.536282022014377e-05,
+            9.536282022014377e-05
+          ],
+          "objective_gap_range": [
+            -0.0001174167271452465,
+            -0.0001174167271452465
+          ],
+          "prediction_agreement_min": 0.9987,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        },
+        "fused": {
+          "gradient_max_range": [
+            9.536282022014377e-05,
+            9.536282022014377e-05
+          ],
+          "objective_gap_range": [
+            -0.0001174167271452465,
+            -0.0001174167271452465
+          ],
+          "prediction_agreement_min": 0.9987,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shifted",
+      "shape": [
+        20000,
+        1024
+      ],
+      "weighted": false,
+      "shift": 1000.0,
+      "tol": 0.0001,
+      "seed": 41,
+      "sklearn": {
+        "details": {
+          "backend": "sklearn",
+          "n_iter": [
+            2
+          ],
+          "implementation": "sklearn",
+          "warnings": [],
+          "solutions": [],
+          "solver_calls": [],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.6931273326945622,
+          "gradient_max": 0.3614812626967136
+        }
+      },
+      "observations": {
+        "baseline": [
+          {
+            "seconds": 0.012328666052781045,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012497499934397638,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011634042020887136,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011525999987497926,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.01134508301038295,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.01178050006274134,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011584083898924291,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012829333078116179,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012346707982942462,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012082458939403296,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.01217087497934699,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.01227954204659909,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.867711246944964e-05,
+                  "objective": 0.2886907745621167
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.012513165944255888,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011641875025816262,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011668417020700872,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011640042066574097,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011391749954782426,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.011446499964222312,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012841125018894672,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012723541934974492,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012348624994046986,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012400500010699034,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012482875026762486,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          },
+          {
+            "seconds": 0.012125250068493187,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                9
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 9,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.958553735816167e-05,
+                  "objective": 0.288690776356362
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 9,
+                  "n_fev": 73,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 7.934473978821188e-05,
+                  "objective": 0.28869077499127016
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690776356362,
+              "gradient_max": 7.958553735877558e-05,
+              "prediction_agreement": 0.504,
+              "relative_objective_gap_sklearn": -0.5834953222316825
+            }
+          }
+        ]
+      },
+      "median_ms": {
+        "baseline": 12.126666959375143,
+        "fused": 12.236937531270087
+      },
+      "summary": {
+        "baseline": {
+          "gradient_max_range": [
+            7.958553735877558e-05,
+            7.958553735877558e-05
+          ],
+          "objective_gap_range": [
+            -0.5834953222316825,
+            -0.5834953222316825
+          ],
+          "prediction_agreement_min": 0.504,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        },
+        "fused": {
+          "gradient_max_range": [
+            7.958553735877558e-05,
+            7.958553735877558e-05
+          ],
+          "objective_gap_range": [
+            -0.5834953222316825,
+            -0.5834953222316825
+          ],
+          "prediction_agreement_min": 0.504,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        }
+      }
+    },
+    {
+      "name": "strict",
+      "shape": [
+        20000,
+        1024
+      ],
+      "weighted": false,
+      "shift": 0.0,
+      "tol": 1e-06,
+      "seed": 41,
+      "sklearn": {
+        "details": {
+          "backend": "sklearn",
+          "n_iter": [
+            12
+          ],
+          "implementation": "sklearn",
+          "warnings": [],
+          "solutions": [],
+          "solver_calls": [],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.2886907673066406,
+          "gradient_max": 1.2405080839133997e-06
+        }
+      },
+      "observations": {
+        "baseline": [
+          {
+            "seconds": 0.0198392920428887,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.026330124936066568,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.02555954095441848,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016299332957714796,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.01589658297598362,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016670332988724113,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016588458907790482,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.017371707945130765,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.019190583028830588,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.02573245798703283,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.02561029198113829,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.017829832970164716,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.279254413741e-07,
+                  "objective": 0.28869076298587026
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.021508082980290055,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.026315374998375773,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.015519582899287343,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.015875875018537045,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016036833985708654,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016466292086988688,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016578333103097975,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.016788666951470077,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.02025183301884681,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.020748250070028007,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.028675290988758206,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          },
+          {
+            "seconds": 0.019305082969367504,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                11
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 11,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.2920448095069e-07,
+                  "objective": 0.2886907669509851
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 11,
+                  "n_fev": 89,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.27751102608454e-07,
+                  "objective": 0.2886907647799701
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.288690766950985,
+              "gradient_max": 9.292044809483318e-07,
+              "prediction_agreement": 1.0,
+              "relative_objective_gap_sklearn": -1.2319604793287475e-09
+            }
+          }
+        ]
+      },
+      "median_ms": {
+        "baseline": 18.510207999497652,
+        "fused": 18.04687496041879
+      },
+      "summary": {
+        "baseline": {
+          "gradient_max_range": [
+            9.292044809483318e-07,
+            9.292044809483318e-07
+          ],
+          "objective_gap_range": [
+            -1.2319604793287475e-09,
+            -1.2319604793287475e-09
+          ],
+          "prediction_agreement_min": 1.0,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        },
+        "fused": {
+          "gradient_max_range": [
+            9.292044809483318e-07,
+            9.292044809483318e-07
+          ],
+          "objective_gap_range": [
+            -1.2319604793287475e-09,
+            -1.2319604793287475e-09
+          ],
+          "prediction_agreement_min": 1.0,
+          "warning_fits": 0,
+          "implementations": [
+            "native_command_loop"
+          ]
+        }
+      }
+    }
+  ]
+}

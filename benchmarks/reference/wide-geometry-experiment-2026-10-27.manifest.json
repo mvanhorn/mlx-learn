@@ -1,0 +1,30 @@
+{
+  "archive": {
+    "path": "benchmarks/reference/wide-geometry-experiment-2026-10-27.zip",
+    "sha256": "6f11ef411ef731ac709247ed76e90f6f47ad2b14d719e838c4b58a517a000b5d"
+  },
+  "files": {
+    "prepare.py": "3819619a4cb222282b526b189b6f6a0b81f249c7e9c8e36c9b2a4753bffe0c75",
+    "panel.py": "323f26ed66e16b956d32a936c2f191cf837b14b12028c56accb8ff6c823f2649",
+    "heldout.py": "6a144f0c954329e469e64c590ab877ed7a0070538fc175933c9cee474e4d10d8",
+    "panel.log": "b807cf782c03b90c3f4764784e5ab1e02c19df7e4b0fdfd50671fc0ba38acbcb",
+    "heldout.log": "64467e320ce1809632a80270572c8e4fe3a092bfb29bc40fd2f6b2ee481fceeb",
+    "results.json": "0a47e6d7b3ed951ba47df25ca989390999dcbc3ad21a880308295567255caaec",
+    "heldout-results.json": "ece93783598ff5126106173898e918d1c475f6c2bdedd53309e432b1490fbddc"
+  },
+  "snapshot_archive": {
+    "path": "benchmarks/reference/weighted-wide-start-sources-2026-10-27.zip",
+    "sha256": "cedf8a7ed045251058faa7569f1eacf40c92edcb0b45b9e0b653bb087497325f"
+  },
+  "extension": {
+    "path": "bench/weighted-wide-start/_metal_loop.abi3.so",
+    "sha256": "ea3977328d3a55e81ba613c0c07533e1b6903991a92269253373b7290e80f84d"
+  },
+  "source_integrity_pass": {
+    "results": true,
+    "heldout-results": true
+  },
+  "limitations": [
+    "Screen used 5 repeats; heldout used 8; scores compare to frozen prior with no extra objective certificate beyond recorded checks."
+  ]
+}

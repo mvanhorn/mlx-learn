@@ -1,0 +1,22 @@
+{
+  "archive": {
+    "path": "benchmarks/reference/wide-first-step-scale-experiment-2026-10-27.zip",
+    "sha256": "0ef1d310a718bd7c6437d21d6dc352733ae7d99ce73e8518be883b554549e171"
+  },
+  "files": {
+    "prepare_source.py": "96dbd0cef10bffb92c1d15d6c02faf81e920dad6cebacd356d52ad9bdea3a466",
+    "study.py": "74b60fe4fe1d8a6e2758686ebf5c448f29b0afacff9839155055c2dcf2ad25ba",
+    "heldout.py": "7a9d6e731f954ec5e4474f9257b4b2ff06586f386ee72f29d52b2ac99cfdaa01",
+    "_metal_loop.mm": "5ad17819b54164216163af7f2ca49156225e135597b9e4e53d1aed751450cba3",
+    "baseline-source.sha256": "cb1e7760bc11233d335846b280651a1c8bfcf5817d922608e6b7e38ddaa0667d",
+    "README.md": "7a98a0393377253874bf28056ea39e426b7f327a10594dcab15a6d18f1aef0a4"
+  },
+  "production_native_binary_sha256_post_run": "58cbef4cadda797e8cf228cc9b39a5c12e571a1c4a106757bcf7bb4b08e2ac32",
+  "integrity_note": "Variant binary/source and package-source hashes were captured and rechecked per panel; the production native binary was hashed separately after measurement.",
+  "results": {
+    "benchmarks/results/wide-first-step-scales-seed41-2026-10-27.json": "47ba501fe45f8583c81e640583e0f2f02f42917d11d00eef9fc6c76ad1b86c5e",
+    "benchmarks/results/wide-first-step-scales-seed83-2026-10-27.json": "c7be3a982fd928a4a0494fd069bd51a6576e7bb71eb397f5498da7e27b86f547",
+    "benchmarks/results/unweighted-first-step-stress-2026-10-27.json": "f9899b1b8d6033cda2c4f6d82de26804647ccffc7bca572813a05a5033f64acc",
+    "benchmarks/results/unweighted-first-step-heldout-2026-10-27.json": "f44d385f6445404e1fd9ddf846a990d3250a609760fda3ee70f7bf2ab2fb9859"
+  }
+}

@@ -83,6 +83,8 @@ BRANDING_EXEMPT = {
     # are: recording lineage is not the same as carrying branding.
     "tools/measure_native_core.py",
     "docs/provenance.md",
+    # Read-only predecessor/source comparison, retained as investigation evidence.
+    "docs/performance-investigation-2026-10-26.md",
 }
 
 #: The only private scikit-learn imports mlxlearn may use, and only from ``patching/``.
@@ -135,7 +137,7 @@ REQUIRED_PACKAGES = (
 FORBIDDEN_TRACKED_SUFFIXES = (".so", ".dylib", ".pyd", ".o", ".a")
 
 TEXT_SUFFIXES = {
-    ".py", ".md", ".toml", ".cfg", ".txt", ".yml", ".yaml", ".json", ".csv", ".log", ".ini",
+    ".py", ".mm", ".md", ".toml", ".cfg", ".txt", ".yml", ".yaml", ".json", ".csv", ".log", ".ini",
 }
 
 

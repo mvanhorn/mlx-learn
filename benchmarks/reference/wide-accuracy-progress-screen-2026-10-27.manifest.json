@@ -1,0 +1,26 @@
+{
+  "description": "Scratch wide 0.025 and 0.05 progress screens and per-iteration trace. Native binaries are local; source and hashes are preserved.",
+  "archive": {
+    "filename": "wide-accuracy-progress-screen-2026-10-27.zip",
+    "sha256": "dcc85f2f3578a9ac14fd15b5bce5657f55c9ca450c88b5154852c52da2a4c4a3"
+  },
+  "files": {
+    "wide_accuracy_trace/trace.py": "f0a78222d07c4bc0e7aaff32aeeb90d170a77262a00031b2207fbb8de89aa46c",
+    "wide_accuracy_trace/trace.json": "ea4d47d9b1e0acc567d84aaed5d6b3473522840b0086c9f84af2a81a7efd5119",
+    "wide_accuracy_trace/trace.log": "cec388d3af1582cd0a66f9a42b41b075fd0db52fe0aaf476716fcfa885e58908",
+    "wide_accuracy_candidate/prepare.py": "07a841cb2b2a047a5075c669de197e73c2943939405f1640fa3bca6674a17a65",
+    "wide_accuracy_candidate/panel.py": "cb7d4fa285660550a6074ff7084f5f2c2b92bf88c440013706a095cbad40e430",
+    "wide_accuracy_candidate/panel.json": "1f4f47046f63b77b659d0dee6b6990ded9c0128e572f02f96dad0ae73b090b94",
+    "wide_accuracy_candidate/panel.log": "ff4e55d5fab55b20bb43288fe110878e46a1167932cc519857e7e808d913d22e",
+    "wide_accuracy_candidate/candidate.zip": "e3f61539f2b175bc9955346b216af3822aacb21874f87c43486f43d9349051f6",
+    "wide_accuracy_candidate/candidate.manifest.json": "56c4a30c80d629dee1c6e1a2efcf77dd7de0f4052a2acf8e3c987fa6d25a6984",
+    "wide_accuracy_candidate/candidate/mlxlearn/_solvers/_metal_loop.mm": "72f92527596a2f854b3572939b72f0086689e9e80ec5f3de1e4ae9729d2f8ba0",
+    "wide_accuracy_candidate005/prepare.py": "4a647c4ddd5fa68a799cc2d771a368e4a441609e97dd07d7a0c05496621ed05b",
+    "wide_accuracy_candidate005/panel.py": "975d4b1ff163b4a225a595da12a7d8b91b3a87ad6d65b4de7d0aa25e3f066c62",
+    "wide_accuracy_candidate005/panel.json": "ed9fe9059a983a51fae859ebda74371b21929fed1915e4bf9506c3c2705f691a",
+    "wide_accuracy_candidate005/panel.log": "8156883dd35fa362965611e3e251b1dfc2acbc0770b4e46b542f470c0a0f5fcf",
+    "wide_accuracy_candidate005/candidate.zip": "fd08d4c0ba6b783bf4d00f678e2caa484c6c771e985a839ac4fc13e1005d23b2",
+    "wide_accuracy_candidate005/candidate.manifest.json": "96dfe85897f73a7f02c5483067a49156f5545d7581a195ef433284c3220ca3ca",
+    "wide_accuracy_candidate005/candidate/mlxlearn/_solvers/_metal_loop.mm": "4aa195deade1fe5d6bae7383106c6e35b2156833c91ebb090018bb679b06f102"
+  }
+}

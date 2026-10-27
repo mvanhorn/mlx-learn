@@ -1,0 +1,22 @@
+{
+  "purpose": "Scratch source math and cooperative L-BFGS direction experiments; baseline/candidate fit scores and all samples retained. Production afterwards chose256threads forwide,32narrow. Frozen old Python source and native compile sources retained; compiled binary hash only.",
+  "created_utc": "2026-10-27T14:48:26.555860+00:00",
+  "files": {
+    "bench/native_math/cooperative-check.json": "c23a029d083bc748ca54d74e5b039d52e1954da3365706d082bbb50ebcc0c766",
+    "bench/native_math/cooperative-ordinary.json": "7b4571fa04596a13d4c9421056630b43e9639996411073d0ef76ad648b022aae",
+    "bench/native_math/ordinary-results.json": "7d008cddd4f10bd12a028023201e67c7a091d6d19a2cbb6421014d287eba684f",
+    "bench/native_math/cooperative-profile.json": "9240eeec1a44fc8238f408bb1c8c2de01183524e6a1bdb4b8050f2a762143f3f",
+    "bench/native_math/profile.py": "140e6f85a122a6ab51ddb05b7d2d08016079ef9f69bf15e41dd505342e0549e5",
+    "bench/native_math/cooperative.py": "634a4cd5a22632ed4315f7caaff139d39112486fb13de84b09298a2ab6e64c8b",
+    "bench/native_math/start-native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "bench/native_math/cooperative_check.py": "d53e6cb744f9d613136223914cc329038c33d12d4342d20b78ccd54506e20203",
+    "bench/native_math/cooperative_profile.py": "7b81b352bac3e1a02894684a0ee58098d1a635d1a65c37679b73b36011d6db4c",
+    "bench/native_math/start-native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "bench/native_math/panel.py": "3a1d4cb233941c32fbd96a5e8d8ce6735bd539305d30c537e19935ca4b144d96",
+    "bench/native_math/profile.json": "58f614acf1618e55514d9fc2e2916a2dce8d84a333175cb7830d4ca1d1d70003",
+    "bench/native_math/screen-native/_metal_loop.mm": "9ead9a843d749d0907a9b610149a2b993cceecc7bd34f87d65f693ab5317d591",
+    "bench/native_math/screen-native/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af"
+  },
+  "screen_binary_sha256": "7580361972bf4db760702bd72071183931ec2cbf5a9632be47480f5bd5396675",
+  "archive_sha256": "b3aad4180cad2598edcb12b588ef3a36c52b8f3d67d07866c4b6e1b48a02de19"
+}

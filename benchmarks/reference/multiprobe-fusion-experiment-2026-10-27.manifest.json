@@ -1,0 +1,13 @@
+{
+  "description": "Four-probe fused input preparation and single-pass GPU Hessian research. Explicit residual variant fails no-regression quality gate; random variant slows ill-conditioned 4096. No production promotion. The audited runtime source and binary hashes are recorded in both result files.",
+  "archive": {
+    "filename": "multiprobe-fusion-experiment-2026-10-27.zip",
+    "sha256": "f55ae6033eb319b4c6a03115a2f788505879ad04716d6004cd26c5e1e91208e4"
+  },
+  "files": {
+    "fusion.py": "de98643c12bbcd9686eb049f8abf3d39a66365763c119a3b3f7954333c5e5612",
+    "benchmark.py": "264503261fee7906f5288c8dba792c4a7f7b13914d92ae8de31a03da2fbe3eef",
+    "audit.py": "89fff28658824ced1655bc7a99f4afdd3276d5d93e8cae1600a30c7ff63be926",
+    "README.md": "8ce25a0737747652180ddf838c1a98971c51e81ecb203dbedfec12c1c5158d31"
+  }
+}
