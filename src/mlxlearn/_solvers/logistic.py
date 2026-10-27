@@ -339,6 +339,33 @@ def _bias_statistics(linear, bias, y, sw):
     return _blocked_sum(mx, gradient), _blocked_sum(mx, curvature)
 
 
+def _small_expm1(value):
+    """Evaluate small represented steps without rounding them away."""
+    # Bias updates are capped at 0.5, so class-relative changes lie in
+    # [-1, 1]. The next Taylor term at |x| = 1 is < 1.7e-10, and the
+    # polynomial retains tiny changes when the backend's exp(x)-1 does not.
+    series = 1.0 / 479001600.0  # 1 / 12!
+    for factorial in (39916800.0, 3628800.0, 362880.0, 40320.0, 5040.0,
+                      720.0, 120.0, 24.0, 6.0, 2.0, 1.0):
+        series = 1.0 / factorial + value * series
+    return mx.where(mx.abs(value) <= 1.0, value * series, mx.expm1(value))
+
+
+def _small_log1p(value):
+    """Keep signed tiny differences when 1 + value rounds to 1."""
+    # For bounded class-relative steps, the argument lies in
+    # [exp(-1)-1, exp(1)-1]. Over [-0.7, 2], |r| <= 7/13; the first
+    # omitted atanh term is < 2e-10. Near -1, use the general primitive.
+    r = value / (2.0 + value)
+    square = r * r
+    series = 1.0 / 31.0
+    for denominator in (29.0, 27.0, 25.0, 23.0, 21.0, 19.0, 17.0, 15.0,
+                        13.0, 11.0, 9.0, 7.0, 5.0, 3.0):
+        series = 1.0 / denominator + square * series
+    approximation = 2.0 * r * (1.0 + square * series)
+    return mx.where((value >= -0.7) & (value <= 2.0), approximation, mx.log1p(value))
+
+
 @mx.compile
 def _bias_loss_difference(linear, old_bias, new_bias, y, sw):
     """Stable loss change for the represented intercept update."""
@@ -351,7 +378,7 @@ def _bias_loss_difference(linear, old_bias, new_bias, y, sw):
     delta = sign * (new_bias - old_bias)
     # The update is capped to |new_bias - old_bias| <= 0.5. Use the signed
     # difference directly so losses do not need to resolve a ~1e-12 change.
-    difference = mx.log1p(mx.sigmoid(signed_old) * mx.expm1(delta))
+    difference = _small_log1p(mx.sigmoid(signed_old) * _small_expm1(delta))
     if sw is not None:
         difference = difference * sw
     return _blocked_sum(mx, difference)
@@ -449,7 +476,8 @@ def _blocked_rows_sum(mx, values):
 def _multinomial_bias_statistics(linear, bias, y_onehot, sw):
     raw = linear + bias
     shifted = raw - mx.max(raw, axis=1, keepdims=True)
-    probabilities = mx.exp(shifted - mx.logsumexp(shifted, axis=1, keepdims=True))
+    exponentials = mx.exp(shifted)
+    probabilities = exponentials / mx.sum(exponentials, axis=1, keepdims=True)
     residual = probabilities - y_onehot
     weighted_probabilities = probabilities
     if sw is not None:
@@ -464,12 +492,13 @@ def _multinomial_bias_statistics(linear, bias, y_onehot, sw):
 def _multinomial_bias_loss_difference(linear, old_bias, new_bias, y_index, sw):
     raw = linear + old_bias
     shifted = raw - mx.max(raw, axis=1, keepdims=True)
-    probabilities = mx.exp(shifted - mx.logsumexp(shifted, axis=1, keepdims=True))
+    exponentials = mx.exp(shifted)
+    probabilities = exponentials / mx.sum(exponentials, axis=1, keepdims=True)
     delta = new_bias - old_bias
     selected = mx.take_along_axis(mx.broadcast_to(delta, probabilities.shape), y_index, axis=1)
     # Subtract the selected class before exponentiation, so the loss delta
     # never subtracts two nearly equal O(delta) quantities.
-    difference = mx.log1p(mx.sum(probabilities * mx.expm1(delta - selected), axis=1))
+    difference = _small_log1p(mx.sum(probabilities * _small_expm1(delta - selected), axis=1))
     if sw is not None:
         difference = difference * sw
     return _blocked_sum(mx, difference)

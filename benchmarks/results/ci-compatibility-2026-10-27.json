@@ -17,7 +17,7 @@
     "max_iter": 200,
     "reference_archive": "benchmarks/reference/ill-solver-start-2026-10-27.zip",
     "reference_extension": "bench/rank-safe-start/_metal_loop.abi3.so",
-    "output": "bench/ci-fix/accuracy-panel.json"
+    "output": "bench/ci-fix/accuracy-panel-final.json"
   },
   "environment": {
     "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
@@ -70,10 +70,10 @@
       "force_backend": "",
       "diagnostics_capacity": 512
     },
-    "git_head": "98202b3b37577d8dc573b083960c06f363dc04c9",
+    "git_head": "95517d680c1121ae8fddb2dc05a62b644a31024b",
     "source_sha256": {
       "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
-      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "0a17af0c6f46aad7f594f32f443a5b9f75178555ae9c71303be489a6737941a3",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "7b863efcc0edcba56914d242598405dadfd2667c33b0d7cd3e6d7600a3778c14",
       "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
       "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd"
     }
@@ -106,7 +106,7 @@
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
-    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "0a17af0c6f46aad7f594f32f443a5b9f75178555ae9c71303be489a6737941a3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "7b863efcc0edcba56914d242598405dadfd2667c33b0d7cd3e6d7600a3778c14",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "b812ab0414a9dceac18503a54b065bd86c1182021aa26b459d8e61bcd8b0daf2",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "2d29bef53f82706628a0af493568915ec7c9d1924734f8c60ed3f9fc4cb9cfda",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "cf82ae705003dc8f11719384604f1b678baf1a3e52c9d78977ac3439ec0d5b9c",
@@ -149,34 +149,34 @@
         "rank_deficient": false,
         "C": 1.0
       },
-      "device_upload_ms": 33.7056660791859,
+      "device_upload_ms": 17.856999998912215,
       "median_ms": {
-        "baseline": 59.63604204589501,
-        "current": 30.726812488865107,
-        "sketch": 33.554999448824674,
-        "sklearn": 77.50654150731862,
-        "device": 34.92318751523271
+        "baseline": 58.099812478758395,
+        "current": 29.129624948836863,
+        "sketch": 32.22066693706438,
+        "sklearn": 67.72952049504966,
+        "device": 35.30324954772368
       },
       "samples_ms": {
         "baseline": [
-          59.787584003061056,
-          59.484500088728964
+          58.44870791770518,
+          57.75091703981161
         ],
         "current": [
-          30.443624942563474,
-          31.01000003516674
+          28.82162493187934,
+          29.437624965794384
         ],
         "sketch": [
-          34.75558292120695,
-          32.3544159764424
+          32.39504189696163,
+          32.04629197716713
         ],
         "sklearn": [
-          89.47100001387298,
-          65.54208300076425
+          72.081791004166,
+          63.377249985933304
         ],
         "device": [
-          34.182916046120226,
-          35.6634589843452
+          33.86508300900459,
+          36.74141608644277
         ]
       },
       "fit_details": {
@@ -637,34 +637,34 @@
         "rank_deficient": false,
         "C": 1.0
       },
-      "device_upload_ms": 3.5417500184848905,
+      "device_upload_ms": 3.2188340555876493,
       "median_ms": {
-        "baseline": 75.2755205030553,
-        "current": 76.41735399374738,
-        "sketch": 78.96404195344076,
-        "sklearn": 197.1647705649957,
-        "device": 84.25933349644765
+        "baseline": 75.56933298474178,
+        "current": 75.77579154167324,
+        "sketch": 78.07497843168676,
+        "sklearn": 211.96104196133092,
+        "device": 83.56464555254206
       },
       "samples_ms": {
         "baseline": [
-          75.31400001607835,
-          75.23704099003226
+          73.90545797534287,
+          77.23320799414068
         ],
         "current": [
-          76.45833294373006,
-          76.37637504376471
+          74.87600005697459,
+          76.6755830263719
         ],
         "sketch": [
-          80.715624964796,
-          77.2124589420855
+          79.15504090487957,
+          76.99491595849395
         ],
         "sklearn": [
-          195.5365410540253,
-          198.79300007596612
+          198.34537501446903,
+          225.5767089081928
         ],
         "device": [
-          82.0558329578489,
-          86.4628340350464
+          82.63954101130366,
+          84.48975009378046
         ]
       },
       "fit_details": {
@@ -1136,34 +1136,34 @@
         "rank_deficient": false,
         "C": 1.0
       },
-      "device_upload_ms": 3.593167057260871,
+      "device_upload_ms": 3.331625019200146,
       "median_ms": {
-        "baseline": 13.98433349095285,
-        "current": 13.896895514335483,
-        "sketch": 13.515354483388364,
-        "sklearn": 18.16960400901735,
-        "device": 11.92018750589341
+        "baseline": 13.264687440823764,
+        "current": 13.50214600097388,
+        "sketch": 13.438395515549928,
+        "sklearn": 17.71458302391693,
+        "device": 12.240062525961548
       },
       "samples_ms": {
         "baseline": [
-          14.671957935206592,
-          13.296709046699107
+          13.269082992337644,
+          13.260291889309883
         ],
         "current": [
-          14.675791026093066,
-          13.1180000025779
+          13.287834008224308,
+          13.716457993723452
         ],
         "sketch": [
-          13.51070892997086,
-          13.520000036805868
+          13.531791046261787,
+          13.344999984838068
         ],
         "sklearn": [
-          18.66025000344962,
-          17.678958014585078
+          17.73800002411008,
+          17.69116602372378
         ],
         "device": [
-          11.803791974671185,
-          12.036583037115633
+          11.96029200218618,
+          12.519833049736917
         ]
       },
       "fit_details": {
@@ -1654,34 +1654,34 @@
         "rank_deficient": true,
         "C": 1000000.0
       },
-      "device_upload_ms": 3.4159579081460834,
+      "device_upload_ms": 3.358124988153577,
       "median_ms": {
-        "baseline": 9.281833481509238,
-        "current": 9.056520939338952,
-        "sketch": 10.716875025536865,
-        "sklearn": 14.968104020226747,
-        "device": 12.006666511297226
+        "baseline": 9.332020475994796,
+        "current": 9.257520956452936,
+        "sketch": 11.09212450683117,
+        "sklearn": 15.05445851944387,
+        "device": 11.506771086715162
       },
       "samples_ms": {
         "baseline": [
-          9.506250033155084,
-          9.057416929863393
+          9.609957924112678,
+          9.054083027876914
         ],
         "current": [
-          9.220249950885773,
-          8.892791927792132
+          9.68112493865192,
+          8.833916974253953
         ],
         "sketch": [
-          10.348167037591338,
-          11.085583013482392
+          11.478291009552777,
+          10.705958004109561
         ],
         "sklearn": [
-          15.028250054456294,
-          14.9079579859972
+          15.054750023409724,
+          15.054167015478015
         ],
         "device": [
-          11.954208021052182,
-          12.05912500154227
+          11.381750111468136,
+          11.631792061962187
         ]
       },
       "fit_details": {
@@ -2142,34 +2142,34 @@
         "rank_deficient": false,
         "C": 1.0
       },
-      "device_upload_ms": 13.307000044733286,
+      "device_upload_ms": 12.484500068239868,
       "median_ms": {
-        "baseline": 402.89604145800695,
-        "current": 252.849958545994,
-        "sketch": 218.78479199949652,
-        "sklearn": 564.596688025631,
-        "device": 211.92277100635692
+        "baseline": 400.4227920086123,
+        "current": 251.9932920113206,
+        "sketch": 215.65708349226043,
+        "sklearn": 545.5753334681503,
+        "device": 218.84687501005828
       },
       "samples_ms": {
         "baseline": [
-          401.5528329182416,
-          404.2392499977723
+          401.07958402950317,
+          399.76599998772144
         ],
         "current": [
-          255.76566706877202,
-          249.934250023216
+          252.7248749975115,
+          251.26170902512968
         ],
         "sketch": [
-          226.01670899894089,
-          211.55287500005215
+          218.81666698027402,
+          212.49750000424683
         ],
         "sklearn": [
-          552.9482919955626,
-          576.2450840556994
+          540.2537919580936,
+          550.896874978207
         ],
         "device": [
-          207.2934169555083,
-          216.55212505720556
+          206.60687505733222,
+          231.08687496278435
         ]
       },
       "fit_details": {
@@ -2707,7 +2707,7 @@
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
-    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "0a17af0c6f46aad7f594f32f443a5b9f75178555ae9c71303be489a6737941a3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "7b863efcc0edcba56914d242598405dadfd2667c33b0d7cd3e6d7600a3778c14",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "b812ab0414a9dceac18503a54b065bd86c1182021aa26b459d8e61bcd8b0daf2",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "2d29bef53f82706628a0af493568915ec7c9d1924734f8c60ed3f9fc4cb9cfda",
     "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "cf82ae705003dc8f11719384604f1b678baf1a3e52c9d78977ac3439ec0d5b9c",

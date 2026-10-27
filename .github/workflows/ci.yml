@@ -97,6 +97,8 @@ jobs:
           tests/unit/test_native_logistic.py
           tests/unit/test_native_logistic_wide.py
           tests/unit/test_shifted_convergence.py
+          tests/unit/test_shifted_bias_precision.py
+          tests/unit/test_multinomial_bias_precision.py
           tests/unit/test_shifted_gpu_accuracy.py
           tests/unit/test_weighted_objective_progress.py
           tests/unit/test_weighted_native_tolerance.py
