@@ -32,9 +32,17 @@ All notable changes to this project are documented here. The format follows
   drained the device, and a fit without an intercept on float64 input now
   holds one owned float32 copy of the design during `fit` where it used to
   solve on a view of its private conversion. With both changes the
-  500,000 × 32 and 500,000 × 128 fits measure 6.53 ms and 12.75 ms (11.0×
-  and 5.6× stock sklearn, down from 13.86 ms and 23.96 ms) on the measured
+  500,000 × 32 and 500,000 × 128 fits measure 6.30 ms and 13.20 ms (11.8×
+  and 5.8× stock sklearn, down from 13.86 ms and 23.96 ms) on the measured
   M4 Max.
+- The generic L-BFGS solvers (multinomial, CPU and generic weighted fits)
+  no longer stop at the first failed line search along a quasi-Newton
+  direction: they clear the curvature history and retry once along the
+  gradient, and only a failure there ends the run with
+  `line-search-failure`. A stale history on a badly scaled problem could
+  otherwise end a fit far from its tolerance, as a multinomial fit on the
+  continuous-integration GPU did at a gradient a hundred times the
+  tolerance; runs that never fail a search are unchanged.
 - Stabilized small Metal logistic loss differences against fast-math
   reassociation so line searches retain meaningful decreases across GPU and
   macOS versions. Weighted native fits use a small internal stopping reserve

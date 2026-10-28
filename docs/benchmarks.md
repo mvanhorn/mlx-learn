@@ -1,7 +1,7 @@
 # Benchmarks
 
 The [fused narrow-kernel rerun of the three original tall datasets](fused-narrow-kernel-2026-10-27.md)
-measures 11.0×, 5.6× and 2.7× sklearn speedups for 500,000 × 32,
+measures 11.8×, 5.8× and 2.7× sklearn speedups for 500,000 × 32,
 500,000 × 128 and 60,000 × 1,024, with every measured fit independently
 checked for accuracy. The [earlier recheck](tall-logistic-recheck-2026-10-27.md)
 (5.24×, 3.05× and 2.64×) records the timings before that kernel change.

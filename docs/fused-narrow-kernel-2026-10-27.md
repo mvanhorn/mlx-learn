@@ -105,6 +105,16 @@ Now every GPU fit goes through `prepare_centered`:
   Metal kernel at all (its private float32 conversion was wrapped zero-copy
   and centered by compiled MLX primitives); it now compiles the same
   shape-specialized copy kernels every other route already compiled.
+- The rounding-level change of the mean exposed a fragility in the generic
+  L-BFGS solvers that serve multinomial, CPU and generic weighted fits: on
+  the continuous-integration GPU a six-class parity fixture that used to
+  run to its 100-iteration budget stopped at iteration 91 with a failed
+  line search at a gradient a hundred times the tolerance, because a stale
+  curvature history produced a direction along which the search found no
+  decrease. Both solvers now clear the history and retry once along the
+  gradient before reporting `line-search-failure`; a run that never fails a
+  search is unchanged, and the plateau case (no decrease along any
+  direction) still ends with the same stop reason.
 
 Input preparation at 500,000 × 32 drops from about 1.98 ms to 1.12 ms per
 fit and at 500,000 × 128 from 6.96 ms to 3.98 ms (fresh host buffers,
@@ -151,9 +161,9 @@ order, no thread limit; medians in milliseconds.
 
 | Dataset | Earlier recheck | Kernels only | Kernels and input pipeline | Stock sklearn, rerun | sklearn / now | Fused control, rerun |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 500,000 × 32 | 13.864 | 6.604 | **6.527** | 71.596 | **11.0×** | 82.887 |
-| 500,000 × 128 | 23.957 | 14.849 | **12.745** | 71.158 | **5.6×** | 78.709 |
-| 60,000 × 1,024 | 13.191 | 12.872 | 12.688 | 34.521 | 2.7× | 27.553 |
+| 500,000 × 32 | 13.864 | 6.604 | **6.302** | 74.591 | **11.8×** | 82.943 |
+| 500,000 × 128 | 23.957 | 14.849 | **13.202** | 76.874 | **5.8×** | 86.168 |
+| 60,000 × 1,024 | 13.191 | 12.872 | 13.009 | 35.525 | 2.7× | 28.889 |
 
 The third dataset uses neither the new kernels nor a new input route (1,024
 features already took the fused centering pass, the wide kernel and the
@@ -162,8 +172,10 @@ the "kernels and input pipeline" column is backed by a recorded results
 file; the "kernels only" column is the same harness run earlier in the
 session, before the input-pipeline change, and is quoted from that session
 (its results file was superseded). Harness medians move by up to about
-0.5 ms between runs of the same tree in one session (an earlier run of the
-final tree gave 6.07 and 12.66 ms); the recorded run is the one quoted. The
+0.5 ms between runs of the same tree in one session, and sklearn's own
+medians by a few milliseconds (earlier runs of the final tree gave 6.07 and
+6.53 ms against 72.7 and 71.6 ms for sklearn); the recorded run is the one
+quoted. The
 earlier recheck's native times are the published figures, not a
 re-execution in this session. An interleaved same-session comparison of the
 previous `main` against the final tree, also unrecorded, gave
@@ -189,7 +201,7 @@ hash, environment and source hash.
 
 ## Tests
 
-The full suite passes 1,536 tests with both changes (359 of them new or
+The full suite passes 1,538 tests with both changes (361 of them new or
 replaced). For the input pipeline: both copy kernels preserve every bit
 (including a negative zero) at tile boundaries from 1 to 2,049 elements;
 the last element of an incomplete tile trips the non-finite check in every

@@ -134,8 +134,8 @@ the public API.
 ## Performance
 
 The latest [rerun of the original three tall datasets](docs/fused-narrow-kernel-2026-10-27.md)
-measures complete float32 GPU fits at 6.53 ms (500,000 × 32), 12.75 ms
-(500,000 × 128), and 12.69 ms (60,000 × 1,024): 11.0×, 5.6× and 2.7×
+measures complete float32 GPU fits at 6.30 ms (500,000 × 32), 13.20 ms
+(500,000 × 128), and 13.01 ms (60,000 × 1,024): 11.8×, 5.8× and 2.7×
 stock sklearn on the measured M4 Max. Every timed fit passed independent
 accuracy checks. The two narrow cases gained from one fused line-search pass
 and one input pipeline for every feature count; the [earlier recheck](docs/tall-logistic-recheck-2026-10-27.md)
