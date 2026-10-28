@@ -105,16 +105,21 @@ Now every GPU fit goes through `prepare_centered`:
   Metal kernel at all (its private float32 conversion was wrapped zero-copy
   and centered by compiled MLX primitives); it now compiles the same
   shape-specialized copy kernels every other route already compiled.
-- The rounding-level change of the mean exposed a fragility in the generic
-  L-BFGS solvers that serve multinomial, CPU and generic weighted fits: on
+- The rounding-level change of the mean surfaced two things in the generic
+  L-BFGS solvers that serve multinomial, CPU and generic weighted fits. On
   the continuous-integration GPU a six-class parity fixture that used to
   run to its 100-iteration budget stopped at iteration 91 with a failed
-  line search at a gradient a hundred times the tolerance, because a stale
-  curvature history produced a direction along which the search found no
-  decrease. Both solvers now clear the history and retry once along the
-  gradient before reporting `line-search-failure`; a run that never fails a
-  search is unchanged, and the plateau case (no decrease along any
-  direction) still ends with the same stop reason.
+  line search. Measured on the M4 Max, that fixture's float32 objective
+  reaches its resolution floor after about 70 iterations (the remaining
+  decreases are fractions of a float32 ulp), so whether a late search still
+  finds a decrease is rounding luck that differs between GPUs; a stop
+  there is the documented "line-search failure as a stop reason" case, and
+  the parity test's precondition now asks that neither solver reached the
+  tolerance instead of demanding exactly 100 iterations. Separately, both
+  solvers now clear a quasi-Newton history and retry once along the
+  gradient before reporting `line-search-failure` (on the CI GPU that
+  carried the fixture from iteration 91 to 94); a run that never fails a
+  search is unchanged, and a plateau still ends with the same stop reason.
 
 Input preparation at 500,000 × 32 drops from about 1.98 ms to 1.12 ms per
 fit and at 500,000 × 128 from 6.96 ms to 3.98 ms (fresh host buffers,

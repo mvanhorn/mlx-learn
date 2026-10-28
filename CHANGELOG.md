@@ -40,9 +40,10 @@ All notable changes to this project are documented here. The format follows
   direction: they clear the curvature history and retry once along the
   gradient, and only a failure there ends the run with
   `line-search-failure`. A stale history on a badly scaled problem could
-  otherwise end a fit far from its tolerance, as a multinomial fit on the
-  continuous-integration GPU did at a gradient a hundred times the
-  tolerance; runs that never fail a search are unchanged.
+  otherwise end a fit at the first direction along which the float32
+  objective shows no decrease; runs that never fail a search are unchanged,
+  and a fit that has reached its float32 objective floor still stops with
+  the same reason.
 - Stabilized small Metal logistic loss differences against fast-math
   reassociation so line searches retain meaningful decreases across GPU and
   macOS versions. Weighted native fits use a small internal stopping reserve
