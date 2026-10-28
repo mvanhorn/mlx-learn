@@ -1,0 +1,12 @@
+{
+  "description": "Ill-conditioned 4096 gradient tolerance and budget sweep. Tight reference validity and all warnings retained.",
+  "archive": {
+    "filename": "wide-ill-gradient-sweep-2026-10-27.zip",
+    "sha256": "cddf9967bed0cc041dafdbb1b78c3b80ca064c842012b2049155d6a51bc93c03"
+  },
+  "files": {
+    "sweep.py": "d1f92b29a6f71ce377a18050cb69df470d8ad324634ce95bf159ea3dbe090901",
+    "sweep.json": "92f6e658db7844139bd1681f5cf31ab4b43e89dc8fe30143a188728d7b9bbd93",
+    "sweep.log": "16b99d718eba357c471a1fb5a84a4c6734be54148da9ce62ee9ae5c1dd055b4f"
+  }
+}

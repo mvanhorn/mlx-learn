@@ -1,0 +1,203 @@
+{
+  "parameters": {
+    "n": 20000,
+    "d": 4096,
+    "seed": 41,
+    "dtype": "float32",
+    "C": 10.0,
+    "requested_tol": 0.0001,
+    "probe_device_tol": 1e-08,
+    "sklearn_max_iter": 200
+  },
+  "reference": {
+    "objective": 0.18622102515294603,
+    "original_gradient_max": 9.0756121680797e-05,
+    "original_gradient_l2": 0.0009121331349625678
+  },
+  "reference_n_iter": [
+    16
+  ],
+  "results": [
+    {
+      "budget": 12,
+      "seconds_diagnostic": 0.10891141695901752,
+      "native": {
+        "n_iter": 12,
+        "status": 0,
+        "n_fev": 96,
+        "last_diff": -0.0002737211179919541
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18642186200380959,
+        "original_gradient_max": 0.00026141914810063016,
+        "original_gradient_l2": 0.004387408762753214,
+        "relative_objective_gap_to_sklearn": 0.0010784864421114954,
+        "last_relative_decrease": 0.001468288724561503
+      }
+    },
+    {
+      "budget": 13,
+      "seconds_diagnostic": 0.03909804194699973,
+      "native": {
+        "n_iter": 13,
+        "status": 0,
+        "n_fev": 104,
+        "last_diff": -5.493710887094494e-06
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18641636856240565,
+        "original_gradient_max": 0.0004107344631081458,
+        "original_gradient_l2": 0.006690744408036032,
+        "relative_objective_gap_to_sklearn": 0.0010489868654690372,
+        "last_relative_decrease": 2.9470109998711797e-05
+      }
+    },
+    {
+      "budget": 14,
+      "seconds_diagnostic": 0.04167333303485066,
+      "native": {
+        "n_iter": 14,
+        "status": 0,
+        "n_fev": 112,
+        "last_diff": -0.0001452493161195889
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18627111911189814,
+        "original_gradient_max": 8.454801061226579e-05,
+        "original_gradient_l2": 0.001491163566698969,
+        "relative_objective_gap_to_sklearn": 0.00026900270209000474,
+        "last_relative_decrease": 0.0007797736804938273
+      }
+    },
+    {
+      "budget": 15,
+      "seconds_diagnostic": 0.043109500082209706,
+      "native": {
+        "n_iter": 15,
+        "status": 0,
+        "n_fev": 120,
+        "last_diff": -1.7709498933982104e-05
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18625340905504914,
+        "original_gradient_max": 7.79973899068784e-05,
+        "original_gradient_l2": 0.0011598014157887212,
+        "relative_objective_gap_to_sklearn": 0.00017390035349936454,
+        "last_relative_decrease": 9.508281767206676e-05
+      }
+    },
+    {
+      "budget": 16,
+      "seconds_diagnostic": 0.043969832942821085,
+      "native": {
+        "n_iter": 16,
+        "status": 0,
+        "n_fev": 128,
+        "last_diff": -2.931349808932282e-05
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.1862240954061708,
+        "original_gradient_max": 5.718842943383544e-05,
+        "original_gradient_l2": 0.0010717225898859153,
+        "relative_objective_gap_to_sklearn": 1.648714597208747e-05,
+        "last_relative_decrease": 0.0001574098025574379
+      }
+    },
+    {
+      "budget": 17,
+      "seconds_diagnostic": 0.052366374991834164,
+      "native": {
+        "n_iter": 17,
+        "status": 0,
+        "n_fev": 136,
+        "last_diff": -7.707776603638195e-06
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18621638775542032,
+        "original_gradient_max": 6.984995782780218e-05,
+        "original_gradient_l2": 0.0013024615056538888,
+        "relative_objective_gap_to_sklearn": -2.490265275846169e-05,
+        "last_relative_decrease": 4.1391505315642334e-05
+      }
+    },
+    {
+      "budget": 18,
+      "seconds_diagnostic": 0.057056125020608306,
+      "native": {
+        "n_iter": 18,
+        "status": 0,
+        "n_fev": 144,
+        "last_diff": -8.003663424460683e-06
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18620838382170524,
+        "original_gradient_max": 3.844366433319221e-05,
+        "original_gradient_l2": 0.0006068634825862832,
+        "relative_objective_gap_to_sklearn": -6.788348002278457e-05,
+        "last_relative_decrease": 4.29822936013676e-05
+      }
+    },
+    {
+      "budget": 19,
+      "seconds_diagnostic": 0.05589291697833687,
+      "native": {
+        "n_iter": 19,
+        "status": 0,
+        "n_fev": 152,
+        "last_diff": -4.011402779724449e-06
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18620437254616815,
+        "original_gradient_max": 2.07188164933022e-05,
+        "original_gradient_l2": 0.00037009127282371405,
+        "relative_objective_gap_to_sklearn": -8.942388091896068e-05,
+        "last_relative_decrease": 2.154301064401615e-05
+      }
+    },
+    {
+      "budget": 20,
+      "seconds_diagnostic": 0.05675466696266085,
+      "native": {
+        "n_iter": 20,
+        "status": 0,
+        "n_fev": 160,
+        "last_diff": -2.093201828756719e-06
+      },
+      "warnings": [],
+      "quality": {
+        "objective": 0.18620227920562427,
+        "original_gradient_max": 2.2476128668533537e-05,
+        "original_gradient_l2": 0.0003878036175078342,
+        "relative_objective_gap_to_sklearn": -0.00010066504201857417,
+        "last_relative_decrease": 1.1241547835433227e-05
+      }
+    }
+  ],
+  "hashes": {
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "b9e599b60f8620c8b85da782ae999587d1a1da476f6209364bd02f47d246738d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "27dc668bd041876f15f806f40a805725142ce21c81c7b5073d27216f81d1de60",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "9e4b1ca13a5124291ae13cf377d287320d14a74ea3f916bba320e996c90d4f00",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "8df54c8cc760d9f7727c5047874b966685a9f6acb1214c43ecb6271f9b8b76f0",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "58cbef4cadda797e8cf228cc9b39a5c12e571a1c4a106757bcf7bb4b08e2ac32",
+    "/Users/tunguz/Programming/mlxlearn/bench/objective_accuracy_sweep/c10_iteration_trace.py": "bd88d49e77b1731b318f5d7308e5fc644571f904128acebc594d93dbd49baeae"
+  },
+  "source_integrity": {
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": true,
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": true,
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": true,
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": true,
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": true,
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": true,
+    "/Users/tunguz/Programming/mlxlearn/bench/objective_accuracy_sweep/c10_iteration_trace.py": true
+  },
+  "limitations": "Diagnostic interrupted/truncated native iterates; no convergence status is claimed, timings do not include a completed estimator fit."
+}

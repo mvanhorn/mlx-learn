@@ -1,0 +1,123 @@
+{
+  "archive": {
+    "filename": "native-loop-large-chunk-ab-2026-10-26.zip",
+    "sha256": "cc8d83ced7040de679a2ef71f7c709bbdcd1c365402b1ae6e68067f1baed2dad"
+  },
+  "files": {
+    "README.md": "72540c14e855ce894f524a9dc8baebdd4f71b555db661da8d7c9cbca308b1763",
+    "sources/_metal_loop.mm": "14f79cabe0d11ea30893e9edc8fe2a9730ac2f330190c777f33068cbb8637963",
+    "sources/native_command.py": "0122d54e910dc693599242e904393d2c85b6063cafb81971a0b9a7db5cf33f96",
+    "sources/native_logistic.py": "f81408845d55641d069d7cd1bb8ee26717c3e033d4d4fb049136de42ef928848",
+    "sources/setup.py": "8cc8b55e281b2cc69fba659c9e7eefcbe7cea49352165d61ef605db1f1a18160",
+    "sources/logistic_wide.py": "6b1aab229d7ff624c533b2969ef9524056857d7422cc6408c4b171e43b6c5caf",
+    "scripts/run_chunk_ab.py": "a3962415c1cd908a3db9870a2be05da535043d5f88a28bd3a774158eea21cb8c",
+    "scripts/run_chunk_ab_balanced.py": "28329e5b59b728ea6dce5fd1a84c9a7ef91885a526081b8e4db9f43d0519851b"
+  },
+  "raw_results_sha256": "949dfea514a23c159902063f6b173342a74fb4ec629e71c355e2b08973acd42a",
+  "post_run_extension_sha256": "4ea6499dd2355d3330204ee4c57348d264779c3196c86f24a9ccb3db8717d4af",
+  "provenance_limitations": "Source and compiled extension hashes were captured after the benchmark rather than verified throughout it; ordering is predecessor-confounded.",
+  "case_audit": [
+    {
+      "dtype": "float32",
+      "shape": [
+        60000,
+        1024
+      ],
+      "fixed_iterations": [
+        [
+          7
+        ]
+      ],
+      "adaptive_iterations": [
+        [
+          7
+        ]
+      ],
+      "fixed_fingerprints": [
+        "8e46afae69f47f5074ba1df45fed19a60c6e45f7c2f819fd4e7690c05f5326bc"
+      ],
+      "adaptive_fingerprints": [
+        "8e46afae69f47f5074ba1df45fed19a60c6e45f7c2f819fd4e7690c05f5326bc"
+      ]
+    },
+    {
+      "dtype": "float32",
+      "shape": [
+        40000,
+        2048
+      ],
+      "fixed_iterations": [
+        [
+          7
+        ]
+      ],
+      "adaptive_iterations": [
+        [
+          7
+        ]
+      ],
+      "fixed_fingerprints": [
+        "dfe46140feedbf9e2e21c3fafe2f83837b95447411bbaad531bd08fcdf81b0df"
+      ],
+      "adaptive_fingerprints": [
+        "dfe46140feedbf9e2e21c3fafe2f83837b95447411bbaad531bd08fcdf81b0df"
+      ]
+    },
+    {
+      "dtype": "float64",
+      "shape": [
+        60000,
+        1024
+      ],
+      "fixed_iterations": [
+        [
+          7
+        ]
+      ],
+      "adaptive_iterations": [
+        [
+          7
+        ]
+      ],
+      "fixed_fingerprints": [
+        "8e46afae69f47f5074ba1df45fed19a60c6e45f7c2f819fd4e7690c05f5326bc"
+      ],
+      "adaptive_fingerprints": [
+        "8e46afae69f47f5074ba1df45fed19a60c6e45f7c2f819fd4e7690c05f5326bc"
+      ]
+    },
+    {
+      "dtype": "float64",
+      "shape": [
+        40000,
+        2048
+      ],
+      "fixed_iterations": [
+        [
+          7
+        ]
+      ],
+      "adaptive_iterations": [
+        [
+          7
+        ]
+      ],
+      "fixed_fingerprints": [
+        "dfe46140feedbf9e2e21c3fafe2f83837b95447411bbaad531bd08fcdf81b0df"
+      ],
+      "adaptive_fingerprints": [
+        "dfe46140feedbf9e2e21c3fafe2f83837b95447411bbaad531bd08fcdf81b0df"
+      ]
+    }
+  ],
+  "environment": {
+    "machine": "Apple M4 Max",
+    "python": "3.13.3",
+    "mlx": "0.32.2",
+    "numpy": "2.5.2",
+    "scikit_learn": "1.9.0",
+    "repeats": 32,
+    "warmups": 3,
+    "threads": 1
+  }
+}

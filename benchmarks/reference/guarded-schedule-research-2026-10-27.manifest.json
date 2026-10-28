@@ -1,0 +1,20 @@
+{
+  "description": "Guarded native command batching scheduling experiment and supporting after-nine/device comparisons. The native archive contains instrumented source, build and panel scripts; individual source hashes and archive hashes appear in its accompanying manifest. Corresponding result JSONs contain in-run source and binary hashes.",
+  "limitations": [
+    "These instrumented experiments are comparative research outputs, not the final uninstrumented benchmark.",
+    "Extension binaries were intentionally omitted; historical source and binary hashes are recorded in result files.",
+    "The device sketch-4 weighted seed 41 nonconvergence existed under both compared schedules and is preserved in raw results."
+  ],
+  "sha256": {
+    "benchmarks/reference/native-chunk-schedule-experiment-2026-10-27.zip": "736d8c7ce18eed1b102ce4e23b67b33f63141921ed54a75687d1a28fa03ed179",
+    "benchmarks/reference/native-chunk-schedule-experiment-2026-10-27.manifest.json": "33f8ae96b80275e268ff99b28be8a1fef6991862d579e24d37b0c1afcf8fcdb7",
+    "benchmarks/results/native-chunk-schedule-results-2026-10-27.json": "0b2f281877b7ce5e59947ba6dd6cdbc82c62f394238ac4d07e5a8731b08c45ce",
+    "benchmarks/results/native-chunk-schedule-adaptive-results-2026-10-27.json": "0e8bd5f5527b1b5681144a394cf8958957287d0d61c9e53d4e5a6effd2646258",
+    "benchmarks/reference/native-after9-schedule-experiment-2026-10-27.zip": "083f40bba098b1d8e2f7d97333feea0de8a495d66e9fdd06737a3c82316f4031",
+    "benchmarks/reference/native-after9-schedule-experiment-2026-10-27.manifest.json": "d56d7728d957a6e3d13912b6eab2aabbc93fd0959082f80e18587266327bf289",
+    "benchmarks/results/native-after9-schedule-2026-10-27.json": "c577d21e9d805680cca494976952044d3cf2293e9be4dd239178cb65f9178a9b",
+    "benchmarks/reference/device-chunk-schedule-experiment-2026-10-27.zip": "640430eeed78409edcd8f4d2383bd8b250a6473fb5b9a73b636c43733fbbff60",
+    "benchmarks/reference/device-chunk-schedule-experiment-2026-10-27.manifest.json": "5a23ecef7584beb27a90e0269e6cfa6d85a42cb135f962be528294d3f88da848",
+    "benchmarks/results/device-chunk-schedule-2026-10-27.json": "17aa3cb7ac50bf28aa3fe44e16146b3c511a8d1bb2d1005e581f851cb93a1da7"
+  }
+}

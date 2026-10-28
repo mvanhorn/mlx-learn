@@ -1,0 +1,12 @@
+{
+  "description": "Exploratory bounded GPU diagonal preconditioning and audited sklearn comparison, source only.",
+  "archive": {
+    "filename": "diagonal-metric-experiment-2026-10-27.zip",
+    "sha256": "d4c0fae942ebd78798baffd0931cd0fef299ee697bce2c2cf59951e8a4897926"
+  },
+  "files": {
+    "README.md": "abd147e8e0cf515752c1078822c9684eb9a69bb9f01e4c2fe49becea0342c8c8",
+    "experiment.py": "552b474a40070d7f08e5fd6eb3ff77b4149197b64d643200327fbb0cd6584743",
+    "compare_sklearn.py": "43c7414728002f9c441125ea0cbd89ce28605d6103c35f57bfb90714b4548383"
+  }
+}

@@ -1,0 +1,169 @@
+{
+  "method": "Gram+GPU MPS Cholesky+GPU inverse, no solver or quality included",
+  "results": [
+    {
+      "jitter_fraction": 0.0001,
+      "samples": [
+        {
+          "gram_ms": 31.62274998612702,
+          "factor_inverse_ms": 236.87641706783324,
+          "total_ms": 268.49916705396026,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.207500002346933,
+          "factor_inverse_ms": 87.68745791167021,
+          "total_ms": 93.89495791401714,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.185333011671901,
+          "factor_inverse_ms": 92.87041705101728,
+          "total_ms": 99.05575006268919,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.12425000872463,
+          "factor_inverse_ms": 92.71637501660734,
+          "total_ms": 98.84062502533197,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.128540961071849,
+          "factor_inverse_ms": 92.6751249935478,
+          "total_ms": 98.80366595461965,
+          "status": 0
+        }
+      ],
+      "validation": {
+        "max_inverse_residual": 0.003591094710146109,
+        "frobenius_relative": 0.0005038236208841524,
+        "symmetry": 0.0012157708406448364,
+        "jitter": 0.00027251753807067873
+      }
+    },
+    {
+      "jitter_fraction": 0.001,
+      "samples": [
+        {
+          "gram_ms": 6.873082951642573,
+          "factor_inverse_ms": 87.31474995147437,
+          "total_ms": 94.18783290311694,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.096999975852668,
+          "factor_inverse_ms": 89.81137501541525,
+          "total_ms": 95.90837499126792,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.105209002271295,
+          "factor_inverse_ms": 87.1099999640137,
+          "total_ms": 93.21520896628499,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.136375013738871,
+          "factor_inverse_ms": 88.71820906642824,
+          "total_ms": 94.85458408016711,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.1289999866858125,
+          "factor_inverse_ms": 93.82175002247095,
+          "total_ms": 99.95075000915676,
+          "status": 0
+        }
+      ],
+      "validation": {
+        "max_inverse_residual": 0.0003804803721027232,
+        "frobenius_relative": 5.225563684577276e-05,
+        "symmetry": 0.000141143798828125,
+        "jitter": 0.002725175380706787
+      }
+    },
+    {
+      "jitter_fraction": 0.01,
+      "samples": [
+        {
+          "gram_ms": 6.951000075787306,
+          "factor_inverse_ms": 88.3702909341082,
+          "total_ms": 95.3212910098955,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.106083048507571,
+          "factor_inverse_ms": 92.14729198720306,
+          "total_ms": 98.25337503571063,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.159209064207971,
+          "factor_inverse_ms": 94.7644580155611,
+          "total_ms": 100.92366707976907,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.1501250602304935,
+          "factor_inverse_ms": 94.1178749781102,
+          "total_ms": 100.26800003834069,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.073541007936001,
+          "factor_inverse_ms": 92.38283394370228,
+          "total_ms": 98.45637495163828,
+          "status": 0
+        }
+      ],
+      "validation": {
+        "max_inverse_residual": 4.440242383082623e-05,
+        "frobenius_relative": 5.0593282748237995e-06,
+        "symmetry": 9.5367431640625e-06,
+        "jitter": 0.02725175380706787
+      }
+    },
+    {
+      "jitter_fraction": 0.1,
+      "samples": [
+        {
+          "gram_ms": 6.623083027079701,
+          "factor_inverse_ms": 87.52754190936685,
+          "total_ms": 94.15062493644655,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.095582968555391,
+          "factor_inverse_ms": 96.04400000534952,
+          "total_ms": 102.13958297390491,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.134875002317131,
+          "factor_inverse_ms": 91.57312498427927,
+          "total_ms": 97.7079999865964,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.1746659921482205,
+          "factor_inverse_ms": 97.22058405168355,
+          "total_ms": 103.39525004383177,
+          "status": 0
+        },
+        {
+          "gram_ms": 6.05175003875047,
+          "factor_inverse_ms": 92.02924999408424,
+          "total_ms": 98.08100003283471,
+          "status": 0
+        }
+      ],
+      "validation": {
+        "max_inverse_residual": 8.263996376082161e-06,
+        "frobenius_relative": 9.753195901355241e-07,
+        "symmetry": 7.748603820800781e-07,
+        "jitter": 0.27251753807067874
+      }
+    }
+  ]
+}

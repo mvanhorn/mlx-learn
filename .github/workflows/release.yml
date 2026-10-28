@@ -27,6 +27,17 @@ jobs:
       - run: python -m pip install --upgrade pip build twine
       - run: python -m build
       - run: python -m twine check --strict dist/*
+      - name: Verify native wheel is present
+        run: |
+          python - <<'PY'
+          import pathlib, zipfile
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          assert "-cp310-abi3-macosx" in wheels[0].name, wheels[0].name
+          assert wheels[0].name.endswith("_arm64.whl"), wheels[0].name
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              assert any(n.endswith("/_metal_loop.abi3.so") for n in wheel.namelist())
+          PY
       - name: Tag matches package version
         if: startsWith(github.ref, 'refs/tags/')
         run: |

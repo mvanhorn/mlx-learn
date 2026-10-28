@@ -1,0 +1,12 @@
+{
+  "description": "Diagnostic scripts captured after measurements; runtime source/binary hash audit unavailable. Device-vs-wrapper timing is a single-fit diagnostic, not a speed benchmark. Dual bound and GPU tolerance runs are exploratory.",
+  "archive": {
+    "filename": "hessian-accuracy-diagnostics-2026-10-27.zip",
+    "sha256": "42094b13bc65d5c75fc6c3523694089a9049c155cec57ac0af8170d4637f19f2"
+  },
+  "files": {
+    "compare_device_native.py": "6f5fc00316bc2ba4ca991975a48cdb5744f82881425b12cbf79be6f7de2e03d8",
+    "dual_probe.py": "d3b288d6af8402272c122198c32c3ce2b2fa442403e46824474b99ec402418e8",
+    "gpu_tolerance.py": "d8ab044fcf7ea986710541d69f6af365afe765e58ab2aae254b5a762bc13be7c"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "archive": "benchmarks/reference/wide-progress-diagnostics-2026-10-27.zip",
+  "sha256": "097b8073a901ad1e4df9232f43b90591db1010b615fc600d5d12fbb6a0aeca7f",
+  "results": {
+    "benchmarks/results/wide-progress-2x-counterexamples-2026-10-27.json": "2b604894d5e043a28024a04aba3962b6b5327dc44061b357242473c8f634cc9a",
+    "benchmarks/results/wide-progress-c10-iterations-2026-10-27.json": "40abfa1f2c42a2066b44a1b02307219f4c86f1cd1b677455674cdee3b724213c"
+  },
+  "note": "Source-only diagnostic scripts; native extension binary is intentionally excluded. See README.txt."
+}

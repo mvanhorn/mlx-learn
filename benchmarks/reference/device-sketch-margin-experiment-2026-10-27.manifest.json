@@ -1,0 +1,20 @@
+{
+  "description": "Device native tolerance margin and separate wide progress screening. The full-source before/after hashes are in ill, heldout and wide-progress results. The budget trace has no per-run source hash; it used the same initial source and a local proxy. Timings are exploratory. The strict wide scratch changed only the Metal rule; strict_ok is independently rechecked, Python integrated rule was not patched in the experiment.",
+  "archive": {
+    "filename": "device-sketch-margin-experiment-2026-10-27.zip",
+    "sha256": "4d3d1098c505e50bf5e5411875e533a564cbf94fe2b9cd6451a5fd006894ef51"
+  },
+  "files": {
+    "screen.py": "144965faeed9703d9e7ff7b9becb93657f901a74f065c4c6b56b7628a0978000",
+    "ill.json": "ede415fe44d36f39af45f449555a3f13e060869e0e72f2eabe2339a0a5ceb773",
+    "ill.log": "7c4c500cdbd329b50128be6bd5ca3646f3d3524d16f347ae2e68770a62ffed64",
+    "heldout.json": "7e3c484929e195692a04269db4a7d8a755c9b9beb006aa2ca534421c091644f0",
+    "heldout.log": "d6974a356225f9efda1f859026f320d9b701fb67eb91eb9fa697b148b9a7e821",
+    "wide_progress.py": "91efbec5a617b13f1b25cb8c20bdcbbc820c14b1d40f3da153dd6aa42eba623e",
+    "wide-progress.json": "4f051dd99daf1693baa4bc56fa67dde467bc0de56ef3cd0dd0638a1e87c45b03",
+    "wide-progress.log": "4a0f96d2e44d2e7736ee34d41f83836fcd4d5d08e39cb72fdad8fd9e69dd3317",
+    "budget.py": "091beabfcddeb93a1b6c427bb1052776633783967125aa9dbdb72c6161e6b999",
+    "budget.json": "aace995e021804bccb6c0950015af1a2beb5e1d9aa3f8d2c448047213b979d84",
+    "budget.log": "0c6b361fadbbe844dd051359a02682d4b127925e9f471c07942f5fe8a2e1d298"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "archive": {
+    "path": "benchmarks/reference/conditional-backward-experiment-2026-10-27.zip",
+    "sha256": "1d5a7b03c1038348aefb8dffdee63e3bfce5dd6587e79eeceb5712a3b7aed5e5"
+  },
+  "files": {
+    "build.py": "8ae2f7ba14849a0d8c8ea0b70eef5702a0715f98df1c5648a6aed7ee58d5c24b",
+    "panel.py": "5b8d86349f5f7713f2fc7fa1a636fee9b66f5fc8376ee950194130d7c7690b13",
+    "_metal_loop.mm": "74839114288fe52e29f0f3a5c2fafcfc0adcab3bac3d5f57a5d85231d6e8ddca",
+    "panel.log": "5123f3d772d9a6ad6d6ff05ce39b0be0c49364d9b4997e06f7b79602c7cd3628",
+    "results.json": "2247ffe1c2f27c59184191f7c7d44437272c029a38d2582cef0b2f1f06c28b34"
+  },
+  "result_sha256": "2247ffe1c2f27c59184191f7c7d44437272c029a38d2582cef0b2f1f06c28b34",
+  "provenance_note": "Exploratory run; native_logistic.py was briefly edited and restored during run. It can be read dynamically for Metal source; do not treat matching pre/post source hashes as proof of unchanged timed implementations. Candidate failed the speed gate and was not promoted."
+}

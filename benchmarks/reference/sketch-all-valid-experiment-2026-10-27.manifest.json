@@ -1,0 +1,13 @@
+{
+  "description": "All-valid no-gather sketch experiment; exact bitwise histories and fitted models, no consistent timing win, no production promotion. Runtime source and binary hashes were audited; audit.py/README captured after measurement.",
+  "archive": {
+    "filename": "sketch-all-valid-experiment-2026-10-27.zip",
+    "sha256": "6246554c268074923e7760f3757fbde9f85ed83826599cc975e96b1cdc4f0b0f"
+  },
+  "files": {
+    "fast.py": "3ddfa884a2d085004dec851e46b3d4888c11e10e7028538fec38516849faea9c",
+    "audit.py": "de55d88b84f35a3bc9aa4fd2f771fefc5207070c80d95fc16993bae3fbf2d439",
+    "benchmark.py": "32967c885f0a91e912e0d5e83394470585bab882c94ea2ca8d7907d8c2d9bbf2",
+    "README.md": "17b434eac0b81e6268a1b5726a28e65e39eefad892694ce52da2fed52e412732"
+  }
+}

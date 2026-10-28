@@ -1,0 +1,25 @@
+{
+  "archive": {
+    "path": "benchmarks/reference/wide-geometry-alt-heldout-2026-10-27.zip",
+    "sha256": "9485872321b910cd05c976dd5d1a311ae7abf13393781d63d2c1ad862afc6ab0"
+  },
+  "files": {
+    "prepare.py": "3819619a4cb222282b526b189b6f6a0b81f249c7e9c8e36c9b2a4753bffe0c75",
+    "panel.py": "323f26ed66e16b956d32a936c2f191cf837b14b12028c56accb8ff6c823f2649",
+    "heldout_alt.py": "f0e76a2ad148a43751275ae790eed9c1abaa47c2a1e683cbb8cf8970c7db8eeb",
+    "heldout-alt.log": "5af002dacd2cc1293bd7dfb7250d5b29ccfbecf8e78cdd19923724a93ee64095",
+    "heldout-alt-results.json": "fdb50d2a193314e2e60460de5d489e04050049dadb4844eef6c5d6c49d73ee6e"
+  },
+  "snapshot_archive": {
+    "path": "benchmarks/reference/weighted-wide-start-sources-2026-10-27.zip",
+    "sha256": "cedf8a7ed045251058faa7569f1eacf40c92edcb0b45b9e0b653bb087497325f"
+  },
+  "extension": {
+    "path": "bench/weighted-wide-start/_metal_loop.abi3.so",
+    "sha256": "ea3977328d3a55e81ba613c0c07533e1b6903991a92269253373b7290e80f84d"
+  },
+  "source_integrity_pass": true,
+  "limitations": [
+    "Eight repeated fits per case. Unbalanced objective is compared to frozen prior, not to the tight-reference stopping accuracy target."
+  ]
+}

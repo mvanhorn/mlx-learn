@@ -1,0 +1,40 @@
+{
+  "created_utc": "2026-10-27T02:24:25.380267+00:00",
+  "archive": {
+    "filename": "native-loop-scheduling-experiments-2026-10-26.zip",
+    "sha256": "4b262c648943ddee74624959ad37a80dd7f5846a6f2aa51064273cfb8bf3509c"
+  },
+  "files": {
+    "README.md": "e96f0f741498044720a758717a947ccdad32417910be41d03972ec79b37a6b15",
+    "schedule/native_command.py": "ebdde601e8feee5b38179d936b27106ba5ec3ee567a8056f762aa3d2236ad7e9",
+    "schedule/_metal_loop.mm": "b7343286381b6b08ebfda28dfa3c89838043904b0f0e88343df24ea09449eb02",
+    "initial/native_command.py": "ade2fc6a61039eae4ce7ada51c271bc996be06f6f5a1c082f61d8efc12020fef",
+    "initial/_metal_loop.mm": "66ce4362e2267b7423e76c40a3524204369af7d69f0ebc32336347cf0feaf7ce",
+    "synchronization/native_command.py": "539fdfce37b41535f27eab268ebafcdd5fe9889dfd1ba008b8511cc8631ed53d",
+    "scripts/run_modes.py": "d250d11a8d81b384f9663eab23d7dcf5f5cad1a5dbcd85ebc9d37174cb09980e",
+    "scripts/run_initial.py": "b1c70f1e46201dc81a16cafbc73125e8f0be34564d9d839bfcd74b8f723602e1",
+    "scripts/run_sync.py": "7c9f6e5f9e8b998e607503aa1c0574a3e132256a4149887f389870c28cdff7aa",
+    "scripts/edge_initial.py": "ed1fe48799792b52f1780729e84889c74d357c05b4aa9e9dadc8cd75f5487524",
+    "scripts/cold_fit.py": "e24d6b08ae00cf57c8a891501e4ffd489195cdb04e6e75958bcf7dfb16c870f8",
+    "scripts/modify_initial.py": "80bf0c8550fffe726e1082d44c50fe3120e5cf80b778967ee3110bbde64f4abd"
+  },
+  "results_sha256": {
+    "benchmarks/results/native-loop-adaptive-schedule-2026-10-26.json": "2e498ce8cf73dea968325d5b3b4f0a67c48e9e7866074febf445cffc7af3ea15",
+    "benchmarks/results/native-loop-first-fit-2026-10-26.jsonl": "3896cf6e4091727eee7689e57af563997f9b6eae23c6e6a30e7a0b7f3b5da0f2",
+    "benchmarks/results/native-loop-native-initialization-2026-10-26.json": "82e41b7097b828bcefd4df1c6633089140d6dc6c1e2c00ab45447eba0324943a",
+    "benchmarks/results/native-loop-native-initialization-edges-2026-10-26.json": "1440e08ade7176ba36b6d2096781423f2029167bfffacf20f7820b4b36d88f70",
+    "benchmarks/results/native-loop-eval-synchronization-2026-10-26.json": "9aacea82b75fcfba4dfbd6a236d13fa65c5356fab2aa887f526ac77337046d55"
+  },
+  "baseline_archive_sha256": "2dae1d663d33f50a9d45e5cefa4eb51fc4b04691f651c864e7ed72ab5c9ef031",
+  "measurement_time_binary_sha256": null,
+  "environment": {
+    "machine": "Apple M4 Max",
+    "python": "3.13.3",
+    "mlx": "0.32.2",
+    "numpy": "2.5.2",
+    "scikit-learn": "1.9.0",
+    "repeats": 32,
+    "warmups": 3,
+    "threads": 1
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "description": "Experimental fused-HVP Newton-CG correction with online acceptance and budgeted continuation; no production solver.",
+  "archive": {
+    "filename": "newton-cg-continuation-2026-10-27.zip",
+    "sha256": "8ed76295313b30b10f3ac59d3988e58c1bebcc1814948900a31e6e1ae62fffeb"
+  },
+  "files": {
+    "continuation-panel-v1.json": "58b0a1bdf03a4085c91a3e0af7e523c870818fda372253bce687d85f1cfd9ea4",
+    "continuation-panel-v1.log": "7462066c54f1513649c4b51600600de8fad30ad75581cae68f49806b5bdefb38",
+    "continuation-panel.json": "a260a7f7dcffb2345c91102e740223d24c007ba8599b54e6ecda47aeb55f33a8",
+    "continuation-panel.log": "2957a611f45e1d5a0bcfa0dd951a74c40af284a81226a2eaee34e2ff1ff000f5",
+    "continuation-rank4096.json": "b70f0a6605ee33b44f5731da9fc33f5f9da91ffeb89a62689e9bbb1d6d27ddb5",
+    "continuation-rank4096.log": "f984e87fbc20444b78d0af49dcd83b47409a2f520f59518b8a42257c2e8960a7",
+    "continuation-shifted4096.json": "84816bc91054c818ac38621f6b69bb54bca3d3823b8b31c8280948dfe71bdc23",
+    "continuation-shifted4096.log": "2536f9be1d7bd92dfdffd47414718396f3a25d0504f7fae4b852c2d9982766b6",
+    "continuation-v1.py": "8533a286dd59be8f7d715f0020581c5e64ce07dc61d9967e27b655201213c8c5",
+    "continuation-v2.py": "195388bdc493c38731d8bbc64c4a0ba5f9102dc572deb348c3552aea5972f682",
+    "continuation-v3.py": "37ee652627ace127e9c4998ee702173dc7231692eb42690d3e020770744e237c",
+    "continuation-v4.py": "37ee652627ace127e9c4998ee702173dc7231692eb42690d3e020770744e237c",
+    "continuation-v5.py": "273cc8403266d0c81111a6828954dd1c54303d35dc184ae56662c68f64c5b8eb",
+    "continuation-weighted4096.json": "05e72eb7c588f146eca106874b059f5e4fffc34865f6504d61d8d635b60a04ac",
+    "continuation-weighted4096.log": "8f6adbf2ca36bf9ff41c4e02dd7577c18d40497bf54e1e1c3b0a9edad91577a7",
+    "continuation.py": "273cc8403266d0c81111a6828954dd1c54303d35dc184ae56662c68f64c5b8eb",
+    "continuation41-stable.json": "a8bc5acb4e02267928ff6db64d4f9f8802799413de3882b052231d92df1a0aa3",
+    "continuation41-stable.log": "edd2cbe48c1ae7ec9a9b15820b38a63ca3f64f526556160cffd41953c0c3584b",
+    "continuation41.json": "055a2d35ed2bb236117fc5a60c2b9d7040535d852f6c5f569acf124cb6748670",
+    "continuation41.log": "148042a89e9d6db4d4d15179fefa32c27e1ad9635ee80949c64988c0935f83b8",
+    "continuation83-early-fallback.json": "e950de4523bc90d00afb71e4b0c8457aa1b3aa6bf95cb94df12a09d24d08857d",
+    "continuation83-early-fallback.log": "1c9dc4e32c6b31d389493ee0f473d60d0a552b0d2c994ab796483443f8bad1dc",
+    "continuation83.json": "0bdae36c2fc4ccf98381a0c356b513101d4f1d46252021f8fa092f958268c3a1",
+    "continuation83.log": "ead0f4a9626a9c698d8012140245cd5655a377753df3670d7cdbafdd613ed714",
+    "continuation_panel-v1.py": "d0d569b8e6d810163b25fa838c6a721e0d3daf24cf86fb2c301dbd5e0bbcbf0d",
+    "continuation_panel.py": "f3c0831e28b5010d96aff4d7d7b4e9dcb24ea336d070577a8c48906ec0ab35d4",
+    "fused_experiment.py": "561b5eacdb86640611e79d88560eee752392f69e76cb5082919ebff3bc5490e2",
+    "fused_experiment_stable.py": "7f44bc92c868efb10348073760ed868748fa81465e6b5cef5c5718d4e5bace05",
+    "fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "tight-reference.json": "a7ec6fd016aab6cd92bd059371ac306039d0593ffaf78bdaeac14ce318122260",
+    "tight-reference.log": "b2e301e0a415dbdb9ccefcc88de36a3e62454d854108d2c350ff21ffff45c68f",
+    "tight_reference.py": "18e0f84b7eaf8da5f5ac9c0d20b12de64a25ccfb7fac27be5557de738ee854da"
+  },
+  "limitations": [
+    "Scratch only: not production-integrated; baseline and continuation timings are in-process and include reconstruction but independent scoring is excluded and separately recorded.",
+    "First continuation panel applied a wide progress check to all dimensions and incorrectly labeled narrow rank/shift as nonconverged; v2 uses the matching production criterion and preserves this evidence.",
+    "Continuation-panel-v1.py was reconstructed byte-for-byte and checked against its in-run driver hash; all individual JSON files retain in-run source_before/source_after and integrity flags.",
+    "Earlier fused_experiment.py used sigmoid(z)-y and p*(1-p), which can lose saturated tails; stable single-case reruns use fused_experiment_stable.py with signed residual and sigmoid(z)*sigmoid(-z).",
+    "C=10 and early-start seed83 did not converge under the existing 200 accepted-step budget; rejected corrections or failures remain explicit.",
+    "The accurate-reference rows with gradient above 1e-7 or warnings are invalid under the benchmark reference gate and must not be used as tight accuracy claims.",
+    "The HVP count is extra inner work, not counted among accepted outer iterations; warmed repeat panel has one warmup and three measurements only.",
+    "Scratch uses forced-managed paths on selected controls and has not tested the native sketched bridge, no-intercept, arbitrary rank dependencies, all-zero or zero-weight edge cases."
+  ]
+}

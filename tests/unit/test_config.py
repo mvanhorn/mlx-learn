@@ -139,3 +139,14 @@ def test_only_mlxlearn_prefixed_env_is_read(monkeypatch):
     monkeypatch.setenv("LEGACY_KNN_MIN_TRAIN_SAMPLES", "3")
     monkeypatch.setenv("KNN_MIN_TRAIN_SAMPLES", "5")
     assert _tuning_from_env(Tuning()).knn_min_train_samples == Tuning().knn_min_train_samples
+
+
+def test_sketch_tuning_is_scoped_and_bounded():
+    assert get_tuning().lbfgs_sketch_size == 0
+    with tuning_context(lbfgs_sketch_size=4):
+        assert get_tuning().lbfgs_sketch_size == 4
+    assert get_tuning().lbfgs_sketch_size == 0
+    with pytest.raises(ValueError, match="lbfgs_sketch_size"):
+        Tuning(lbfgs_history=3, lbfgs_sketch_size=4)
+    with pytest.raises(ValueError, match="lbfgs_sketch_size"):
+        Tuning(lbfgs_sketch_size=True)

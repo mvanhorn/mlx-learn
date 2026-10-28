@@ -1,0 +1,152 @@
+[
+  {
+    "objective": 0.30390170134355654,
+    "duality_lower_bound": 0.30114753631856844,
+    "duality_gap": 0.002754165024988098,
+    "relative_gap": 0.00906268379812245,
+    "feature_max_grad": 8.961383152669576e-05,
+    "feature_l2_grad": 0.0005248013933849647,
+    "bias_adjustment": -0.00014687387159235477,
+    "iterations": [
+      47
+    ],
+    "weighted": false,
+    "tol": 0.0001,
+    "warnings": []
+  },
+  {
+    "objective": 0.30334750334380506,
+    "duality_lower_bound": 0.3033353828954725,
+    "duality_gap": 1.2120448332542111e-05,
+    "relative_gap": 3.995565547412848e-05,
+    "feature_max_grad": 8.851942946849523e-06,
+    "feature_l2_grad": 3.48144342659655e-05,
+    "bias_adjustment": -3.247127602352094e-05,
+    "iterations": [
+      250
+    ],
+    "weighted": false,
+    "tol": 1e-05,
+    "warnings": []
+  },
+  {
+    "objective": 0.30334647708863843,
+    "duality_lower_bound": 0.3033462933551396,
+    "duality_gap": 1.8373349885969503e-07,
+    "relative_gap": 6.056885862762393e-07,
+    "feature_max_grad": 8.495693517409427e-07,
+    "feature_l2_grad": 4.2864145721016635e-06,
+    "bias_adjustment": 7.516539895300288e-06,
+    "iterations": [
+      799
+    ],
+    "weighted": false,
+    "tol": 1e-06,
+    "warnings": []
+  },
+  {
+    "objective": 0.30334646486132577,
+    "duality_lower_bound": 0.3033464638671549,
+    "duality_gap": 9.941708567495766e-10,
+    "relative_gap": 3.2773444622275715e-09,
+    "feature_max_grad": 8.992351737738106e-08,
+    "feature_l2_grad": 3.1530474936791e-07,
+    "bias_adjustment": -1.48653359487768e-07,
+    "iterations": [
+      999
+    ],
+    "weighted": false,
+    "tol": 1e-07,
+    "warnings": []
+  },
+  {
+    "objective": 0.30334646486122663,
+    "duality_lower_bound": 0.3033464646063317,
+    "duality_gap": 2.5489493848951383e-10,
+    "relative_gap": 8.402766078257146e-10,
+    "feature_max_grad": 5.010735820706945e-08,
+    "feature_l2_grad": 1.5965428425397712e-07,
+    "bias_adjustment": -4.2554267375496946e-09,
+    "iterations": [
+      1004
+    ],
+    "weighted": false,
+    "tol": 1e-08,
+    "warnings": []
+  },
+  {
+    "objective": 0.30312676989327464,
+    "duality_lower_bound": 0.3018161895162919,
+    "duality_gap": 0.0013105803769827284,
+    "relative_gap": 0.004323538885873259,
+    "feature_max_grad": 9.627729480844973e-05,
+    "feature_l2_grad": 0.00028422487914963316,
+    "bias_adjustment": -0.0002885523050110486,
+    "iterations": [
+      156
+    ],
+    "weighted": true,
+    "tol": 0.0001,
+    "warnings": []
+  },
+  {
+    "objective": 0.30312151681095706,
+    "duality_lower_bound": 0.303092604344124,
+    "duality_gap": 2.8912466833064254e-05,
+    "relative_gap": 9.538242991537823e-05,
+    "feature_max_grad": 7.5316976100339125e-06,
+    "feature_l2_grad": 4.221558712747788e-05,
+    "bias_adjustment": 2.465290008517307e-05,
+    "iterations": [
+      299
+    ],
+    "weighted": true,
+    "tol": 1e-05,
+    "warnings": []
+  },
+  {
+    "objective": 0.3031200183409049,
+    "duality_lower_bound": 0.3031195806208431,
+    "duality_gap": 4.377200618077559e-07,
+    "relative_gap": 1.444048678155834e-06,
+    "feature_max_grad": 8.854997800529763e-07,
+    "feature_l2_grad": 5.194317425550961e-06,
+    "bias_adjustment": -1.7135916615708402e-06,
+    "iterations": [
+      531
+    ],
+    "weighted": true,
+    "tol": 1e-06,
+    "warnings": []
+  },
+  {
+    "objective": 0.30312001621840456,
+    "duality_lower_bound": 0.3031200113056621,
+    "duality_gap": 4.912742490592592e-09,
+    "relative_gap": 1.620725200493805e-08,
+    "feature_max_grad": 8.996511358293668e-08,
+    "feature_l2_grad": 5.5029081519996e-07,
+    "bias_adjustment": -1.0105159339302006e-06,
+    "iterations": [
+      876
+    ],
+    "weighted": true,
+    "tol": 1e-07,
+    "warnings": []
+  },
+  {
+    "objective": 0.30312001556188584,
+    "duality_lower_bound": 0.30312001483385514,
+    "duality_gap": 7.280306912882395e-10,
+    "relative_gap": 2.4017902280016303e-09,
+    "feature_max_grad": 1.1141922693532298e-07,
+    "feature_l2_grad": 2.1183858921244482e-07,
+    "bias_adjustment": 1.9537642569761315e-07,
+    "iterations": [
+      1162
+    ],
+    "weighted": true,
+    "tol": 1e-08,
+    "warnings": []
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "n": 20000,
+  "d": 1024,
+  "gram_ms_samples": [
+    34.500916954129934,
+    10.46287501230836,
+    5.477000027894974,
+    4.804790951311588,
+    5.551791982725263
+  ],
+  "weights": "positive uniform .25..3",
+  "includes": "centering, weighting, matrix construction and evaluation",
+  "limitation": "GPU gram only; factorization and application omitted"
+}

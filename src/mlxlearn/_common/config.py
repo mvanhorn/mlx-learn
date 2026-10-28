@@ -139,14 +139,12 @@ class Tuning:
     knn_min_train_samples: int = 256
     knn_min_work: int = 2_048  # n_train * n_features
     #
-    # Logistic regression is the opposite story, and the thresholds are high on
-    # purpose. Its L-BFGS matches scikit-learn's iteration count but pays a host
-    # synchronization per line-search evaluation, so an iteration costs ~5.9 ms
-    # where its matmul costs 163 us. Measured 0.02x-0.11x below 60 000 x 128, and
-    # 1.26x-1.34x only at 1024 features. Both conditions must be met (see
-    # LogisticRegression._below_crossover) rather than either.
+    # Retain the original wide-workload floor, and admit tall workloads measured
+    # with the native Metal optimizer. See docs/native-logistic-benchmarks.md.
     logreg_min_samples: int = 20_000
     logreg_min_work: int = 20_000_000  # n_samples * n_features
+    logreg_tall_min_samples: int = 250_000
+    logreg_tall_min_work: int = 8_000_000
     #
     # LinearRegression has no dedicated crossover measurement yet. The
     # thresholds are high so patched dispatch does not claim a speedup that
@@ -175,6 +173,8 @@ class Tuning:
 
     # ---- solvers ----------------------------------------------------------------------
     lbfgs_history: int = 10
+    # Optional GPU Hessian-sketch seed pairs; zero keeps the existing solver.
+    lbfgs_sketch_size: int = 0
     lbfgs_max_line_search: int = 32
     smo_kernel_cache_fraction: float = 0.05  # of physical memory
     smo_kernel_cache_min_bytes: int = 32 * 1024 * 1024
@@ -192,6 +192,10 @@ class Tuning:
             value = getattr(self, f.name)
             if isinstance(value, int) and not isinstance(value, bool) and value < 0:
                 raise ValueError(f"tuning value {f.name} must be non-negative, got {value}")
+        if (isinstance(self.lbfgs_sketch_size, bool) or
+            not isinstance(self.lbfgs_sketch_size, int) or
+            not 0 <= self.lbfgs_sketch_size <= min(self.lbfgs_history, 32)):
+            raise ValueError("lbfgs_sketch_size must be an integer between 0 and min(lbfgs_history, 32)")
         if not 0.0 < self.smo_kernel_cache_fraction <= 1.0:
             raise ValueError(
                 "smo_kernel_cache_fraction must be in (0, 1], got "

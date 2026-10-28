@@ -1,0 +1,1058 @@
+{
+  "source_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/device_guard_new/screen.py": "144965faeed9703d9e7ff7b9becb93657f901a74f065c4c6b56b7628a0978000",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "0e1ed2231e28f5cfb9a7269b6c89d5a3c2423ff70af25e9593ad19c12efe2c6b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "ca38ed41a1d35c115b1ed3416d0689fd2382dc9eba6673246aada69ba190898a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "cases": [
+    {
+      "name": "weighted_ill_41",
+      "median_ms": {
+        "1.0": 108.9874375029467,
+        "0.975": 86.40416647540405,
+        "0.95": 86.42735396279022,
+        "0.9": 85.970374988392,
+        "0.85": 83.88720895163715
+      },
+      "samples_ms": {
+        "1.0": [
+          109.19250000733882,
+          108.78237499855459
+        ],
+        "0.975": [
+          88.49720796570182,
+          84.31112498510629
+        ],
+        "0.95": [
+          86.6924999281764,
+          86.16220799740404
+        ],
+        "0.9": [
+          84.53975000884384,
+          87.40099996794015
+        ],
+        "0.85": [
+          84.39658395946026,
+          83.37783394381404
+        ]
+      },
+      "records": {
+        "1.0": [
+          {
+            "n_iter": 200,
+            "converged": false,
+            "stop_reason": "max_iter",
+            "used_fallback": true,
+            "sketch_pairs": 4,
+            "gradient": 2.460246287228074e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 152,
+                "status": 1,
+                "last": -2.5314079721283633e-09,
+                "previous": -2.6537634312262526e-09
+              },
+              {
+                "seeded": false,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 48,
+                "status": 0,
+                "last": -1.4713833706991863e-07,
+                "previous": -1.4590376906653546e-07
+              }
+            ],
+            "warnings": [
+              {
+                "category": "DeviceConvergenceWarning",
+                "message": "Device logistic did not converge (max_iter) after 200 iterations; original-coordinate max gradient 2.46e-05 versus tol=0.0001"
+              }
+            ]
+          },
+          {
+            "n_iter": 200,
+            "converged": false,
+            "stop_reason": "max_iter",
+            "used_fallback": true,
+            "sketch_pairs": 4,
+            "gradient": 2.460246287228074e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 152,
+                "status": 1,
+                "last": -2.5314079721283633e-09,
+                "previous": -2.6537634312262526e-09
+              },
+              {
+                "seeded": false,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 48,
+                "status": 0,
+                "last": -1.4713833706991863e-07,
+                "previous": -1.4590376906653546e-07
+              }
+            ],
+            "warnings": [
+              {
+                "category": "DeviceConvergenceWarning",
+                "message": "Device logistic did not converge (max_iter) after 200 iterations; original-coordinate max gradient 2.46e-05 versus tol=0.0001"
+              }
+            ]
+          }
+        ],
+        "0.975": [
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.437499824736733e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.437499824736733e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.95": [
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.374999712628778e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.374999712628778e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.9": [
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.249999852210749e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.249999852210749e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.85": [
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.1249998098937795e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 153,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.6405489077442326e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.1249998098937795e-05,
+                "n_iter": 153,
+                "status": 1,
+                "last": -1.3641265894648313e-09,
+                "previous": -2.5314079721283633e-09
+              }
+            ],
+            "warnings": []
+          }
+        ]
+      },
+      "quality": {
+        "1.0": [
+          {
+            "gradient": 2.460221700417424e-05,
+            "objective": 0.29716220643552177,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 2.460221700417424e-05,
+            "objective": 0.29716220643552177,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.975": [
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          },
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          }
+        ],
+        "0.95": [
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          },
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          }
+        ],
+        "0.9": [
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          },
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          }
+        ],
+        "0.85": [
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          },
+          {
+            "gradient": 1.6405568278767826e-05,
+            "objective": 0.29716220470833077,
+            "gap": -5.812283540530077e-09,
+            "null": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "weighted_ill_83",
+      "median_ms": {
+        "1.0": 82.49377046013251,
+        "0.975": 81.94745850050822,
+        "0.95": 82.08939543692395,
+        "0.9": 82.00958301313221,
+        "0.85": 81.986291508656
+      },
+      "samples_ms": {
+        "1.0": [
+          82.41312496829778,
+          82.57441595196724
+        ],
+        "0.975": [
+          82.28637499269098,
+          81.60854200832546
+        ],
+        "0.95": [
+          82.09012495353818,
+          82.08866592030972
+        ],
+        "0.9": [
+          81.85654098633677,
+          82.16262503992766
+        ],
+        "0.85": [
+          81.99758303817362,
+          81.97499997913837
+        ]
+      },
+      "records": {
+        "1.0": [
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.975": [
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.437499824736733e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.437499824736733e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.95": [
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.374999712628778e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.374999712628778e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.9": [
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.249999852210749e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.249999852210749e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.85": [
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.1249998098937795e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 145,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 1.7945401850738563e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.1249998098937795e-05,
+                "n_iter": 145,
+                "status": 1,
+                "last": -6.499888627331529e-09,
+                "previous": -5.175778028387867e-09
+              }
+            ],
+            "warnings": []
+          }
+        ]
+      },
+      "quality": {
+        "1.0": [
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.975": [
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.95": [
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.9": [
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.85": [
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 1.794545638850513e-05,
+            "objective": 0.3031260799737425,
+            "gap": 0.0,
+            "null": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "weighted_ill_2027",
+      "median_ms": {
+        "1.0": 78.33145803306252,
+        "0.975": 79.25950002390891,
+        "0.95": 79.00789601262659,
+        "0.9": 78.43493751715869,
+        "0.85": 78.23870849097148
+      },
+      "samples_ms": {
+        "1.0": [
+          78.168333042413,
+          78.49458302371204
+        ],
+        "0.975": [
+          79.4437499716878,
+          79.07525007613003
+        ],
+        "0.95": [
+          79.07933404203504,
+          78.93645798321813
+        ],
+        "0.9": [
+          78.88220902532339,
+          77.98766600899398
+        ],
+        "0.85": [
+          78.0354579910636,
+          78.44195899087936
+        ]
+      },
+      "records": {
+        "1.0": [
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.499999936844688e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.975": [
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.437499824736733e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.437499824736733e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.95": [
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.374999712628778e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.374999712628778e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.9": [
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.249999852210749e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.249999852210749e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          }
+        ],
+        "0.85": [
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.1249998098937795e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          },
+          {
+            "n_iter": 142,
+            "converged": true,
+            "stop_reason": "gtol",
+            "used_fallback": false,
+            "sketch_pairs": 4,
+            "gradient": 2.0185108951409347e-05,
+            "events": [
+              {
+                "seeded": true,
+                "tol": 2.1249998098937795e-05,
+                "n_iter": 142,
+                "status": 1,
+                "last": -2.816627819868245e-09,
+                "previous": -1.2627491940975233e-08
+              }
+            ],
+            "warnings": []
+          }
+        ]
+      },
+      "quality": {
+        "1.0": [
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.975": [
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.95": [
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.9": [
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          }
+        ],
+        "0.85": [
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          },
+          {
+            "gradient": 2.0185104771103398e-05,
+            "objective": 0.30220584933874184,
+            "gap": 0.0,
+            "null": null
+          }
+        ]
+      }
+    }
+  ],
+  "factors": [
+    1.0,
+    0.975,
+    0.95,
+    0.9,
+    0.85
+  ],
+  "source_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/device_guard_new/screen.py": "144965faeed9703d9e7ff7b9becb93657f901a74f065c4c6b56b7628a0978000",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "0e1ed2231e28f5cfb9a7269b6c89d5a3c2423ff70af25e9593ad19c12efe2c6b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "ca38ed41a1d35c115b1ed3416d0689fd2382dc9eba6673246aada69ba190898a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_integrity_passed": true
+}

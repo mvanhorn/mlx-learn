@@ -1,0 +1,17 @@
+{
+  "description": "Source-only scratch fused scorer wide stress and overflow counterexample.",
+  "archive": {
+    "filename": "gpu-fused-direct-stress-2026-10-27.zip",
+    "sha256": "bc862ff03b6ff56c6f2df90444665202e5154a8d7030c70ca2a4b3c5aa16c618"
+  },
+  "files": {
+    "fused.py": "ce46c30b0eb4b7915b086591618fae97f20a8c40f446ad694f0133ba768db08a",
+    "full_fit.py": "cc560be610bb943acc5289d55f2863f44c170fd9f0659d1013ac3f5677d41a24",
+    "wide_stress.py": "b10db5cefe73c6c25abc7523d132f25b75630015c59a69d95ab400ade5b1addc",
+    "overflow_probe.py": "e0c3c9687e525735197c53d6500453d170e4e773e7ea49047e3323f6f65ca803",
+    "benchmarks/logistic_wide.py": "30d86be8541a6308a8e0fad9e357c7fcedcf27516eec836a7ccebd8e4d8f8001",
+    "benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "benchmarks/logistic_native.py": "b4c203e1ef4aba3ec617036d616df888abb558ae75cc761d70822b8983eacc84",
+    "README.txt": "db9633b8270d107ad2dd0646151a395c97785a2d43f3bd05c933ecd634f88fa4"
+  }
+}

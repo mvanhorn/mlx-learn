@@ -60,7 +60,9 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-`0.1.0a2` ships as a pure-Python wheel — no compiler, no build step, no ABI matrix.
+The released `0.1.0a2` wheel is pure Python. Development builds on Apple silicon
+can include an optional stable-ABI Metal extension; the existing MLX solver remains
+available if that extension is absent.
 
 ## Import-order semantics
 
@@ -131,6 +133,84 @@ only through `MLXLEARN_*` environment variables for CI and debugging. They are n
 the public API.
 
 ## Performance
+
+The latest [rerun of the original three tall datasets](docs/fused-narrow-kernel-2026-10-27.md)
+measures complete float32 GPU fits at 6.30 ms (500,000 × 32), 13.20 ms
+(500,000 × 128), and 13.01 ms (60,000 × 1,024): 11.8×, 5.8× and 2.7×
+stock sklearn on the measured M4 Max. Every timed fit passed independent
+accuracy checks. The two narrow cases gained from one fused line-search pass
+and one input pipeline for every feature count; the [earlier recheck](docs/tall-logistic-recheck-2026-10-27.md)
+records the previous timings and the exact settings, variability and limits
+of the historical comparison.
+
+The development version uses native Metal C++ kernels for binary GPU logistic
+regression, including optimizer history, batched line search, and matrix reductions.
+Wide fits fuse candidate losses and the likely accepted gradient into one matrix
+pass. Wide-input preparation also combines validation, centering, and initial
+gradient statistics, while large contiguous float64 inputs use a checked parallel
+conversion. See the [earlier overhead comparison](docs/overhead-logistic-benchmarks.md)
+for complete fresh-fit timings against the frozen previous implementation and stock
+scikit-learn, including timing variability and numerical quality. In that earlier
+comparison the 20,000 × 1,024 float32 case reached 1.68× sklearn; larger cases
+benefited more.
+Reproduce it with:
+
+```bash
+python -m benchmarks.logistic_wide \
+  --reference-archive benchmarks/reference/wide-logistic-2026-10-26.zip \
+  --profile full --dtype both --repeats 30 --warmup 3 --threads 1
+```
+
+The [previous wide comparison](docs/wide-logistic-benchmarks.md) records the matrix
+kernel changes and the pre-existing 4,096-feature objective-parity limitation.
+The development version also includes an optional native Metal command loop for
+prepared wide binary fits on MLX 0.32.x. It retains input buffers through GPU
+completion and falls back to the established solver when unavailable. See the
+[native loop results](docs/native-loop-optimization-2026-10-26.md) for warm and
+first-fit timings, numerical checks, supported inputs, and limitations.
+The [preceding native comparison](docs/native-logistic-benchmarks.md) records the
+earlier tall-data improvements and small-data limitations.
+
+Development work also corrects logistic convergence checks for centered inputs:
+the stopping gradient is evaluated in the original feature coordinates. For
+inputs at risk of float32 rounding error, a selective CPU float64 pass checks the
+returned model against the original input; it is a certificate, not a second
+solver. Its trigger is heuristic and does not cover every possible rounding error.
+Some severely shifted multinomial stress cases still report nonconvergence at
+the requested tolerance. A two-step wide-model loss-progress heuristic addresses
+an observed 4,096-feature objective gap; it also is not
+a guarantee of objective parity. The speed results linked above are historical,
+before these convergence changes. The revised solver's targeted benchmarks show
+12.9–14.1% slower 4,096-feature fits than the frozen baseline. See the
+[convergence investigation](docs/convergence-accuracy-2026-10-27.md)
+for evidence, limitations and the broader benchmark.
+
+The experimental `mlxlearn_device.fit_logistic` interface accepts and returns MLX
+arrays without importing NumPy or scikit-learn. It supports binary float32 inputs
+on the tested Metal bridge and can initialize L-BFGS from GPU Hessian-sketch
+curvature pairs. The sklearn-compatible path exposes the sketch as an opt-in
+private tuning setting. The device convergence check is compensated GPU
+arithmetic, not a formal error bound; the runtime API, supported inputs and
+accuracy limitations are described in the [device and Hessian-sketch report](docs/gpu-hessian-device-logistic-2026-10-27.md).
+The [preceding sketch and weighted investigation](docs/sketch-weighted-optimization-2026-10-27.md)
+measures a scheduling improvement for long fits and records the unbalanced-data
+objective gap found under the earlier gradient stopping rule.
+The [follow-up weighted accuracy report](docs/weighted-wide-investigation-2026-10-27.md)
+describes the additional progress safeguard, its cost and its limits, and the
+wide GPU candidates evaluated against the starting implementation.
+The [wide accuracy and device-sketch report](docs/wide-accuracy-device-repair-2026-10-27.md)
+documents the subsequent ordinary 4,096-feature improvement, the device retry
+fix, and the remaining strongly correlated accuracy gap.
+The [ill-conditioned solver investigation](docs/ill-conditioned-hvp-investigation-2026-10-27.md)
+examines that unresolved gap and a private GPU Hessian-vector building block.
+That investigation enabled no new solver. The subsequent
+[cooperative L-BFGS and guarded Newton report](docs/rank-safe-newton-performance-2026-10-27.md)
+describes the implemented parallel direction recurrence and bounded Newton
+refinement for strongly scale-skewed wide inputs. The final standard panel
+measures 30.24 ms versus sklearn's 65.52 ms on 20,000 × 4,096 ordinary inputs,
+and independent references confirm the reproduced ill-conditioned and weighted
+accuracy fixes. General rank-deficiency checks pass; the report records cases
+without a speed win, reference limitations and full-suite validation status.
 
 "Never slower than scikit-learn" is the design goal. The shipped *gate* is measurable: on
 each benchmarked workload class, patched dispatch shows no statistically significant

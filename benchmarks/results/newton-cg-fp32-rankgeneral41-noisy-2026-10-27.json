@@ -1,0 +1,399 @@
+{
+  "case": "rankgeneral4096",
+  "seed": 41,
+  "C": 1000000.0,
+  "initial_budget": 200,
+  "max_iter": 200,
+  "force_managed": true,
+  "fit_ms": 70.10837504640222,
+  "prep_ms": 14.75916604977101,
+  "cg_ms": 65.09441696107388,
+  "selection_ms": 3.3180839382112026,
+  "cg_hvp_count": 56,
+  "cg_trace": [
+    {
+      "iteration": 1,
+      "residual_norm": 0.00013579859788073932
+    },
+    {
+      "iteration": 2,
+      "residual_norm": 0.0001141303272773873
+    },
+    {
+      "iteration": 3,
+      "residual_norm": 3.507521595292123e-05
+    },
+    {
+      "iteration": 4,
+      "residual_norm": 2.6588538642041245e-05
+    },
+    {
+      "iteration": 5,
+      "residual_norm": 9.164070648842707e-06
+    },
+    {
+      "iteration": 6,
+      "residual_norm": 4.806656409586572e-06
+    },
+    {
+      "iteration": 7,
+      "residual_norm": 1.980511487534551e-06
+    },
+    {
+      "iteration": 8,
+      "residual_norm": 1.2847245961479299e-06
+    },
+    {
+      "iteration": 9,
+      "residual_norm": 5.40493910712217e-07
+    },
+    {
+      "iteration": 10,
+      "residual_norm": 2.884605479930368e-07
+    },
+    {
+      "iteration": 11,
+      "residual_norm": 1.3544411147875502e-07
+    },
+    {
+      "iteration": 12,
+      "residual_norm": 6.372496852684928e-08
+    },
+    {
+      "iteration": 13,
+      "residual_norm": 3.518406649862495e-08
+    },
+    {
+      "iteration": 14,
+      "residual_norm": 2.2725654310043867e-08
+    },
+    {
+      "iteration": 15,
+      "residual_norm": 1.1761937685714701e-08
+    },
+    {
+      "iteration": 16,
+      "residual_norm": 6.964519919202048e-09
+    },
+    {
+      "iteration": 17,
+      "residual_norm": 5.4807198162111746e-09
+    },
+    {
+      "iteration": 18,
+      "residual_norm": 7.133998523346163e-09
+    },
+    {
+      "iteration": 19,
+      "residual_norm": 1.171551188694232e-08
+    },
+    {
+      "iteration": 20,
+      "residual_norm": 2.2865596005268063e-08
+    },
+    {
+      "iteration": 21,
+      "residual_norm": 4.849999441279108e-08
+    },
+    {
+      "iteration": 22,
+      "residual_norm": 1.0570903859883231e-07
+    },
+    {
+      "iteration": 23,
+      "residual_norm": 2.054164352846014e-07
+    },
+    {
+      "iteration": 24,
+      "residual_norm": 4.2451236191051147e-07
+    },
+    {
+      "iteration": 25,
+      "residual_norm": 9.146385187746234e-07
+    },
+    {
+      "iteration": 26,
+      "residual_norm": 1.2344038690969592e-06
+    },
+    {
+      "iteration": 27,
+      "residual_norm": 2.0686564406849318e-06
+    },
+    {
+      "iteration": 28,
+      "residual_norm": 4.377868176078772e-06
+    },
+    {
+      "iteration": 29,
+      "residual_norm": 8.987110164746292e-06
+    },
+    {
+      "iteration": 30,
+      "residual_norm": 1.704830579574133e-05
+    },
+    {
+      "iteration": 31,
+      "residual_norm": 3.322058740699839e-05
+    },
+    {
+      "iteration": 32,
+      "residual_norm": 6.039284191545516e-05
+    },
+    {
+      "iteration": 33,
+      "residual_norm": 8.912276755631716e-05
+    },
+    {
+      "iteration": 34,
+      "residual_norm": 9.59966898987428e-05
+    },
+    {
+      "iteration": 35,
+      "residual_norm": 6.000654873992972e-05
+    },
+    {
+      "iteration": 36,
+      "residual_norm": 3.143619896328448e-05
+    },
+    {
+      "iteration": 37,
+      "residual_norm": 1.5397638341182652e-05
+    },
+    {
+      "iteration": 38,
+      "residual_norm": 7.800410076722445e-06
+    },
+    {
+      "iteration": 39,
+      "residual_norm": 3.870668272273064e-06
+    },
+    {
+      "iteration": 40,
+      "residual_norm": 1.9893952719066834e-06
+    },
+    {
+      "iteration": 41,
+      "residual_norm": 1.4010272457391255e-06
+    },
+    {
+      "iteration": 42,
+      "residual_norm": 7.891540760729325e-07
+    },
+    {
+      "iteration": 43,
+      "residual_norm": 3.7272037477025687e-07
+    },
+    {
+      "iteration": 44,
+      "residual_norm": 1.7844944284593723e-07
+    },
+    {
+      "iteration": 45,
+      "residual_norm": 9.077981122612131e-08
+    },
+    {
+      "iteration": 46,
+      "residual_norm": 4.644010687502105e-08
+    },
+    {
+      "iteration": 47,
+      "residual_norm": 2.2724142410039797e-08
+    },
+    {
+      "iteration": 48,
+      "residual_norm": 1.3335681108498085e-08
+    },
+    {
+      "iteration": 49,
+      "residual_norm": 9.410869669999111e-09
+    },
+    {
+      "iteration": 50,
+      "residual_norm": 4.2462148275786825e-09
+    },
+    {
+      "iteration": 51,
+      "residual_norm": 2.0078870677339467e-09
+    },
+    {
+      "iteration": 52,
+      "residual_norm": 1.002287353043157e-09
+    },
+    {
+      "iteration": 53,
+      "residual_norm": 5.022177531795848e-10
+    },
+    {
+      "iteration": 54,
+      "residual_norm": 2.465842089065894e-10
+    },
+    {
+      "iteration": 55,
+      "residual_norm": 1.3151966617017768e-10
+    },
+    {
+      "iteration": 56,
+      "residual_norm": 9.741501829933459e-11
+    }
+  ],
+  "baseline_n_iter": 12,
+  "baseline_warnings": [],
+  "baseline_score": {
+    "objective_float64": 0.4780781898677007,
+    "gradient_max_abs_float64": 2.9837230361847916e-05,
+    "nullspace_coefficient_relative": null,
+    "three_column_null_ratio": 6.612458973802265e-08
+  },
+  "descent_slope": -5.199108272790909e-07,
+  "alpha_attempts": [
+    {
+      "alpha": 1.0,
+      "loss": 0.4780781056945489,
+      "gradient_max": 1.9839974356727907e-06,
+      "accepted": true
+    }
+  ],
+  "converged": true,
+  "continuation_ms": 8.343124995008111,
+  "trajectory": [
+    {
+      "n_iter": 14,
+      "status": 0,
+      "loss": 0.4780780889337228,
+      "gradient_max": 2.396426168616017e-07,
+      "recent": Infinity,
+      "progress": false
+    },
+    {
+      "n_iter": 15,
+      "status": 0,
+      "loss": 0.4780780979697869,
+      "gradient_max": 2.1846436482064746e-07,
+      "recent": 3.871548481110265e-12,
+      "progress": true
+    }
+  ],
+  "accepted_cg_correction": true,
+  "accepted_outer_steps": 15,
+  "final_score": {
+    "objective_float64": 0.478078143240672,
+    "gradient_max_abs_float64": 2.0888327699046577e-07,
+    "nullspace_coefficient_relative": null,
+    "three_column_null_ratio": 0.9996644116381577
+  },
+  "timed_total_ms": 161.62316699046642,
+  "wall_total_excluding_independent_scoring_ms": 161.6862079827115,
+  "independent_scoring_ms": 31.322875060141087,
+  "source_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/continuation_fp32_general.py": "1c2703000ceefd3fe6d58993b17512224ccd5882a4a5d4916cbf39bd513d7fb0",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_experiment_stable.py": "7f44bc92c868efb10348073760ed868748fa81465e6b5cef5c5718d4e5bace05",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp_mixed.py": "8c740ff85781f1be4fd3d90d45e740a7b3f93a9f16602bb65c4b5380c28e98d3",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "6d496e7b07dd3dd4d27eaefd7e958ba08e7bdff0f0bfe5434fb90ae517b9e391",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "2689ef6e78cd915815e02d14c1775a693217057b074728204c4549adc7aceacc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "fp16_null_violation_rows": 9572,
+  "source_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/continuation_fp32_general.py": "1c2703000ceefd3fe6d58993b17512224ccd5882a4a5d4916cbf39bd513d7fb0",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_experiment_stable.py": "7f44bc92c868efb10348073760ed868748fa81465e6b5cef5c5718d4e5bace05",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp_mixed.py": "8c740ff85781f1be4fd3d90d45e740a7b3f93a9f16602bb65c4b5380c28e98d3",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "6d496e7b07dd3dd4d27eaefd7e958ba08e7bdff0f0bfe5434fb90ae517b9e391",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "2689ef6e78cd915815e02d14c1775a693217057b074728204c4549adc7aceacc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "integrity": true
+}

@@ -1,0 +1,220 @@
+{
+  "note": "Raw harness flags unseeded initial native line-search failure as failure even when existing bounded GPU intercept polish then succeeds; this analysis separates that route observation from independent final-model quality. No fused or current4 failure is suppressed.",
+  "source_integrity_pass": true,
+  "all_final_model_quality_pass": true,
+  "cases": [
+    {
+      "kind": "normal",
+      "seed": 41,
+      "median_ms": {
+        "unseeded": 7.569041976239532,
+        "current4": 8.437166456133127,
+        "fused4": 8.256708038970828,
+        "sklearn": 12.392104021273553
+      },
+      "fused_paired_wins": 6,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "normal",
+      "seed": 83,
+      "median_ms": {
+        "unseeded": 6.868833093903959,
+        "current4": 8.484562509693205,
+        "fused4": 8.216479036491364,
+        "sklearn": 12.340479006525129
+      },
+      "fused_paired_wins": 5,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "normal",
+      "seed": 2027,
+      "median_ms": {
+        "unseeded": 10.885187482926995,
+        "current4": 9.071520995348692,
+        "fused4": 8.4879164933227,
+        "sklearn": 12.498437485191971
+      },
+      "fused_paired_wins": 4,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "weighted_ill",
+      "seed": 41,
+      "median_ms": {
+        "unseeded": 91.23039554106072,
+        "current4": 84.28006258327514,
+        "fused4": 92.94652048265561,
+        "sklearn": 159.40612502163276
+      },
+      "fused_paired_wins": 0,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "weighted_ill",
+      "seed": 83,
+      "median_ms": {
+        "unseeded": 92.7828749991022,
+        "current4": 81.9620835245587,
+        "fused4": 84.36010457808152,
+        "sklearn": 196.7294795322232
+      },
+      "fused_paired_wins": 4,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "weighted_ill",
+      "seed": 2027,
+      "median_ms": {
+        "unseeded": 75.72450052248314,
+        "current4": 106.6904790350236,
+        "fused4": 84.42372945137322,
+        "sklearn": 55.2650835015811
+      },
+      "fused_paired_wins": 8,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "shifted",
+      "seed": 41,
+      "median_ms": {
+        "unseeded": 15.237520972732455,
+        "current4": 13.788437529001385,
+        "fused4": 13.19481193786487,
+        "sklearn": 17.375520546920598
+      },
+      "fused_paired_wins": 6,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "shifted",
+      "seed": 83,
+      "median_ms": {
+        "unseeded": 17.808436998166144,
+        "current4": 15.347916982136667,
+        "fused4": 14.710562536492944,
+        "sklearn": 18.305937468539923
+      },
+      "fused_paired_wins": 5,
+      "unseeded_native_route_events": [
+        {
+          "variant": "unseeded",
+          "fit": 0,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 1,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 2,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 3,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 4,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 5,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 6,
+          "reasons": [
+            "no native convergence"
+          ]
+        },
+        {
+          "variant": "unseeded",
+          "fit": 7,
+          "reasons": [
+            "no native convergence"
+          ]
+        }
+      ],
+      "quality_failures": []
+    },
+    {
+      "kind": "shifted",
+      "seed": 2027,
+      "median_ms": {
+        "unseeded": 21.099167002830654,
+        "current4": 17.279709049034864,
+        "fused4": 15.568792005069554,
+        "sklearn": 69.59266646299511
+      },
+      "fused_paired_wins": 4,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "rank",
+      "seed": 41,
+      "median_ms": {
+        "unseeded": 9.334937494713813,
+        "current4": 9.634562477003783,
+        "fused4": 9.530145500320941,
+        "sklearn": 14.50656249653548
+      },
+      "fused_paired_wins": 6,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "rank",
+      "seed": 83,
+      "median_ms": {
+        "unseeded": 9.399645496159792,
+        "current4": 9.683270996902138,
+        "fused4": 9.736728970892727,
+        "sklearn": 14.408209011889994
+      },
+      "fused_paired_wins": 4,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    },
+    {
+      "kind": "rank",
+      "seed": 2027,
+      "median_ms": {
+        "unseeded": 8.930645999498665,
+        "current4": 9.731396043207496,
+        "fused4": 9.623999998439103,
+        "sklearn": 14.401687541976571
+      },
+      "fused_paired_wins": 5,
+      "unseeded_native_route_events": [],
+      "quality_failures": []
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "description": "Exploratory host-only deterministic sample-growth initialisation; managed continuation; not a production algorithm. Warmup plus two measured repetitions; stops after decisive normal-wide slowdown. Subset iterations count against full 200-step budget. Evaluation-count accounting is incomplete, no production fallback is implemented. Full original-input float64 objective/gradient and warnings are recorded. GPU and sampler timing included.",
+  "archive": {
+    "filename": "sample-growth-warm-start-2026-10-27.zip",
+    "sha256": "9b72e68078702d41416505855295e894693ccf0f4daad583890b3077f5e7e968"
+  },
+  "files": {
+    "probe.py": "2e288b009731753a57dfc2cbe072a9a39fa4a4de345546ce805e273a596c3c71",
+    "normal-41.log": "eb558f78c77f1afa5ca304d1cb777004ea114bab7d5d6e9991030b18c980193f",
+    "normal-41.json": "0c7e0ec6166e0372edbb5d21194544db60155d65f2c665f1cecf60771566e94a"
+  },
+  "source_integrity_pass": true,
+  "reference": {
+    "objective_float64": 0.18779178277027117,
+    "gradient_max_abs_float64": 1.974754500618333e-09,
+    "nullspace_coefficient_relative": null
+  },
+  "reference_warnings": []
+}

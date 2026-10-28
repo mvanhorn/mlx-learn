@@ -1,0 +1,20 @@
+{
+  "description": "Instrumented scratch Metal command-buffer scheduling experiments; baseline, unconditional and adaptive chunks, GPUStartTime/GPUEndTime, native wall, buffer and encoded counts. Full source/binary hashes before/after are in recorded results. Scratch extension binaries omitted; rebuild with build.py. Results have instrumented extension overhead and are not an uninstrumented final benchmark.",
+  "archive": {
+    "filename": "native-chunk-schedule-experiment-2026-10-27.zip",
+    "sha256": "736d8c7ce18eed1b102ce4e23b67b33f63141921ed54a75687d1a28fa03ed179"
+  },
+  "files": {
+    "build.py": "2cbeeaf8aff08eabdc0a133f1c21940f6aeaa6193632623775101e75c638f3f5",
+    "panel.py": "52a5cf24b97c69cfb8a1cda865982cfc9e0b150a77d214d40ef854414c1820b4",
+    "adaptive_panel.py": "4cf6cbbe0f1492ab23d32ba6def842d49fd4d4b13129fb2c9bac8d3588ebcbf9",
+    "adaptive16.mm": "dfb303b407ef98a3dba5d09a0ffdfadcf1a1ee41f347b16175bdf7e3ce07c63a",
+    "adaptive16_early.mm": "657fd0a0eda8cdcbae7b328d3e7ba52008c942ed34ab617105572fb021dde5d4",
+    "adaptive8.mm": "4fa4ab2a2fffe20abfaf7240b959fad9b29a3dab6af05154f36f7c5a7ad3faca",
+    "baseline.mm": "86e211a26e79f038afb8dcd51d4bc007350380d7a18e545de8d4028e9b5c07a3",
+    "chunk16.mm": "4ccf863dc67ddd4643621b5fe1b4629c54c7c7c2565a7e76d1e4fb5a9f7153a6",
+    "chunk16_early.mm": "f235586062f45bea7db86db8440d56f6b8b8b8b990e36011a20aa4fd283d6393",
+    "chunk8.mm": "0416fddb540b22dc1ef0ec584b9258769d06f2f2e0b17484571e76332ecbd5c9",
+    "chunk8_early.mm": "378f03281aa3137aeaa709ecc3ac37a5b53006134dfe3e01c69b6a3edb3c276a"
+  }
+}

@@ -1,0 +1,197 @@
+[
+  {
+    "case": "zero_weight",
+    "details": {
+      "1": {
+        "grad_max": 5.611824465360306e-05,
+        "objective": 0.028460194716494715,
+        "coef_max": 3.482346534729004,
+        "n_iter": [
+          16
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "9": {
+        "grad_max": 5.611878328678543e-05,
+        "objective": 0.02846019473264396,
+        "coef_max": 3.4823458194732666,
+        "n_iter": [
+          16
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "sklearn": {
+        "grad_max": 8.633220043105082e-05,
+        "objective": 0.02845424043560523,
+        "coef_max": 3.486427068710327,
+        "n_iter": [
+          18
+        ],
+        "warnings": []
+      },
+      "objective_difference_new_old": 1.6149245135599344e-11
+    }
+  },
+  {
+    "case": "ill_conditioned",
+    "details": {
+      "1": {
+        "grad_max": 9.388724918629025e-05,
+        "objective": 0.13738480404848025,
+        "coef_max": 8.350569725036621,
+        "n_iter": [
+          105
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "9": {
+        "grad_max": 9.127160209252447e-05,
+        "objective": 0.13738478886759403,
+        "coef_max": 8.35059928894043,
+        "n_iter": [
+          105
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "sklearn": {
+        "grad_max": 7.824127827692751e-05,
+        "objective": 0.1373851425762867,
+        "coef_max": 8.336434364318848,
+        "n_iter": [
+          110
+        ],
+        "warnings": []
+      },
+      "objective_difference_new_old": -1.518088621477176e-08
+    }
+  },
+  {
+    "case": "near_tolerance_below",
+    "details": {
+      "1": {
+        "grad_max": 9.995000228630403e-05,
+        "objective": 0.6931471805599453,
+        "coef_max": 0.0,
+        "n_iter": [
+          0
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "9": {
+        "grad_max": 9.995000228630403e-05,
+        "objective": 0.6931471805599453,
+        "coef_max": 0.0,
+        "n_iter": [
+          0
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "sklearn": {
+        "grad_max": 9.995000228630403e-05,
+        "objective": 0.6931471805599453,
+        "coef_max": 0.0,
+        "n_iter": [
+          0
+        ],
+        "warnings": []
+      },
+      "objective_difference_new_old": 0.0
+    }
+  },
+  {
+    "case": "near_tolerance_above",
+    "details": {
+      "1": {
+        "grad_max": 1.973141825488879e-05,
+        "objective": 0.6930380860925328,
+        "coef_max": 0.04141993820667267,
+        "n_iter": [
+          1
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "9": {
+        "grad_max": 1.973141103168028e-05,
+        "objective": 0.6930380860899545,
+        "coef_max": 0.04141994193196297,
+        "n_iter": [
+          1
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "sklearn": {
+        "grad_max": 3.909582435306317e-06,
+        "objective": 0.6930336678149526,
+        "coef_max": 0.051609236747026443,
+        "n_iter": [
+          1
+        ],
+        "warnings": []
+      },
+      "objective_difference_new_old": -2.578270930087001e-12
+    }
+  },
+  {
+    "case": "offset",
+    "details": {
+      "1": {
+        "grad_max": 0.01221207208147334,
+        "objective": 0.06352746079170032,
+        "coef_max": 6.311809539794922,
+        "n_iter": [
+          25
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "9": {
+        "grad_max": 0.012215626058745217,
+        "objective": 0.06352746067737602,
+        "coef_max": 6.31181001663208,
+        "n_iter": [
+          25
+        ],
+        "native_completed": [
+          true
+        ],
+        "warnings": []
+      },
+      "sklearn": {
+        "grad_max": 0.2902503029497157,
+        "objective": 0.29032657118201854,
+        "coef_max": 1.8008350133895874,
+        "n_iter": [
+          31
+        ],
+        "warnings": []
+      },
+      "objective_difference_new_old": -1.1432430002678018e-10
+    }
+  }
+]

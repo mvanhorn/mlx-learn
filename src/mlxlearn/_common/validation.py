@@ -203,12 +203,35 @@ def check_float32_range(X, *, name: str = "X") -> None:
     if dtype is None or dtype.kind != "f" or dtype.itemsize <= 4:
         return
 
-    finite = np.isfinite(array)
-    if not finite.any():
+    array = np.asarray(array)
+    if array.size == 0:
         return
-    largest = float(np.max(np.abs(array[finite]))) if finite.all() else float(
-        np.max(np.abs(np.where(finite, array, 0.0)))
-    )
+
+    # The ordinary finite case needs two reductions and no array-sized scratch
+    # space. Boolean indexing would copy the entire matrix even if every entry
+    # is finite, and abs() would then allocate another full-sized float array.
+    low, high = np.min(array), np.max(array)
+    if np.isfinite(low) and np.isfinite(high):
+        largest = float(max(abs(low), abs(high)))
+    else:
+        # NaN/Inf are invalid-input errors for validate_data, not float32
+        # capability errors. Still detect finite overflowing values beside them.
+        # Bound scratch space for this uncommon path, including strided inputs.
+        largest = 0.0
+        blocks = np.nditer(
+            array,
+            flags=["external_loop", "buffered", "zerosize_ok"],
+            op_flags=["readonly"],
+            order="K",
+            buffersize=65_536,
+        )
+        for block in blocks:
+            finite = np.isfinite(block)
+            if not finite.any():
+                continue
+            block_low = np.min(block, where=finite, initial=np.inf)
+            block_high = np.max(block, where=finite, initial=-np.inf)
+            largest = max(largest, float(abs(block_low)), float(abs(block_high)))
     if largest > FLOAT32_MAX:
         raise UnsupportedInputError(
             f"{name} contains a value of magnitude {largest:.3g}, which is finite in "

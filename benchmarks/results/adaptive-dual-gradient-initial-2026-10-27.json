@@ -1,0 +1,1888 @@
+{
+  "source_hash_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/_logistic.py": "beadf774741b2dbe770d13e1f8aa3d3dabb5bf5eb1c4c3136a5f88417dc0f0c9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/native_logistic.py": "086710893490593b5cc7ace51c7e9929089022355ecfc13608eb945c35e6d86d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/native_logistic_fused.py": "f5b63b72197991086935d115ab6bae61968680dd19780aaa85a77c2cd564651f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/_metal_loop.mm": "ffd149d584e40cd3437ead7b7d4d23b00027867060a3281acef7189ad29312d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/native_command.py": "eba7851dec32b02a8ec1028ab6e32ce2ad283b69d17c44a3446a749410449caf",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/logistic.py": "6da686bf52693aee78f7de1bc58c1283d71bafc9412d829259352c3be3418aa7",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/_metal_loop.abi3.so": "2bf5a0fb22fff5c4718704fecffc42058708f18aefa3b09032cbc616f67078c4",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/_logistic.py": "beadf774741b2dbe770d13e1f8aa3d3dabb5bf5eb1c4c3136a5f88417dc0f0c9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/native_logistic.py": "b8ce8cc71b4dcb3bbfdf26730b2ed2435e33e7095eb4866bef18e4cdb603c979",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/_metal_loop.mm": "c3d83d5acc8036d4424c664578c7e27fa5cf80fb7371fd4173e51683cc1aab27",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/native_command.py": "632239c9217e0dbe69a72ffc506499b19fbf179c52271b1c1ae62ff0a0910d68",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/logistic.py": "6da686bf52693aee78f7de1bc58c1283d71bafc9412d829259352c3be3418aa7",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/_metal_loop.abi3.so": "ea3977328d3a55e81ba613c0c07533e1b6903991a92269253373b7290e80f84d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/prepare.py": "e9a85cedb11c169ab36d34d1a21474d0be7378f66eb01c652bb684f8df1601fa",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/panel.py": "fbe4f3fba1f55818a9c5fc8001a3adf2a4d1fb94e306de90ae929e264138dcef"
+  },
+  "method": "interleaved fresh fits, 2 warmups + 6 timings; float64 original objective and gradient; frozen initial binary only",
+  "cases": [
+    {
+      "case": "wide_1024",
+      "median_ms": {
+        "baseline": 8.350396004971117,
+        "candidate": 7.382978976238519
+      },
+      "samples": {
+        "baseline": [
+          12.496500043198466,
+          9.75049997214228,
+          9.036208968609571,
+          7.664583041332662,
+          6.945957895368338,
+          6.814125110395253
+        ],
+        "candidate": [
+          10.804334073327482,
+          8.498915936797857,
+          8.338332991115749,
+          6.427624961361289,
+          6.403959007002413,
+          6.353416945785284
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.28939008493883994,
+            "gradient_max_abs_float64": 6.729499092473535e-06,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939008493883994,
+            "gradient_max_abs_float64": 6.729499092473535e-06,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939008493883994,
+            "gradient_max_abs_float64": 6.729499092473535e-06,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939008493883994,
+            "gradient_max_abs_float64": 6.729499092473535e-06,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939008493883994,
+            "gradient_max_abs_float64": 6.729499092473535e-06,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939008493883994,
+            "gradient_max_abs_float64": 6.729499092473535e-06,
+            "nullspace_coefficient_relative": null
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.28939139210373405,
+            "gradient_max_abs_float64": 7.342447761058565e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939139210373405,
+            "gradient_max_abs_float64": 7.342447761058565e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939139210373405,
+            "gradient_max_abs_float64": 7.342447761058565e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939139210373405,
+            "gradient_max_abs_float64": 7.342447761058565e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939139210373405,
+            "gradient_max_abs_float64": 7.342447761058565e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939139210373405,
+            "gradient_max_abs_float64": 7.342447761058565e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    },
+    {
+      "case": "wide_1024_seed83",
+      "median_ms": {
+        "baseline": 6.427874963264912,
+        "candidate": 6.713896058499813
+      },
+      "samples": {
+        "baseline": [
+          6.971250055357814,
+          7.219000020995736,
+          6.398000055924058,
+          6.418457953259349,
+          6.437291973270476,
+          6.357167032547295
+        ],
+        "candidate": [
+          6.486167083494365,
+          6.8316670367494226,
+          6.788833998143673,
+          6.782000069506466,
+          6.434582988731563,
+          6.64579204749316
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.29347049574217304,
+            "gradient_max_abs_float64": 8.474188401018284e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29347049574217304,
+            "gradient_max_abs_float64": 8.474188401018284e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29347049574217304,
+            "gradient_max_abs_float64": 8.474188401018284e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29347049574217304,
+            "gradient_max_abs_float64": 8.474188401018284e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29347049574217304,
+            "gradient_max_abs_float64": 8.474188401018284e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29347049574217304,
+            "gradient_max_abs_float64": 8.474188401018284e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.29346929906135455,
+            "gradient_max_abs_float64": 5.8621009333749966e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29346929906135455,
+            "gradient_max_abs_float64": 5.8621009333749966e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29346929906135455,
+            "gradient_max_abs_float64": 5.8621009333749966e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29346929906135455,
+            "gradient_max_abs_float64": 5.8621009333749966e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29346929906135455,
+            "gradient_max_abs_float64": 5.8621009333749966e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.29346929906135455,
+            "gradient_max_abs_float64": 5.8621009333749966e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              8
+            ],
+            "native_calls": [
+              {
+                "iterations": 8,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    },
+    {
+      "case": "wide_4096",
+      "median_ms": {
+        "baseline": 42.988666507881135,
+        "candidate": 43.636374932248145
+      },
+      "samples": {
+        "baseline": [
+          42.68795903772116,
+          43.19600004237145,
+          42.68629208672792,
+          42.78133297339082,
+          44.039041036739945,
+          43.477708008140326
+        ],
+        "candidate": [
+          43.11079194303602,
+          44.26183400209993,
+          43.08550001587719,
+          42.87737491540611,
+          45.23754201363772,
+          44.16195792146027
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.1878071635679647,
+            "gradient_max_abs_float64": 9.536282022014339e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878071635679647,
+            "gradient_max_abs_float64": 9.536282022014339e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878071635679647,
+            "gradient_max_abs_float64": 9.536282022014339e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878071635679647,
+            "gradient_max_abs_float64": 9.536282022014339e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878071635679647,
+            "gradient_max_abs_float64": 9.536282022014339e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878071635679647,
+            "gradient_max_abs_float64": 9.536282022014339e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.1878032130718983,
+            "gradient_max_abs_float64": 5.5920242599495065e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878032130718983,
+            "gradient_max_abs_float64": 5.5920242599495065e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878032130718983,
+            "gradient_max_abs_float64": 5.5920242599495065e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878032130718983,
+            "gradient_max_abs_float64": 5.5920242599495065e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878032130718983,
+            "gradient_max_abs_float64": 5.5920242599495065e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.1878032130718983,
+            "gradient_max_abs_float64": 5.5920242599495065e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              17
+            ],
+            "native_calls": [
+              {
+                "iterations": 17,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    },
+    {
+      "case": "weighted_ill_1024",
+      "median_ms": {
+        "baseline": 75.66093746572733,
+        "candidate": 72.60177104035392
+      },
+      "samples": {
+        "baseline": [
+          75.63237496651709,
+          75.51066705491394,
+          74.5074589503929,
+          76.0138340992853,
+          77.2312079789117,
+          75.68949996493757
+        ],
+        "candidate": [
+          72.80149997677654,
+          72.704958030954,
+          71.33812503889203,
+          74.72704199608415,
+          72.45245901867747,
+          72.49858404975384
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.3031276629817299,
+            "gradient_max_abs_float64": 4.8118025864593096e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.30312549727721433,
+            "gradient_max_abs_float64": 2.6054509845383622e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.30312549727721433,
+            "gradient_max_abs_float64": 2.6054509845383622e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.30312549727721433,
+            "gradient_max_abs_float64": 2.6054509845383622e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.30312549727721433,
+            "gradient_max_abs_float64": 2.6054509845383622e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.30312549727721433,
+            "gradient_max_abs_float64": 2.6054509845383622e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.30312549727721433,
+            "gradient_max_abs_float64": 2.6054509845383622e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              143
+            ],
+            "native_calls": [
+              {
+                "iterations": 143,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              143
+            ],
+            "native_calls": [
+              {
+                "iterations": 143,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              143
+            ],
+            "native_calls": [
+              {
+                "iterations": 143,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              143
+            ],
+            "native_calls": [
+              {
+                "iterations": 143,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              143
+            ],
+            "native_calls": [
+              {
+                "iterations": 143,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              143
+            ],
+            "native_calls": [
+              {
+                "iterations": 143,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              130
+            ],
+            "native_calls": [
+              {
+                "iterations": 130,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              130
+            ],
+            "native_calls": [
+              {
+                "iterations": 130,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              130
+            ],
+            "native_calls": [
+              {
+                "iterations": 130,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              130
+            ],
+            "native_calls": [
+              {
+                "iterations": 130,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              130
+            ],
+            "native_calls": [
+              {
+                "iterations": 130,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              130
+            ],
+            "native_calls": [
+              {
+                "iterations": 130,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    },
+    {
+      "case": "shifted_1024",
+      "median_ms": {
+        "baseline": 13.286208035424352,
+        "candidate": 12.168020999524742
+      },
+      "samples": {
+        "baseline": [
+          13.918249984271824,
+          13.272666023112833,
+          13.186290976591408,
+          13.29975004773587,
+          13.11349996831268,
+          13.343875063583255
+        ],
+        "candidate": [
+          12.18416600022465,
+          12.165167019702494,
+          12.343083042651415,
+          11.89537497702986,
+          12.17087497934699,
+          12.01300008688122
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.28939029337440836,
+            "gradient_max_abs_float64": 4.473763654489176e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939029337440836,
+            "gradient_max_abs_float64": 4.473763654489176e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939029337440836,
+            "gradient_max_abs_float64": 4.473763654489176e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939029337440836,
+            "gradient_max_abs_float64": 4.473763654489176e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939029337440836,
+            "gradient_max_abs_float64": 4.473763654489176e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.28939029337440836,
+            "gradient_max_abs_float64": 4.473763654489176e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.2893905997158514,
+            "gradient_max_abs_float64": 9.627825301977282e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.2893905997158514,
+            "gradient_max_abs_float64": 9.627825301977282e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.2893905997158514,
+            "gradient_max_abs_float64": 9.627825301977282e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.2893905997158514,
+            "gradient_max_abs_float64": 9.627825301977282e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.2893905997158514,
+            "gradient_max_abs_float64": 9.627825301977282e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.2893905997158514,
+            "gradient_max_abs_float64": 9.627825301977282e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              9
+            ],
+            "native_calls": [
+              {
+                "iterations": 9,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    },
+    {
+      "case": "rank_1024",
+      "median_ms": {
+        "baseline": 9.45856247562915,
+        "candidate": 9.20641649281606
+      },
+      "samples": {
+        "baseline": [
+          9.156750049442053,
+          9.716374916024506,
+          9.476582985371351,
+          9.38295794185251,
+          9.649666957557201,
+          9.44054196588695
+        ],
+        "candidate": [
+          9.060250013135374,
+          8.981332997791469,
+          9.481332963332534,
+          9.35570802539587,
+          9.09608299843967,
+          9.316749987192452
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.30346053852857535,
+            "gradient_max_abs_float64": 6.770100110205133e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346053852857535,
+            "gradient_max_abs_float64": 6.770100110205133e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346053852857535,
+            "gradient_max_abs_float64": 6.770100110205133e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346053852857535,
+            "gradient_max_abs_float64": 6.770100110205133e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346053852857535,
+            "gradient_max_abs_float64": 6.770100110205133e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346053852857535,
+            "gradient_max_abs_float64": 6.770100110205133e-05,
+            "nullspace_coefficient_relative": 0.0
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.30346014090853884,
+            "gradient_max_abs_float64": 5.604516565352588e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346014090853884,
+            "gradient_max_abs_float64": 5.604516565352588e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346014090853884,
+            "gradient_max_abs_float64": 5.604516565352588e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346014090853884,
+            "gradient_max_abs_float64": 5.604516565352588e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346014090853884,
+            "gradient_max_abs_float64": 5.604516565352588e-05,
+            "nullspace_coefficient_relative": 0.0
+          },
+          {
+            "objective_float64": 0.30346014090853884,
+            "gradient_max_abs_float64": 5.604516565352588e-05,
+            "nullspace_coefficient_relative": 0.0
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              11
+            ],
+            "native_calls": [
+              {
+                "iterations": 11,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              10
+            ],
+            "native_calls": [
+              {
+                "iterations": 10,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              10
+            ],
+            "native_calls": [
+              {
+                "iterations": 10,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              10
+            ],
+            "native_calls": [
+              {
+                "iterations": 10,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              10
+            ],
+            "native_calls": [
+              {
+                "iterations": 10,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              10
+            ],
+            "native_calls": [
+              {
+                "iterations": 10,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              10
+            ],
+            "native_calls": [
+              {
+                "iterations": 10,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    },
+    {
+      "case": "unbalanced_1024",
+      "median_ms": {
+        "baseline": 16.22045796830207,
+        "candidate": 10.012062499299645
+      },
+      "samples": {
+        "baseline": [
+          19.2230410175398,
+          17.387625062838197,
+          16.463374951854348,
+          15.669209067709744,
+          15.977540984749794,
+          15.427291975356638
+        ],
+        "candidate": [
+          12.804916012100875,
+          11.594583978876472,
+          10.092833079397678,
+          9.431667043827474,
+          9.931291919201612,
+          9.646999998949468
+        ]
+      },
+      "quality": {
+        "baseline": [
+          {
+            "objective_float64": 0.01055352701265333,
+            "gradient_max_abs_float64": 9.984797642870037e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.01055352701265333,
+            "gradient_max_abs_float64": 9.984797642870037e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.01055352701265333,
+            "gradient_max_abs_float64": 9.984797642870037e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.01055352701265333,
+            "gradient_max_abs_float64": 9.984797642870037e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.01055352701265333,
+            "gradient_max_abs_float64": 9.984797642870037e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.01055352701265333,
+            "gradient_max_abs_float64": 9.984797642870037e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ],
+        "candidate": [
+          {
+            "objective_float64": 0.010482957405119684,
+            "gradient_max_abs_float64": 7.639467398777508e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.010482957405119684,
+            "gradient_max_abs_float64": 7.639467398777508e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.010482957405119684,
+            "gradient_max_abs_float64": 7.639467398777508e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.010482957405119684,
+            "gradient_max_abs_float64": 7.639467398777508e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.010482957405119684,
+            "gradient_max_abs_float64": 7.639467398777508e-05,
+            "nullspace_coefficient_relative": null
+          },
+          {
+            "objective_float64": 0.010482957405119684,
+            "gradient_max_abs_float64": 7.639467398777508e-05,
+            "nullspace_coefficient_relative": null
+          }
+        ]
+      },
+      "details": {
+        "baseline": [
+          {
+            "warnings": [],
+            "n_iter": [
+              16
+            ],
+            "native_calls": [
+              {
+                "iterations": 16,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              16
+            ],
+            "native_calls": [
+              {
+                "iterations": 16,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              16
+            ],
+            "native_calls": [
+              {
+                "iterations": 16,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              16
+            ],
+            "native_calls": [
+              {
+                "iterations": 16,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              16
+            ],
+            "native_calls": [
+              {
+                "iterations": 16,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              16
+            ],
+            "native_calls": [
+              {
+                "iterations": 16,
+                "status": 1
+              }
+            ]
+          }
+        ],
+        "candidate": [
+          {
+            "warnings": [],
+            "n_iter": [
+              13
+            ],
+            "native_calls": [
+              {
+                "iterations": 13,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              13
+            ],
+            "native_calls": [
+              {
+                "iterations": 13,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              13
+            ],
+            "native_calls": [
+              {
+                "iterations": 13,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              13
+            ],
+            "native_calls": [
+              {
+                "iterations": 13,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              13
+            ],
+            "native_calls": [
+              {
+                "iterations": 13,
+                "status": 1
+              }
+            ]
+          },
+          {
+            "warnings": [],
+            "n_iter": [
+              13
+            ],
+            "native_calls": [
+              {
+                "iterations": 13,
+                "status": 1
+              }
+            ]
+          }
+        ]
+      },
+      "failures": []
+    }
+  ],
+  "source_hash_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/_logistic.py": "beadf774741b2dbe770d13e1f8aa3d3dabb5bf5eb1c4c3136a5f88417dc0f0c9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/native_logistic.py": "086710893490593b5cc7ace51c7e9929089022355ecfc13608eb945c35e6d86d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/native_logistic_fused.py": "f5b63b72197991086935d115ab6bae61968680dd19780aaa85a77c2cd564651f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/_metal_loop.mm": "ffd149d584e40cd3437ead7b7d4d23b00027867060a3281acef7189ad29312d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/native_command.py": "eba7851dec32b02a8ec1028ab6e32ce2ad283b69d17c44a3446a749410449caf",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/logistic.py": "6da686bf52693aee78f7de1bc58c1283d71bafc9412d829259352c3be3418aa7",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/_metal_loop.abi3.so": "2bf5a0fb22fff5c4718704fecffc42058708f18aefa3b09032cbc616f67078c4",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/candidate/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/_logistic.py": "beadf774741b2dbe770d13e1f8aa3d3dabb5bf5eb1c4c3136a5f88417dc0f0c9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/native_logistic.py": "b8ce8cc71b4dcb3bbfdf26730b2ed2435e33e7095eb4866bef18e4cdb603c979",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/_metal_loop.mm": "c3d83d5acc8036d4424c664578c7e27fa5cf80fb7371fd4173e51683cc1aab27",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/native_command.py": "632239c9217e0dbe69a72ffc506499b19fbf179c52271b1c1ae62ff0a0910d68",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/logistic.py": "6da686bf52693aee78f7de1bc58c1283d71bafc9412d829259352c3be3418aa7",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/_metal_loop.abi3.so": "ea3977328d3a55e81ba613c0c07533e1b6903991a92269253373b7290e80f84d",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/baseline/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/prepare.py": "e9a85cedb11c169ab36d34d1a21474d0be7378f66eb01c652bb684f8df1601fa",
+    "/Users/tunguz/Programming/mlxlearn/bench/dual_step/panel.py": "fbe4f3fba1f55818a9c5fc8001a3adf2a4d1fb94e306de90ae929e264138dcef"
+  },
+  "source_integrity_pass": true
+}

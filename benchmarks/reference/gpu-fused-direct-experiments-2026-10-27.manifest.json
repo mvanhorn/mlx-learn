@@ -1,0 +1,17 @@
+{
+  "description": "Source-only scratch fused direct-score experiments; not production or float64 certification.",
+  "archive": {
+    "filename": "gpu-fused-direct-experiments-2026-10-27.zip",
+    "sha256": "4fee843c63753de4992af2ad84103aaa66f791685474548f1ba6b62bb2ead4f3"
+  },
+  "files": {
+    "fused.py": "ce46c30b0eb4b7915b086591618fae97f20a8c40f446ad694f0133ba768db08a",
+    "evaluate.py": "4ac35574ace1ef487e356ec94ff47c8de59fb70a28a2c7b5c5bcaed19c2da8db",
+    "full_fit.py": "cc560be610bb943acc5289d55f2863f44c170fd9f0659d1013ac3f5677d41a24",
+    "wide_followup.py": "0184b4694c7c02882828e4a7f19ec5853ce1ffa60fcbd603529d695af55e9f4c",
+    "benchmarks/logistic_wide.py": "30d86be8541a6308a8e0fad9e357c7fcedcf27516eec836a7ccebd8e4d8f8001",
+    "benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "benchmarks/logistic_native.py": "b4c203e1ef4aba3ec617036d616df888abb558ae75cc761d70822b8983eacc84",
+    "README.txt": "8c4580af3b18e1299e813a8bef39bc5068239ea5be58477d32c68b8c655e9f0d"
+  }
+}

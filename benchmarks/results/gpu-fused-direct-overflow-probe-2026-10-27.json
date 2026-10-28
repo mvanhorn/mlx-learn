@@ -1,0 +1,17 @@
+{
+  "shape": [
+    20000,
+    4096
+  ],
+  "theta_intercept_float32": 9.999999933815813e+36,
+  "baseline_objective": 9.999999680285692e+36,
+  "baseline_finite": true,
+  "fused_finite": false,
+  "fused_objective": "inf",
+  "baseline_grad_finite": true,
+  "fused_grad_finite": true,
+  "baseline_grad_bias": 1.0,
+  "fused_grad_bias": 1.0,
+  "baseline_parts_max": 1.9999999360571385e+38,
+  "fused_part_infinite_count": 156
+}

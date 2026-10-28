@@ -1,0 +1,447 @@
+{
+  "description": "Exploratory convergence diagnosis; not a performance benchmark.",
+  "limitations": "No binary hash or in-run source-integrity audit was captured. Tolerance sweeps used the then-current implementation before the present edits; iteration and step traces used the immutable frozen prior implementation. Budget-truncated fits may emit convergence warnings by design. Timings are diagnostic and not quality-qualified performance claims.",
+  "parameters": {
+    "seed": 41,
+    "dtype": "float32",
+    "n_samples": 20000,
+    "public_tol": 0.0001
+  },
+  "frozen_prior_archive": "benchmarks/reference/overhead-logistic-2026-10-26.zip",
+  "frozen_prior_sha256": "e519e6bde4cfa1e45213ee43a1739d185d85d6235f1d26c586aea5cbe8a52261",
+  "data": {
+    "sklearn": {
+      "objective": 0.1878292178596693,
+      "max_grad": 9.862497050953502e-05,
+      "l2_grad": 0.0018639897258553612,
+      "grad_sq": 3.4744576980943447e-06
+    },
+    "sklearn_metadata": {
+      "backend": "sklearn",
+      "n_iter": [
+        15
+      ],
+      "implementation": "sklearn",
+      "warnings": [],
+      "solutions": [],
+      "solver_calls": [],
+      "native_loop_calls": []
+    },
+    "results": [
+      {
+        "budget": 11,
+        "seconds_diagnostic": 0.06899366702418774,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            11
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 11 iterations; max|gradient| is 0.000245 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 11,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 0.00024549642694182694,
+              "objective": 0.18822054794766008
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 11,
+              "n_fev": 89,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 0.00024549642694182694,
+              "objective": 0.18822054794766008
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18822054921492679,
+          "max_grad": 0.00024552012546561695,
+          "l2_grad": 0.0044783899695374964,
+          "grad_sq": 2.0055976719254056e-05,
+          "gap_to_sklearn": 0.0020834423936634595
+        }
+      },
+      {
+        "budget": 12,
+        "seconds_diagnostic": 0.032770374906249344,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            12
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 12 iterations; max|gradient| is 0.000236 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 12,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 0.00023649622744414955,
+              "objective": 0.18797852841783316
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 12,
+              "n_fev": 97,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 0.00023649622744414955,
+              "objective": 0.18797852841783316
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.1879785298411659,
+          "max_grad": 0.00023629033334187364,
+          "l2_grad": 0.003998901656047139,
+          "grad_sq": 1.5991214454736555e-05,
+          "gap_to_sklearn": 0.0007949347987390614
+        }
+      },
+      {
+        "budget": 13,
+        "seconds_diagnostic": 0.0344270410714671,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            13
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 13 iterations; max|gradient| is 0.000183 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 13,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 0.00018295441986992955,
+              "objective": 0.18789698361158372
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 13,
+              "n_fev": 105,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 0.00018295441986992955,
+              "objective": 0.18789698361158372
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18789698634324759,
+          "max_grad": 0.00018304112335359497,
+          "l2_grad": 0.002948195613571134,
+          "grad_sq": 8.691857375880074e-06,
+          "gap_to_sklearn": 0.00036079841225189707
+        }
+      },
+      {
+        "budget": 14,
+        "seconds_diagnostic": 0.035125707974657416,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            14
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 14 iterations; max|gradient| is 7.95e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 14,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 7.948640268296003e-05,
+              "objective": 0.18785037030745297
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 14,
+              "n_fev": 113,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 7.948640268296003e-05,
+              "objective": 0.18785037030745297
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18785037452278358,
+          "max_grad": 7.951917157068386e-05,
+          "l2_grad": 0.0013840184898645238,
+          "grad_sq": 1.9155071802868773e-06,
+          "gap_to_sklearn": 0.00011263776400371661
+        }
+      },
+      {
+        "budget": 15,
+        "seconds_diagnostic": 0.037082624970935285,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            15
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 15 iterations; max|gradient| is 6.58e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 15,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 6.582326022908092e-05,
+              "objective": 0.18782742948047818
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 15,
+              "n_fev": 121,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 6.582326022908092e-05,
+              "objective": 0.18782742948047818
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18782743387519826,
+          "max_grad": 6.579716949430854e-05,
+          "l2_grad": 0.0012064302072150354,
+          "grad_sq": 1.455473844880913e-06,
+          "gap_to_sklearn": -9.497907148665856e-06
+        }
+      },
+      {
+        "budget": 16,
+        "seconds_diagnostic": 0.039155000005848706,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            16
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 6.55e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 16,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 6.549631507368758e-05,
+              "objective": 0.18780989776644855
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 16,
+              "n_fev": 129,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 6.549631507368758e-05,
+              "objective": 0.18780989776644855
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18780990107308956,
+          "max_grad": 6.553075973635821e-05,
+          "l2_grad": 0.0011151783854819017,
+          "grad_sq": 1.243622831446021e-06,
+          "gap_to_sklearn": -0.00010284228832901366
+        }
+      },
+      {
+        "budget": 17,
+        "seconds_diagnostic": 0.04194533289410174,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            17
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 17 iterations; max|gradient| is 9.55e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 17,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 9.545927605358884e-05,
+              "objective": 0.18780716008525342
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 17,
+              "n_fev": 137,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 9.545927605358884e-05,
+              "objective": 0.18780716008525342
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.1878071629867704,
+          "max_grad": 9.536589445840522e-05,
+          "l2_grad": 0.0017725626078946577,
+          "grad_sq": 3.14197819890631e-06,
+          "gap_to_sklearn": -0.0001174198197183092
+        }
+      },
+      {
+        "budget": 18,
+        "seconds_diagnostic": 0.04374629200901836,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            18
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 2.86e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 18,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 2.8573043891810812e-05,
+              "objective": 0.1877973653614521
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 18,
+              "n_fev": 145,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 2.8573043891810812e-05,
+              "objective": 0.1877973653614521
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18779736616755405,
+          "max_grad": 2.8581564404048586e-05,
+          "l2_grad": 0.0004314771962600074,
+          "grad_sq": 1.8617257089239697e-07,
+          "gap_to_sklearn": -0.00016957794148432433
+        }
+      },
+      {
+        "budget": 19,
+        "seconds_diagnostic": 0.045814040931873024,
+        "metadata": {
+          "backend": "mlx",
+          "n_iter": [
+            19
+          ],
+          "implementation": "native_metal",
+          "warnings": [
+            {
+              "category": "ConvergenceWarning",
+              "message": "LogisticRegression failed to converge (max_iter) after 19 iterations; max|gradient| is 2.08e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+            }
+          ],
+          "solutions": [
+            {
+              "n_iter": 19,
+              "n_fev": null,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 2.0761519408551976e-05,
+              "objective": 0.18779590083546938
+            }
+          ],
+          "solver_calls": [
+            {
+              "implementation": "native_metal",
+              "n_iter": 19,
+              "n_fev": 153,
+              "converged": false,
+              "stop_reason": "max_iter",
+              "grad_max_abs": 2.0761519408551976e-05,
+              "objective": 0.18779590083546938
+            }
+          ],
+          "native_loop_calls": []
+        },
+        "quality": {
+          "objective": 0.18779589962795795,
+          "max_grad": 2.0754378868194316e-05,
+          "l2_grad": 0.00033213906196622015,
+          "grad_sq": 1.1031635648380064e-07,
+          "gap_to_sklearn": -0.00017738577677644182
+        }
+      }
+    ]
+  }
+}
