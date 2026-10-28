@@ -1,0 +1,101 @@
+{
+  "method": "Gram+GPU MPS Cholesky+GPU inverse, no solver or quality included",
+  "results": [
+    {
+      "jitter_fraction": 0.001,
+      "samples": [
+        {
+          "rhs": 0,
+          "gram_ms": 30.404250021092594,
+          "factor_inverse_ms": 119.42116706632078,
+          "total_ms": 149.82541708741337,
+          "status": 0
+        },
+        {
+          "rhs": 0,
+          "gram_ms": 7.106042001396418,
+          "factor_inverse_ms": 68.27704107854515,
+          "total_ms": 75.38308307994157,
+          "status": 0
+        },
+        {
+          "rhs": 0,
+          "gram_ms": 6.126584019511938,
+          "factor_inverse_ms": 72.28399999439716,
+          "total_ms": 78.4105840139091,
+          "status": 0
+        },
+        {
+          "rhs": 1,
+          "gram_ms": 6.086208974011242,
+          "factor_inverse_ms": 86.50620793923736,
+          "total_ms": 92.5924169132486,
+          "status": 0
+        },
+        {
+          "rhs": 1,
+          "gram_ms": 6.110249902121723,
+          "factor_inverse_ms": 85.41604201309383,
+          "total_ms": 91.52629191521555,
+          "status": 0
+        },
+        {
+          "rhs": 1,
+          "gram_ms": 6.140833022072911,
+          "factor_inverse_ms": 86.0492920037359,
+          "total_ms": 92.19012502580881,
+          "status": 0
+        }
+      ],
+      "validation": {}
+    },
+    {
+      "jitter_fraction": 0.01,
+      "samples": [
+        {
+          "rhs": 0,
+          "gram_ms": 6.10220804810524,
+          "factor_inverse_ms": 65.14799990691245,
+          "total_ms": 71.25020795501769,
+          "status": 0
+        },
+        {
+          "rhs": 0,
+          "gram_ms": 6.130542024038732,
+          "factor_inverse_ms": 66.13545794971287,
+          "total_ms": 72.2659999737516,
+          "status": 0
+        },
+        {
+          "rhs": 0,
+          "gram_ms": 6.085417000576854,
+          "factor_inverse_ms": 76.14679099060595,
+          "total_ms": 82.2322079911828,
+          "status": 0
+        },
+        {
+          "rhs": 1,
+          "gram_ms": 6.130624911747873,
+          "factor_inverse_ms": 94.57862505223602,
+          "total_ms": 100.7092499639839,
+          "status": 0
+        },
+        {
+          "rhs": 1,
+          "gram_ms": 6.050458061508834,
+          "factor_inverse_ms": 95.24987498298287,
+          "total_ms": 101.30033304449171,
+          "status": 0
+        },
+        {
+          "rhs": 1,
+          "gram_ms": 6.184916011989117,
+          "factor_inverse_ms": 89.29591707419604,
+          "total_ms": 95.48083308618516,
+          "status": 0
+        }
+      ],
+      "validation": {}
+    }
+  ]
+}

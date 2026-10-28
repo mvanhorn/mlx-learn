@@ -1,0 +1,12 @@
+{
+  "description": "GPU one-initial-gradient pair on weighted skewed 1024, 2 warmups +4 balanced fits per case and every-fit original-input float64 checks; stopped early at weighted unbalanced seed2027 after both 0.5x and 0.25x tolerance candidates failed objective gates. Class/zero, shifted, exact duplicate and extreme cases remain untested. Source integrity audit passed. Not production.",
+  "archive": {
+    "filename": "gradient-probe-weighted-heldouts-2026-10-27.zip",
+    "sha256": "4428e9ded285c2116d77f453ebd5d2fbc022752ce1efe1c0f2a55af2b81bd8c6"
+  },
+  "files": {
+    "gradient_probe.py": "30bc3d1cdf29290bb53be610a4196aa592641d051948631dcc56759fb1d20666",
+    "weighted_heldouts.py": "0b458b7736e843f639722f6653b49ff7a328a8d8775ebb2e3a5764788c3e0646"
+  },
+  "reproduction": "Extract into bench/sketch_speed and run PYTHONPATH=. python3 bench/sketch_speed/weighted_heldouts.py; requires Apple GPU and native extension."
+}

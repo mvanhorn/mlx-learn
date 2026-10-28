@@ -1,0 +1,14 @@
+{
+  "description": "Held-out multi-probe fusion: raw all_quality_pass is false solely because eight unseeded initial native line-search failures were counted as route failures before successful, independently checked bounded polish. No fused/current4 failures are suppressed. See separate heldout analysis. Runtime source/binary hashes were verified before and after; analysis and README captured after measurement.",
+  "archive": {
+    "filename": "multiprobe-fusion-heldout-2026-10-27.zip",
+    "sha256": "1cf0ef945a5db285305a166498d3be9a6f06fee3dd2d15ea412174fa853fdcb8"
+  },
+  "files": {
+    "fusion.py": "de98643c12bbcd9686eb049f8abf3d39a66365763c119a3b3f7954333c5e5612",
+    "benchmark.py": "264503261fee7906f5288c8dba792c4a7f7b13914d92ae8de31a03da2fbe3eef",
+    "heldout.py": "384cdf0ba92ee01c3f3a5322039f8cdde75aa6fc9031dd7400577a47aaaa3d9b",
+    "heldout_analysis.py": "78fe5b044a32523c6b3678e6d7c1c5c0dbfd2c81d751c353ec256f59f95f6f0b",
+    "README.md": "7c07747c8efbccd1fb4abfad1f9b711ff76aed0046f7d8c9468283aa3cbbcc4a"
+  }
+}

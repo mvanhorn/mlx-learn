@@ -1,0 +1,9 @@
+{
+  "archive_sha256": "98cabcdd0e179189c49acfa0f3d7abe0d8249dcea48e107bb35d0f7aa1eb2196",
+  "files": {
+    "src/mlxlearn/_solvers/_metal_loop.mm": "7b6adc4a3ce5fe0e66bd23c8c4545594d65cba78b4780241db57c5eb71e5582c",
+    "setup.py": "8cc8b55e281b2cc69fba659c9e7eefcbe7cea49352165d61ef605db1f1a18160",
+    "pyproject.toml": "384af53a715d980e6417873728189e31cb5d7c006e18eb68ffc4a77de0157fee"
+  },
+  "description": "Sources for rebuilding the baseline native extension; no binary included."
+}

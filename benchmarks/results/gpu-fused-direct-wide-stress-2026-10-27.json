@@ -1,0 +1,1243 @@
+{
+  "source_hashes": {
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "019de6e0eb439a277c6013a3edc486f47073fc62a12d307ad402ae68f53adfcb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "7f9de273556aa1f71fe044c5e6f2641f52fc54c01248a9c637628880420355ae",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "bfd815573e64bb413704dbcfdb132c4f46df3e23286e63807fbf7b16f60b4083",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "f9be9b8f46df82407e37d3f74fe416942a6e8b65f207b6d7e7bd3cba7bc0e968",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "a1422c004960b761838a4d5562aea1a6f7aac6e9ec03df5fe5ee0d9b7888b88e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "8df54c8cc760d9f7727c5047874b966685a9f6acb1214c43ecb6271f9b8b76f0",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/bench/fused_direct/full_fit.py": "cc560be610bb943acc5289d55f2863f44c170fd9f0659d1013ac3f5677d41a24",
+    "/Users/tunguz/Programming/mlxlearn/bench/fused_direct/fused.py": "ce46c30b0eb4b7915b086591618fae97f20a8c40f446ad694f0133ba768db08a",
+    "/Users/tunguz/Programming/mlxlearn/bench/fused_direct/wide_stress.py": "b10db5cefe73c6c25abc7523d132f25b75630015c59a69d95ab400ade5b1addc"
+  },
+  "source_integrity_passed": true,
+  "native_extension": {
+    "module": "mlxlearn._solvers._metal_loop",
+    "path": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so",
+    "sha256": "49b9a212d45dfba74fda89096510a7f66f50a8686d4d00cb01bf0737a6588a6d"
+  },
+  "cases": [
+    {
+      "name": "strict1e-6",
+      "tol": 1e-06,
+      "weighted": false,
+      "shift": 0.0,
+      "ill_conditioned": false,
+      "scaled": false,
+      "zeros": false,
+      "sklearn_details": {
+        "backend": "sklearn",
+        "n_iter": [
+          29
+        ],
+        "implementation": "sklearn",
+        "warnings": [],
+        "solutions": [],
+        "solver_calls": [],
+        "native_loop_calls": []
+      },
+      "sklearn_quality": {
+        "objective": 0.18779178982071687,
+        "gradient_max": 9.937705929120437e-07
+      },
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.16974087490234524,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                33
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 33,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.700016558056865e-07,
+                  "objective": 0.18779178464036506
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 33,
+                  "n_fev": 265,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.69537040873547e-07,
+                  "objective": 0.18779178428296
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.18779178464036494,
+              "gradient_max": 9.700016558051986e-07,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.7585614526334477e-08
+            }
+          },
+          {
+            "seconds": 0.09534816700033844,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                33
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 33,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.700016558056865e-07,
+                  "objective": 0.18779178464036506
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 33,
+                  "n_fev": 265,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.69537040873547e-07,
+                  "objective": 0.18779178428296
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.18779178464036494,
+              "gradient_max": 9.700016558051986e-07,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.7585614526334477e-08
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.09487737505696714,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                33
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 33,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.700016558056865e-07,
+                  "objective": 0.18779178464036506
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 33,
+                  "n_fev": 265,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.696617553345277e-07,
+                  "objective": 0.18779178212005646
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.18779178464036494,
+              "gradient_max": 9.700016558051986e-07,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.7585614526334477e-08
+            }
+          },
+          {
+            "seconds": 0.09559595806058496,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                33
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 33,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.700016558056865e-07,
+                  "objective": 0.18779178464036506
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 33,
+                  "n_fev": 265,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.696617553345277e-07,
+                  "objective": 0.18779178212005646
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.18779178464036494,
+              "gradient_max": 9.700016558051986e-07,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.7585614526334477e-08
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "strict1e-7",
+      "tol": 1e-07,
+      "weighted": false,
+      "shift": 0.0,
+      "ill_conditioned": false,
+      "scaled": false,
+      "zeros": false,
+      "sklearn_details": {
+        "backend": "sklearn",
+        "n_iter": [
+          31
+        ],
+        "implementation": "sklearn",
+        "warnings": [],
+        "solutions": [],
+        "solver_calls": [],
+        "native_loop_calls": []
+      },
+      "sklearn_quality": {
+        "objective": 0.18779178730163754,
+        "gradient_max": 1.3080577265575238e-06
+      },
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.30078308400698006,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                49
+              ],
+              "implementation": "native_metal",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 49,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.199236975930732e-08,
+                  "objective": 0.187791782783866
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 49,
+                  "n_fev": 393,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.09430895035257e-08,
+                  "objective": 0.18779178290572018
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877917827838661,
+              "gradient_max": 9.1992369759741e-08,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.4057342973548096e-08
+            }
+          },
+          {
+            "seconds": 0.21552579198032618,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                49
+              ],
+              "implementation": "native_metal",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 49,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.199236975930732e-08,
+                  "objective": 0.187791782783866
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 49,
+                  "n_fev": 393,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.09430895035257e-08,
+                  "objective": 0.18779178290572018
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877917827838661,
+              "gradient_max": 9.1992369759741e-08,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.4057342973548096e-08
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.21344891597982496,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                49
+              ],
+              "implementation": "native_metal",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 49,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.199236975930732e-08,
+                  "objective": 0.187791782783866
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 49,
+                  "n_fev": 393,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.167319348080127e-08,
+                  "objective": 0.18779177747946232
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877917827838661,
+              "gradient_max": 9.1992369759741e-08,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.4057342973548096e-08
+            }
+          },
+          {
+            "seconds": 0.21208291605580598,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                49
+              ],
+              "implementation": "native_metal",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 49,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.199236975930732e-08,
+                  "objective": 0.187791782783866
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 49,
+                  "n_fev": 393,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 9.167319348080127e-08,
+                  "objective": 0.18779177747946232
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877917827838661,
+              "gradient_max": 9.1992369759741e-08,
+              "prediction_agreement": 1.0,
+              "relative_gap_to_sklearn": -2.4057342973548096e-08
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "weighted",
+      "tol": 0.0001,
+      "weighted": true,
+      "shift": 0.0,
+      "ill_conditioned": false,
+      "scaled": false,
+      "zeros": false,
+      "sklearn_details": {
+        "backend": "sklearn",
+        "n_iter": [
+          20
+        ],
+        "implementation": "sklearn",
+        "warnings": [],
+        "solutions": [],
+        "solver_calls": [],
+        "native_loop_calls": []
+      },
+      "sklearn_quality": {
+        "objective": 0.16052671546551106,
+        "gradient_max": 6.233646755328214e-05
+      },
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.0694362090434879,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                23
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 23,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.087266279384494e-05,
+                  "objective": 0.16049781827420548
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 23,
+                  "n_fev": 185,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.087266279384494e-05,
+                  "objective": 0.16049781827420548
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.16049782153682604,
+              "gradient_max": 4.0872273904731725e-05,
+              "prediction_agreement": 0.9985,
+              "relative_gap_to_sklearn": -0.00017999451743113532
+            }
+          },
+          {
+            "seconds": 0.05696891702245921,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                23
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 23,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.087266279384494e-05,
+                  "objective": 0.16049781827420548
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 23,
+                  "n_fev": 185,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.087266279384494e-05,
+                  "objective": 0.16049781827420548
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.16049782153682604,
+              "gradient_max": 4.0872273904731725e-05,
+              "prediction_agreement": 0.9985,
+              "relative_gap_to_sklearn": -0.00017999451743113532
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.056647208984941244,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                23
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 23,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.0872815588954836e-05,
+                  "objective": 0.16049781714489847
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 23,
+                  "n_fev": 185,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.0872815588954836e-05,
+                  "objective": 0.16049781714489847
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.16049782153682604,
+              "gradient_max": 4.0872273904731725e-05,
+              "prediction_agreement": 0.9985,
+              "relative_gap_to_sklearn": -0.00017999451743113532
+            }
+          },
+          {
+            "seconds": 0.05635633401107043,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                23
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 23,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.0872815588954836e-05,
+                  "objective": 0.16049781714489847
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 23,
+                  "n_fev": 185,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.0872815588954836e-05,
+                  "objective": 0.16049781714489847
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.16049782153682604,
+              "gradient_max": 4.0872273904731725e-05,
+              "prediction_agreement": 0.9985,
+              "relative_gap_to_sklearn": -0.00017999451743113532
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "shifted",
+      "tol": 0.0001,
+      "weighted": false,
+      "shift": 1000.0,
+      "ill_conditioned": false,
+      "scaled": false,
+      "zeros": false,
+      "sklearn_details": {
+        "backend": "sklearn",
+        "n_iter": [
+          3
+        ],
+        "implementation": "sklearn",
+        "warnings": [],
+        "solutions": [],
+        "solver_calls": [],
+        "native_loop_calls": []
+      },
+      "sklearn_quality": {
+        "objective": 0.6930254921229227,
+        "gradient_max": 0.35643000478140097
+      },
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.09643229201901704,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                29
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 29,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.064508256803947e-05,
+                  "objective": 0.18779180389106664
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 29,
+                  "n_fev": 233,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.0059567254502326e-05,
+                  "objective": 0.18779180096965284
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877918038910667,
+              "gradient_max": 4.064508256923176e-05,
+              "prediction_agreement": 0.50755,
+              "relative_gap_to_sklearn": -0.7290261238214916
+            }
+          },
+          {
+            "seconds": 0.08395574998576194,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                29
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 29,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.064508256803947e-05,
+                  "objective": 0.18779180389106664
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 29,
+                  "n_fev": 233,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.0059567254502326e-05,
+                  "objective": 0.18779180096965284
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877918038910667,
+              "gradient_max": 4.064508256923176e-05,
+              "prediction_agreement": 0.50755,
+              "relative_gap_to_sklearn": -0.7290261238214916
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.08392141701187938,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                29
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 29,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.064508256803947e-05,
+                  "objective": 0.18779180389106664
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 29,
+                  "n_fev": 233,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 3.861854565911926e-05,
+                  "objective": 0.18779179788883776
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877918038910667,
+              "gradient_max": 4.064508256923176e-05,
+              "prediction_agreement": 0.50755,
+              "relative_gap_to_sklearn": -0.7290261238214916
+            }
+          },
+          {
+            "seconds": 0.08453262492548674,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                29
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 29,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 4.064508256803947e-05,
+                  "objective": 0.18779180389106664
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 29,
+                  "n_fev": 233,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 3.861854565911926e-05,
+                  "objective": 0.18779179788883776
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.1877918038910667,
+              "gradient_max": 4.064508256923176e-05,
+              "prediction_agreement": 0.50755,
+              "relative_gap_to_sklearn": -0.7290261238214916
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ill_conditioned",
+      "tol": 0.0001,
+      "weighted": false,
+      "shift": 0.0,
+      "ill_conditioned": true,
+      "scaled": false,
+      "zeros": false,
+      "sklearn_details": {
+        "backend": "sklearn",
+        "n_iter": [
+          161
+        ],
+        "implementation": "sklearn",
+        "warnings": [],
+        "solutions": [],
+        "solver_calls": [],
+        "native_loop_calls": []
+      },
+      "sklearn_quality": {
+        "objective": 0.26137941596396086,
+        "gradient_max": 6.80987902153678e-05
+      },
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.37672429101075977,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                159
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 159,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.848432531114668e-05,
+                  "objective": 0.26138459436465056
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 159,
+                  "n_fev": 1273,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.848432531114668e-05,
+                  "objective": 0.26138459436465056
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2613845934060716,
+              "gradient_max": 6.84903490680614e-05,
+              "prediction_agreement": 0.9996,
+              "relative_gap_to_sklearn": 1.9808147828571305e-05
+            }
+          },
+          {
+            "seconds": 0.361246292013675,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                159
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 159,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.848432531114668e-05,
+                  "objective": 0.26138459436465056
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 159,
+                  "n_fev": 1273,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.848432531114668e-05,
+                  "objective": 0.26138459436465056
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2613845934060716,
+              "gradient_max": 6.84903490680614e-05,
+              "prediction_agreement": 0.9996,
+              "relative_gap_to_sklearn": 1.9808147828571305e-05
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.3634781250730157,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                159
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 159,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.84877741150558e-05,
+                  "objective": 0.26138458835650236
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 159,
+                  "n_fev": 1273,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.84877741150558e-05,
+                  "objective": 0.26138458835650236
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2613845934060716,
+              "gradient_max": 6.84903490680614e-05,
+              "prediction_agreement": 0.9996,
+              "relative_gap_to_sklearn": 1.9808147828571305e-05
+            }
+          },
+          {
+            "seconds": 0.3588919580215588,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                159
+              ],
+              "implementation": "native_command_loop",
+              "warnings": [],
+              "solutions": [
+                {
+                  "n_iter": 159,
+                  "n_fev": null,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.84877741150558e-05,
+                  "objective": 0.26138458835650236
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_command_loop",
+                  "n_iter": 159,
+                  "n_fev": 1273,
+                  "converged": true,
+                  "stop_reason": "gtol",
+                  "grad_max_abs": 6.84877741150558e-05,
+                  "objective": 0.26138458835650236
+                }
+              ],
+              "native_loop_calls": [
+                "completed"
+              ]
+            },
+            "quality": {
+              "objective": 0.2613845934060716,
+              "gradient_max": 6.84903490680614e-05,
+              "prediction_agreement": 0.9996,
+              "relative_gap_to_sklearn": 1.9808147828571305e-05
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "scaled_zero_weights",
+      "tol": 0.0001,
+      "weighted": true,
+      "shift": 0.0,
+      "ill_conditioned": false,
+      "scaled": true,
+      "zeros": true,
+      "sklearn_details": {
+        "backend": "sklearn",
+        "n_iter": [
+          200
+        ],
+        "implementation": "sklearn",
+        "warnings": [
+          {
+            "category": "ConvergenceWarning",
+            "message": "lbfgs failed to converge after 200 iteration(s) (status=1):\nSTOP: TOTAL NO. OF ITERATIONS REACHED LIMIT\n\nIncrease the number of iterations to improve the convergence (max_iter=200).\nYou might also want to scale the data as shown in:\n    https://scikit-learn.org/stable/modules/preprocessing.html\nPlease also refer to the documentation for alternative solver options:\n    https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression"
+          }
+        ],
+        "solutions": [],
+        "solver_calls": [],
+        "native_loop_calls": []
+      },
+      "sklearn_quality": {
+        "objective": 0.5172982394360798,
+        "gradient_max": 0.11025779909818514
+      },
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 1.0927810000721365,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                200
+              ],
+              "implementation": "native_metal",
+              "warnings": [
+                {
+                  "category": "ConvergenceWarning",
+                  "message": "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 0.0694 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+                }
+              ],
+              "solutions": [
+                {
+                  "n_iter": 200,
+                  "n_fev": null,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.06943675206460541,
+                  "objective": 0.5176386635232224
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 200,
+                  "n_fev": 1601,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.06943678855895996,
+                  "objective": 0.5176386518057733
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.5176386635232225,
+              "gradient_max": 0.0694367520646056,
+              "prediction_agreement": 0.98375,
+              "relative_gap_to_sklearn": 0.0006580808925888641
+            }
+          },
+          {
+            "seconds": 0.9151346670696512,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                200
+              ],
+              "implementation": "native_metal",
+              "warnings": [
+                {
+                  "category": "ConvergenceWarning",
+                  "message": "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 0.0694 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+                }
+              ],
+              "solutions": [
+                {
+                  "n_iter": 200,
+                  "n_fev": null,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.06943675206460541,
+                  "objective": 0.5176386635232224
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 200,
+                  "n_fev": 1601,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.06943678855895996,
+                  "objective": 0.5176386518057733
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.5176386635232225,
+              "gradient_max": 0.0694367520646056,
+              "prediction_agreement": 0.98375,
+              "relative_gap_to_sklearn": 0.0006580808925888641
+            }
+          }
+        ],
+        "fused": [
+          {
+            "seconds": 0.9544094169978052,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                200
+              ],
+              "implementation": "native_metal",
+              "warnings": [
+                {
+                  "category": "ConvergenceWarning",
+                  "message": "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 0.0694 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+                }
+              ],
+              "solutions": [
+                {
+                  "n_iter": 200,
+                  "n_fev": null,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.06943675206460541,
+                  "objective": 0.5176386635232224
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 200,
+                  "n_fev": 1601,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.0694367066025734,
+                  "objective": 0.5176386516151243
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.5176386635232225,
+              "gradient_max": 0.0694367520646056,
+              "prediction_agreement": 0.98375,
+              "relative_gap_to_sklearn": 0.0006580808925888641
+            }
+          },
+          {
+            "seconds": 0.9130053330445662,
+            "details": {
+              "backend": "mlx",
+              "n_iter": [
+                200
+              ],
+              "implementation": "native_metal",
+              "warnings": [
+                {
+                  "category": "ConvergenceWarning",
+                  "message": "LogisticRegression failed to converge (max_iter) after 200 iterations; max|gradient| is 0.0694 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+                }
+              ],
+              "solutions": [
+                {
+                  "n_iter": 200,
+                  "n_fev": null,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.06943675206460541,
+                  "objective": 0.5176386635232224
+                }
+              ],
+              "solver_calls": [
+                {
+                  "implementation": "native_metal",
+                  "n_iter": 200,
+                  "n_fev": 1601,
+                  "converged": false,
+                  "stop_reason": "max_iter",
+                  "grad_max_abs": 0.0694367066025734,
+                  "objective": 0.5176386516151243
+                }
+              ],
+              "native_loop_calls": [
+                "fallback"
+              ]
+            },
+            "quality": {
+              "objective": 0.5176386635232225,
+              "gradient_max": 0.0694367520646056,
+              "prediction_agreement": 0.98375,
+              "relative_gap_to_sklearn": 0.0006580808925888641
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

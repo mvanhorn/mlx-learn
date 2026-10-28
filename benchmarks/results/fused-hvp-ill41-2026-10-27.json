@@ -1,0 +1,1440 @@
+{
+  "case": "ill4096",
+  "seed": 41,
+  "initial_budget": 200,
+  "baseline_ms": 438.06062499061227,
+  "correction_data_preparation_ms": 30.190250021405518,
+  "history": null,
+  "baseline_iter": [
+    173
+  ],
+  "baseline_warnings": [],
+  "baseline_score": {
+    "objective_float64": 0.26137823975144625,
+    "gradient_max_abs_float64": 3.43967061140638e-05,
+    "nullspace_coefficient_relative": null
+  },
+  "cg": [
+    {
+      "steps": 48,
+      "ms": 52.209542016498744,
+      "gradient_dot_direction": -4.880943151874817e-07,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.00022855752143458616
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.00018505050810475743
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.00018191087603570044
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.0001489614342606364
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0001433519712083356
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.00015694072749997557
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.00010692633870462378
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0001438406303693621
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 7.361934333947659e-05
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.00011255459710862473
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 8.37880381926552e-05
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 8.227990787958582e-05
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 7.922490998268286e-05
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 7.247060216177479e-05
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 9.088560133472254e-05
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 9.124154150643879e-05
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 7.803906418569977e-05
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 8.620399153905094e-05
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 9.866949907604049e-05
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0001069095832796614
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.00012039258158735595
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0001286652168414813
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.00013017298942251927
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.00014498170377488803
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.00016340526670242998
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0001536673056329344
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.00015709473834564904
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0001866759334191105
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0002045988276004233
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0001934999867186838
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.00019762031211203424
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0001866678639099311
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.00018081761354064646
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.00017973276342570288
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0001760263014528922
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.00016242901653998646
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.00016534319865933408
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.00016239862198563694
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.0001632081568473792
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00015938159972296394
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.00015321850154790685
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00015650114074222164
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00017355304590865167
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001807155524083817
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00018889078694638118
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.00020434008364481998
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00021062369609320674
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00022724482464977312
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.2613779954314954,
+            "gradient_max_abs_float64": 4.091555314928645e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.2613780566806401,
+            "gradient_max_abs_float64": 2.0495517188799714e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.2613781329758344,
+            "gradient_max_abs_float64": 2.4172534941915825e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.2613781825520968,
+            "gradient_max_abs_float64": 2.9277316186138867e-05,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    },
+    {
+      "steps": 64,
+      "ms": 68.01258306950331,
+      "gradient_dot_direction": -3.6851865843345877e-06,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.00022855752143458616
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.00018505050810475743
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.00018191087603570044
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.0001489614342606364
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0001433519712083356
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.00015694072749997557
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.00010692633870462378
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0001438406303693621
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 7.361934333947659e-05
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.00011255459710862473
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 8.37880381926552e-05
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 8.227990787958582e-05
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 7.922490998268286e-05
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 7.247060216177479e-05
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 9.088560133472254e-05
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 9.124154150643879e-05
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 7.803906418569977e-05
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 8.620399153905094e-05
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 9.866949907604049e-05
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0001069095832796614
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.00012039258158735595
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0001286652168414813
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.00013017298942251927
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.00014498170377488803
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.00016340526670242998
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0001536673056329344
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.00015709473834564904
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0001866759334191105
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0002045988276004233
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0001934999867186838
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.00019762031211203424
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0001866678639099311
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.00018081761354064646
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.00017973276342570288
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0001760263014528922
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.00016242901653998646
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.00016534319865933408
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.00016239862198563694
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.0001632081568473792
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00015938159972296394
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.00015321850154790685
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00015650114074222164
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00017355304590865167
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001807155524083817
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00018889078694638118
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.00020434008364481998
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00021062369609320674
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00022724482464977312
+        },
+        {
+          "iteration": 49,
+          "residual_norm": 0.0002569049940953291
+        },
+        {
+          "iteration": 50,
+          "residual_norm": 0.00030472354517230944
+        },
+        {
+          "iteration": 51,
+          "residual_norm": 0.0003404193205290743
+        },
+        {
+          "iteration": 52,
+          "residual_norm": 0.00038984270167903736
+        },
+        {
+          "iteration": 53,
+          "residual_norm": 0.0004551868536835878
+        },
+        {
+          "iteration": 54,
+          "residual_norm": 0.0005112616957040246
+        },
+        {
+          "iteration": 55,
+          "residual_norm": 0.0005432169423863037
+        },
+        {
+          "iteration": 56,
+          "residual_norm": 0.0006086398594161146
+        },
+        {
+          "iteration": 57,
+          "residual_norm": 0.0006818239484730636
+        },
+        {
+          "iteration": 58,
+          "residual_norm": 0.0007773917737469679
+        },
+        {
+          "iteration": 59,
+          "residual_norm": 0.0008473517052643911
+        },
+        {
+          "iteration": 60,
+          "residual_norm": 0.0008730368804472899
+        },
+        {
+          "iteration": 61,
+          "residual_norm": 0.0009641801507907697
+        },
+        {
+          "iteration": 62,
+          "residual_norm": 0.0010444932100932218
+        },
+        {
+          "iteration": 63,
+          "residual_norm": 0.001070009248908832
+        },
+        {
+          "iteration": 64,
+          "residual_norm": 0.0010227613501344803
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.2613763958607124,
+            "gradient_max_abs_float64": 0.00016628061022111283,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.26137685754860235,
+            "gradient_max_abs_float64": 8.646830872561919e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.2613774335508017,
+            "gradient_max_abs_float64": 4.670653851171682e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.261377807872489,
+            "gradient_max_abs_float64": 3.737849794817931e-05,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    },
+    {
+      "steps": 80,
+      "ms": 85.86333296261728,
+      "gradient_dot_direction": -6.459818450821331e-06,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.00022855752143458616
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.00018505050810475743
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.00018191087603570044
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.0001489614342606364
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0001433519712083356
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.00015694072749997557
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.00010692633870462378
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0001438406303693621
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 7.361934333947659e-05
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.00011255459710862473
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 8.37880381926552e-05
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 8.227990787958582e-05
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 7.922490998268286e-05
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 7.247060216177479e-05
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 9.088560133472254e-05
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 9.124154150643879e-05
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 7.803906418569977e-05
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 8.620399153905094e-05
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 9.866949907604049e-05
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0001069095832796614
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.00012039258158735595
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0001286652168414813
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.00013017298942251927
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.00014498170377488803
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.00016340526670242998
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0001536673056329344
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.00015709473834564904
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0001866759334191105
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0002045988276004233
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0001934999867186838
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.00019762031211203424
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0001866678639099311
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.00018081761354064646
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.00017973276342570288
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0001760263014528922
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.00016242901653998646
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.00016534319865933408
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.00016239862198563694
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.0001632081568473792
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00015938159972296394
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.00015321850154790685
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00015650114074222164
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00017355304590865167
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001807155524083817
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00018889078694638118
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.00020434008364481998
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00021062369609320674
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00022724482464977312
+        },
+        {
+          "iteration": 49,
+          "residual_norm": 0.0002569049940953291
+        },
+        {
+          "iteration": 50,
+          "residual_norm": 0.00030472354517230944
+        },
+        {
+          "iteration": 51,
+          "residual_norm": 0.0003404193205290743
+        },
+        {
+          "iteration": 52,
+          "residual_norm": 0.00038984270167903736
+        },
+        {
+          "iteration": 53,
+          "residual_norm": 0.0004551868536835878
+        },
+        {
+          "iteration": 54,
+          "residual_norm": 0.0005112616957040246
+        },
+        {
+          "iteration": 55,
+          "residual_norm": 0.0005432169423863037
+        },
+        {
+          "iteration": 56,
+          "residual_norm": 0.0006086398594161146
+        },
+        {
+          "iteration": 57,
+          "residual_norm": 0.0006818239484730636
+        },
+        {
+          "iteration": 58,
+          "residual_norm": 0.0007773917737469679
+        },
+        {
+          "iteration": 59,
+          "residual_norm": 0.0008473517052643911
+        },
+        {
+          "iteration": 60,
+          "residual_norm": 0.0008730368804472899
+        },
+        {
+          "iteration": 61,
+          "residual_norm": 0.0009641801507907697
+        },
+        {
+          "iteration": 62,
+          "residual_norm": 0.0010444932100932218
+        },
+        {
+          "iteration": 63,
+          "residual_norm": 0.001070009248908832
+        },
+        {
+          "iteration": 64,
+          "residual_norm": 0.0010227613501344803
+        },
+        {
+          "iteration": 65,
+          "residual_norm": 0.00101698875109769
+        },
+        {
+          "iteration": 66,
+          "residual_norm": 0.0009900976182432228
+        },
+        {
+          "iteration": 67,
+          "residual_norm": 0.0009139346385289954
+        },
+        {
+          "iteration": 68,
+          "residual_norm": 0.0008801670949768062
+        },
+        {
+          "iteration": 69,
+          "residual_norm": 0.0007956135154370414
+        },
+        {
+          "iteration": 70,
+          "residual_norm": 0.0007085387418772777
+        },
+        {
+          "iteration": 71,
+          "residual_norm": 0.0006481810846377126
+        },
+        {
+          "iteration": 72,
+          "residual_norm": 0.0005445729563550262
+        },
+        {
+          "iteration": 73,
+          "residual_norm": 0.0004617260332693585
+        },
+        {
+          "iteration": 74,
+          "residual_norm": 0.0004112510053807148
+        },
+        {
+          "iteration": 75,
+          "residual_norm": 0.0003533249922719676
+        },
+        {
+          "iteration": 76,
+          "residual_norm": 0.0003001460052564084
+        },
+        {
+          "iteration": 77,
+          "residual_norm": 0.000279259089878256
+        },
+        {
+          "iteration": 78,
+          "residual_norm": 0.000246562521967433
+        },
+        {
+          "iteration": 79,
+          "residual_norm": 0.0002161543849633422
+        },
+        {
+          "iteration": 80,
+          "residual_norm": 0.00018802244333663296
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.2613750095211654,
+            "gradient_max_abs_float64": 3.283653609417659e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.26137581719504493,
+            "gradient_max_abs_float64": 2.8668086952544015e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.26137682661034783,
+            "gradient_max_abs_float64": 3.153279691061237e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.26137748271492445,
+            "gradient_max_abs_float64": 3.296433066077218e-05,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    },
+    {
+      "steps": 96,
+      "ms": 100.53150006569922,
+      "gradient_dot_direction": -6.511738320114091e-06,
+      "trace": [
+        {
+          "iteration": 1,
+          "residual_norm": 0.00022855752143458616
+        },
+        {
+          "iteration": 2,
+          "residual_norm": 0.00018505050810475743
+        },
+        {
+          "iteration": 3,
+          "residual_norm": 0.00018191087603570044
+        },
+        {
+          "iteration": 4,
+          "residual_norm": 0.0001489614342606364
+        },
+        {
+          "iteration": 5,
+          "residual_norm": 0.0001433519712083356
+        },
+        {
+          "iteration": 6,
+          "residual_norm": 0.00015694072749997557
+        },
+        {
+          "iteration": 7,
+          "residual_norm": 0.00010692633870462378
+        },
+        {
+          "iteration": 8,
+          "residual_norm": 0.0001438406303693621
+        },
+        {
+          "iteration": 9,
+          "residual_norm": 7.361934333947659e-05
+        },
+        {
+          "iteration": 10,
+          "residual_norm": 0.00011255459710862473
+        },
+        {
+          "iteration": 11,
+          "residual_norm": 8.37880381926552e-05
+        },
+        {
+          "iteration": 12,
+          "residual_norm": 8.227990787958582e-05
+        },
+        {
+          "iteration": 13,
+          "residual_norm": 7.922490998268286e-05
+        },
+        {
+          "iteration": 14,
+          "residual_norm": 7.247060216177479e-05
+        },
+        {
+          "iteration": 15,
+          "residual_norm": 9.088560133472254e-05
+        },
+        {
+          "iteration": 16,
+          "residual_norm": 9.124154150643879e-05
+        },
+        {
+          "iteration": 17,
+          "residual_norm": 7.803906418569977e-05
+        },
+        {
+          "iteration": 18,
+          "residual_norm": 8.620399153905094e-05
+        },
+        {
+          "iteration": 19,
+          "residual_norm": 9.866949907604049e-05
+        },
+        {
+          "iteration": 20,
+          "residual_norm": 0.0001069095832796614
+        },
+        {
+          "iteration": 21,
+          "residual_norm": 0.00012039258158735595
+        },
+        {
+          "iteration": 22,
+          "residual_norm": 0.0001286652168414813
+        },
+        {
+          "iteration": 23,
+          "residual_norm": 0.00013017298942251927
+        },
+        {
+          "iteration": 24,
+          "residual_norm": 0.00014498170377488803
+        },
+        {
+          "iteration": 25,
+          "residual_norm": 0.00016340526670242998
+        },
+        {
+          "iteration": 26,
+          "residual_norm": 0.0001536673056329344
+        },
+        {
+          "iteration": 27,
+          "residual_norm": 0.00015709473834564904
+        },
+        {
+          "iteration": 28,
+          "residual_norm": 0.0001866759334191105
+        },
+        {
+          "iteration": 29,
+          "residual_norm": 0.0002045988276004233
+        },
+        {
+          "iteration": 30,
+          "residual_norm": 0.0001934999867186838
+        },
+        {
+          "iteration": 31,
+          "residual_norm": 0.00019762031211203424
+        },
+        {
+          "iteration": 32,
+          "residual_norm": 0.0001866678639099311
+        },
+        {
+          "iteration": 33,
+          "residual_norm": 0.00018081761354064646
+        },
+        {
+          "iteration": 34,
+          "residual_norm": 0.00017973276342570288
+        },
+        {
+          "iteration": 35,
+          "residual_norm": 0.0001760263014528922
+        },
+        {
+          "iteration": 36,
+          "residual_norm": 0.00016242901653998646
+        },
+        {
+          "iteration": 37,
+          "residual_norm": 0.00016534319865933408
+        },
+        {
+          "iteration": 38,
+          "residual_norm": 0.00016239862198563694
+        },
+        {
+          "iteration": 39,
+          "residual_norm": 0.0001632081568473792
+        },
+        {
+          "iteration": 40,
+          "residual_norm": 0.00015938159972296394
+        },
+        {
+          "iteration": 41,
+          "residual_norm": 0.00015321850154790685
+        },
+        {
+          "iteration": 42,
+          "residual_norm": 0.00015650114074222164
+        },
+        {
+          "iteration": 43,
+          "residual_norm": 0.00017355304590865167
+        },
+        {
+          "iteration": 44,
+          "residual_norm": 0.0001807155524083817
+        },
+        {
+          "iteration": 45,
+          "residual_norm": 0.00018889078694638118
+        },
+        {
+          "iteration": 46,
+          "residual_norm": 0.00020434008364481998
+        },
+        {
+          "iteration": 47,
+          "residual_norm": 0.00021062369609320674
+        },
+        {
+          "iteration": 48,
+          "residual_norm": 0.00022724482464977312
+        },
+        {
+          "iteration": 49,
+          "residual_norm": 0.0002569049940953291
+        },
+        {
+          "iteration": 50,
+          "residual_norm": 0.00030472354517230944
+        },
+        {
+          "iteration": 51,
+          "residual_norm": 0.0003404193205290743
+        },
+        {
+          "iteration": 52,
+          "residual_norm": 0.00038984270167903736
+        },
+        {
+          "iteration": 53,
+          "residual_norm": 0.0004551868536835878
+        },
+        {
+          "iteration": 54,
+          "residual_norm": 0.0005112616957040246
+        },
+        {
+          "iteration": 55,
+          "residual_norm": 0.0005432169423863037
+        },
+        {
+          "iteration": 56,
+          "residual_norm": 0.0006086398594161146
+        },
+        {
+          "iteration": 57,
+          "residual_norm": 0.0006818239484730636
+        },
+        {
+          "iteration": 58,
+          "residual_norm": 0.0007773917737469679
+        },
+        {
+          "iteration": 59,
+          "residual_norm": 0.0008473517052643911
+        },
+        {
+          "iteration": 60,
+          "residual_norm": 0.0008730368804472899
+        },
+        {
+          "iteration": 61,
+          "residual_norm": 0.0009641801507907697
+        },
+        {
+          "iteration": 62,
+          "residual_norm": 0.0010444932100932218
+        },
+        {
+          "iteration": 63,
+          "residual_norm": 0.001070009248908832
+        },
+        {
+          "iteration": 64,
+          "residual_norm": 0.0010227613501344803
+        },
+        {
+          "iteration": 65,
+          "residual_norm": 0.00101698875109769
+        },
+        {
+          "iteration": 66,
+          "residual_norm": 0.0009900976182432228
+        },
+        {
+          "iteration": 67,
+          "residual_norm": 0.0009139346385289954
+        },
+        {
+          "iteration": 68,
+          "residual_norm": 0.0008801670949768062
+        },
+        {
+          "iteration": 69,
+          "residual_norm": 0.0007956135154370414
+        },
+        {
+          "iteration": 70,
+          "residual_norm": 0.0007085387418772777
+        },
+        {
+          "iteration": 71,
+          "residual_norm": 0.0006481810846377126
+        },
+        {
+          "iteration": 72,
+          "residual_norm": 0.0005445729563550262
+        },
+        {
+          "iteration": 73,
+          "residual_norm": 0.0004617260332693585
+        },
+        {
+          "iteration": 74,
+          "residual_norm": 0.0004112510053807148
+        },
+        {
+          "iteration": 75,
+          "residual_norm": 0.0003533249922719676
+        },
+        {
+          "iteration": 76,
+          "residual_norm": 0.0003001460052564084
+        },
+        {
+          "iteration": 77,
+          "residual_norm": 0.000279259089878256
+        },
+        {
+          "iteration": 78,
+          "residual_norm": 0.000246562521967433
+        },
+        {
+          "iteration": 79,
+          "residual_norm": 0.0002161543849633422
+        },
+        {
+          "iteration": 80,
+          "residual_norm": 0.00018802244333663296
+        },
+        {
+          "iteration": 81,
+          "residual_norm": 0.00017235365595932227
+        },
+        {
+          "iteration": 82,
+          "residual_norm": 0.00015204481879979698
+        },
+        {
+          "iteration": 83,
+          "residual_norm": 0.0001285045799581023
+        },
+        {
+          "iteration": 84,
+          "residual_norm": 0.00010756423205682218
+        },
+        {
+          "iteration": 85,
+          "residual_norm": 9.287911343668831e-05
+        },
+        {
+          "iteration": 86,
+          "residual_norm": 7.845413396014837e-05
+        },
+        {
+          "iteration": 87,
+          "residual_norm": 6.371052416344417e-05
+        },
+        {
+          "iteration": 88,
+          "residual_norm": 5.628896234893774e-05
+        },
+        {
+          "iteration": 89,
+          "residual_norm": 5.1917444057962186e-05
+        },
+        {
+          "iteration": 90,
+          "residual_norm": 4.47058478365993e-05
+        },
+        {
+          "iteration": 91,
+          "residual_norm": 3.8886757859514456e-05
+        },
+        {
+          "iteration": 92,
+          "residual_norm": 3.214059399615719e-05
+        },
+        {
+          "iteration": 93,
+          "residual_norm": 2.702032945979467e-05
+        },
+        {
+          "iteration": 94,
+          "residual_norm": 2.4149544258691553e-05
+        },
+        {
+          "iteration": 95,
+          "residual_norm": 2.2486719977947224e-05
+        },
+        {
+          "iteration": 96,
+          "residual_norm": 1.9456915556858105e-05
+        }
+      ],
+      "trials": [
+        {
+          "alpha": 1.0,
+          "score": {
+            "objective_float64": 0.2613749836348649,
+            "gradient_max_abs_float64": 3.543554890106648e-06,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.5,
+          "score": {
+            "objective_float64": 0.26137579774196645,
+            "gradient_max_abs_float64": 1.7133027319975946e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.25,
+          "score": {
+            "objective_float64": 0.2613768152569634,
+            "gradient_max_abs_float64": 2.5759792614102128e-05,
+            "nullspace_coefficient_relative": null
+          }
+        },
+        {
+          "alpha": 0.125,
+          "score": {
+            "objective_float64": 0.2613774766340057,
+            "gradient_max_abs_float64": 3.0077309682057816e-05,
+            "nullspace_coefficient_relative": null
+          }
+        }
+      ]
+    }
+  ],
+  "source_before": {
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_experiment.py": "561b5eacdb86640611e79d88560eee752392f69e76cb5082919ebff3bc5490e2",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "6d496e7b07dd3dd4d27eaefd7e958ba08e7bdff0f0bfe5434fb90ae517b9e391",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_after": {
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_experiment.py": "561b5eacdb86640611e79d88560eee752392f69e76cb5082919ebff3bc5490e2",
+    "/Users/tunguz/Programming/mlxlearn/bench/cg_polish/fused_hvp.py": "27932c20048127c742aa8a21ed267932571711e7dd6420ca6accf47283e5d74d",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "6d496e7b07dd3dd4d27eaefd7e958ba08e7bdff0f0bfe5434fb90ae517b9e391",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "1f8940e4df12517feafe39d480cc4d2d7b1749cb5a940fb50e386733cf40e24f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "64af0624d859b04597d4ba457dca2d194e4e3a841bb7c2026d132fc55dcdcdaf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "edb16bb72251dc2ef19c576b11980d8e17622ff5655560a49afdb00bbbff4b6d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "01843897c6fc3b85247a655045a3a8193959dfb5b3ba60317ce5053bc5be271e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "98c87f82b4905e0b62e8475e8fa1c97d3f8dded7a4b18a07974a5c6e22a7c093",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "integrity": true
+}

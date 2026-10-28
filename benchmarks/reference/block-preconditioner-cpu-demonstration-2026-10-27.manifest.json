@@ -1,0 +1,18 @@
+{
+  "description": "Small CPU-only numeric illustration of 2x2 Hessian block preconditioning and global null-space risk; not a GPU benchmark.",
+  "archive": {
+    "filename": "block-preconditioner-cpu-demonstration-2026-10-27.zip",
+    "sha256": "3b1b27b2fdf6f52f7b52757baf780fe645d43167b96697015414b06f95b53f6a"
+  },
+  "files": {
+    "demonstration.py": "49103461ebeb8f0c6f91b594740810f981a4cc47aeb40db03168b98de1c5dc41",
+    "result.json": "6b229e2a779167e778d800dc552d8b50ff308c68ba1219c806eb8303d118640f",
+    "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "limitations": [
+    "One seed; 1200 by 96 synthetic cases, float64 CPU arithmetic and scipy L-BFGS-B; GPU throughput and MLX solver behavior are not measured.",
+    "The candidate uses transformed-coordinate stopping and the original gradient is independently scored.",
+    "Source and result hashes were captured after the experiment, not during it.",
+    "The row-sample correlation pairing and exact covariance blocks are a toy demonstration, not a validated production strategy."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Exploratory MPS GPU Gram and Cholesky factor/inverse timing. No full optimizer. Sources captured after measurements; full-inverse result was produced before addition of RHS mode; no in-run binary integrity audit. Binary excluded.",
+  "archive": {
+    "filename": "weighted-mps-factor-probe-2026-10-27.zip",
+    "sha256": "e60ecc6373d2147a1375a1a07fb33a5f98a49ec8ca84e9507c21e011e44f2079"
+  },
+  "files": {
+    "mps_chol.mm": "10ba2dddf9532ad87283d77488605dd37d90b73c37f06763ed50e3f3b2094c46",
+    "build.py": "0f952301fc4d719ec8a7dd22537f7655bcc317c1402e340fc8bf96972dcea309",
+    "setup.py": "f836e65f8afce7d763a5c72a9743cfa84442a66a0018f14115f4d71569e5bed8",
+    "factor_probe.py": "6efa291dd2f3517dc7168c2a855d8373e6e2a71d53e19504d7dce3b7e0301638"
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "recorded_at_utc": "2026-10-27T15:44:45.069208+00:00",
+  "full_suite": {
+    "command": "python3 -m pytest -q",
+    "passed": 1118,
+    "warnings": 43,
+    "elapsed_seconds": 139.38,
+    "log_path": "bench/rank_safe/final-full-tests.log",
+    "log_sha256": "279403a77de57ad312157fb0b9bccc86eec0205faf5b0bc0ffc543c8d17b507a"
+  },
+  "other_checks": {
+    "ruff": "passed",
+    "mechanical_compliance": "passed",
+    "git_diff_check": "passed",
+    "lbfgs_py_unchanged": "passed",
+    "sdist_wheel_build": "passed",
+    "twine_check": "passed",
+    "built_native_run_cg_import": "passed",
+    "sdist_cg_header_and_native_source": "passed"
+  },
+  "final_panels": [
+    {
+      "path": "benchmarks/results/rank-safe-final-2026-10-27.json",
+      "sha256": "139fe983a08e46a11dfd475599c1cf7467447b4a0f5a73124c121ec8ef868743",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-tight-seed41-2026-10-27.json",
+      "sha256": "512365818b680b9307a4f71f9dfa82d5e969f89791bedbf5922250ee874e7256",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-tight-unweighted83-2026-10-27.json",
+      "sha256": "ec1bc064466668f8c5896d564a50b3fb82d2d0c7511e4f1244d1cbe6bac99c7e",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-weighted83-newton-reference-2026-10-27.json",
+      "sha256": "230b591e719983ee0d752359941cff278bf6765e06dc3c2c23bd6e5fcd91d5de",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": false
+    },
+    {
+      "path": "benchmarks/results/rank-safe-extended-2026-10-27.json",
+      "sha256": "8266a2d01ff15a7781118efbb448417a462b2d902175b5640d2fede78390a8c0",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-general-rank-2026-10-27.json",
+      "sha256": "4850b1279438df17e289fea7008db5b65f300d8ca188f7faa751345e0fd40cc8",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-accuracy-matched-2026-10-27.json",
+      "sha256": "0a924af8575144921f9e5c1407925699818a028a3f2bd4f56cf784a42296aac0",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-regularization-controls-2026-10-27.json",
+      "sha256": "b7d4179716c728770d980d819d120cd2926843b9ead9a1aaa72ccde42c9b5b6a",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/rank-safe-C10-rank-newton-reference-2026-10-27.json",
+      "sha256": "ad703b475fcc72147cfe2d9990c09fb376b3f05c9e70a6e79605b7bc71279d20",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    },
+    {
+      "path": "benchmarks/results/tall-logistic-recheck-2026-10-27.json",
+      "sha256": "9aebb127b0384c9237cceaf1295f7feb765cf49313ce2c40f1a4c9de62c3fbec",
+      "recorded_source_integrity_pass": true,
+      "current_source_mismatches": [],
+      "current_quality_pass": true,
+      "original_overall_quality_audit_pass": true
+    }
+  ],
+  "retained_failure_note": "The weighted seed-83 artifact retains an overall false audit because the frozen baseline sketch did not converge. All current host/sketch/device fits pass. Earlier invalid-reference and incomplete harness runs are retained separately.",
+  "threading_note": "Threadpoolctl limits are requests; this Apple Accelerate installation exposes only the sklearn OpenMP pool in threadpoolctl. Single-threaded BLAS is not established. The screenshot rerun imposes no limit, matching the original."
+}

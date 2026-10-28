@@ -1,0 +1,1350 @@
+{
+  "cases": [
+    {
+      "features": 513,
+      "count": 0,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.20194971561431885,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.20194968581199646,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.20194971561431885,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 0,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.194308802485466,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.1943088173866272,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.1943087875843048,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 0,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.20581898093223572,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.20581898093223572,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.20581898093223572,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 1,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.591774568679496e-08,
+          "status": 0.0,
+          "slope": -0.03857359662652016,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.191270518468535e-08,
+          "status": 0.0,
+          "slope": -0.038573600351810455,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.591774568679496e-08,
+          "status": 0.0,
+          "slope": -0.03857359290122986,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 1,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.315976172178797e-08,
+          "status": 0.0,
+          "slope": -0.03631485253572464,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.3652691003546154e-08,
+          "status": 0.0,
+          "slope": -0.03631485253572464,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.3965708624375326e-08,
+          "status": 0.0,
+          "slope": -0.03631485626101494,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 1,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.315816888708019e-08,
+          "status": 0.0,
+          "slope": -0.038233350962400436,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.339975559545642e-08,
+          "status": 0.0,
+          "slope": -0.038233354687690735,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.3335413681079115e-08,
+          "status": 0.0,
+          "slope": -0.038233354687690735,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 5,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 7.561623941163608e-08,
+          "status": 0.0,
+          "slope": -0.04327532649040222,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 7.466923036425698e-08,
+          "status": 0.0,
+          "slope": -0.04327533021569252,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 7.957644461951314e-08,
+          "status": 0.0,
+          "slope": -0.04327533021569252,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 5,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 9.102070684491601e-08,
+          "status": 0.0,
+          "slope": -0.03974428027868271,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 9.343533962990557e-08,
+          "status": 0.0,
+          "slope": -0.03974427655339241,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.700936524910738e-08,
+          "status": 0.0,
+          "slope": -0.03974428027868271,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 5,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.835229508441556e-08,
+          "status": 0.0,
+          "slope": -0.0386066697537899,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.352363349087099e-08,
+          "status": 0.0,
+          "slope": -0.0386066734790802,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 9.049277854785465e-08,
+          "status": 0.0,
+          "slope": -0.0386066772043705,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 10,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.1542668896943381e-07,
+          "status": 0.0,
+          "slope": -0.03746505826711655,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1099276217273273e-07,
+          "status": 0.0,
+          "slope": -0.037465061992406845,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1516993560901638e-07,
+          "status": 0.0,
+          "slope": -0.03746505826711655,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 10,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.25517257919255e-07,
+          "status": 0.0,
+          "slope": -0.04076365381479263,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1624589064530412e-07,
+          "status": 0.0,
+          "slope": -0.04076365381479263,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.3038272212838908e-07,
+          "status": 0.0,
+          "slope": -0.04076365381479263,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 513,
+      "count": 10,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.1447799815598175e-07,
+          "status": 0.0,
+          "slope": -0.03901969641447067,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1789587741952425e-07,
+          "status": 0.0,
+          "slope": -0.03901969641447067,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1481460563260891e-07,
+          "status": 0.0,
+          "slope": -0.03901970013976097,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 0,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.41113173961639404,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.41113173961639404,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.41113173961639404,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 0,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.41931241750717163,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.41931238770484924,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.41931235790252686,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 0,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.4124171733856201,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.4124171733856201,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.4124171733856201,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 1,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.427659193029398e-08,
+          "status": 0.0,
+          "slope": -0.07536914944648743,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.442815129429819e-08,
+          "status": 0.0,
+          "slope": -0.07536914199590683,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.43637884207528e-08,
+          "status": 0.0,
+          "slope": -0.07536914944648743,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 1,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.339253840520316e-08,
+          "status": 0.0,
+          "slope": -0.07869841903448105,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.435810521656203e-08,
+          "status": 0.0,
+          "slope": -0.07869841903448105,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.824189510524558e-08,
+          "status": 0.0,
+          "slope": -0.07869841903448105,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 1,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.375356555811306e-08,
+          "status": 0.0,
+          "slope": -0.07436255365610123,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.375356555811306e-08,
+          "status": 0.0,
+          "slope": -0.07436254620552063,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 5.0502209437412805e-08,
+          "status": 0.0,
+          "slope": -0.07436256110668182,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 5,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.151652494008668e-08,
+          "status": 0.0,
+          "slope": -0.07373034209012985,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.283024429405104e-08,
+          "status": 0.0,
+          "slope": -0.07373034954071045,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.181598801140402e-08,
+          "status": 0.0,
+          "slope": -0.07373034209012985,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 5,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.687971758893016e-08,
+          "status": 0.0,
+          "slope": -0.08112533390522003,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.677542796684349e-08,
+          "status": 0.0,
+          "slope": -0.08112533390522003,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.391435276907546e-08,
+          "status": 0.0,
+          "slope": -0.08112533390522003,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 5,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 9.11375860284602e-08,
+          "status": 0.0,
+          "slope": -0.07414645701646805,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 9.002875688503581e-08,
+          "status": 0.0,
+          "slope": -0.07414645701646805,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.945019221324145e-08,
+          "status": 0.0,
+          "slope": -0.07414645701646805,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 10,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.1654289930006974e-07,
+          "status": 0.0,
+          "slope": -0.07907704263925552,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1560055013963032e-07,
+          "status": 0.0,
+          "slope": -0.07907703518867493,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1756775413371375e-07,
+          "status": 0.0,
+          "slope": -0.07907704263925552,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 10,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.199500215065176e-07,
+          "status": 0.0,
+          "slope": -0.08252599835395813,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.111515552222606e-07,
+          "status": 0.0,
+          "slope": -0.08252599835395813,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.0942025601233121e-07,
+          "status": 0.0,
+          "slope": -0.08252599090337753,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 1024,
+      "count": 10,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.1239545601400439e-07,
+          "status": 0.0,
+          "slope": -0.07161010801792145,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1183698643938447e-07,
+          "status": 0.0,
+          "slope": -0.07161010801792145,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1967556134899686e-07,
+          "status": 0.0,
+          "slope": -0.07161010801792145,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 0,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.796660304069519,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.796660304069519,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.7966602444648743,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 0,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.8564977645874023,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.8564977645874023,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.8564978241920471,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 0,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.7792432904243469,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.7792433500289917,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -0.7792433500289917,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 1,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.346691340858347e-08,
+          "status": 0.0,
+          "slope": -0.14697101712226868,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.484891351765725e-08,
+          "status": 0.0,
+          "slope": -0.14697101712226868,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.511689506063704e-08,
+          "status": 0.0,
+          "slope": -0.14697101712226868,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 1,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.650155972623118e-08,
+          "status": 0.0,
+          "slope": -0.15134111046791077,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.606500852477474e-08,
+          "status": 0.0,
+          "slope": -0.15134111046791077,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.650155972623118e-08,
+          "status": 0.0,
+          "slope": -0.15134112536907196,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 1,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.543949117657786e-08,
+          "status": 0.0,
+          "slope": -0.1461024284362793,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.423073204468522e-08,
+          "status": 0.0,
+          "slope": -0.1461024135351181,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.378702643922671e-08,
+          "status": 0.0,
+          "slope": -0.1461024135351181,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 5,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.11480291935962e-08,
+          "status": 0.0,
+          "slope": -0.15714651346206665,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.131802752132932e-08,
+          "status": 0.0,
+          "slope": -0.15714651346206665,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.242093636456667e-08,
+          "status": 0.0,
+          "slope": -0.15714651346206665,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 5,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.244297566390777e-08,
+          "status": 0.0,
+          "slope": -0.15378952026367188,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.190623511852268e-08,
+          "status": 0.0,
+          "slope": -0.15378952026367188,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.139376607414252e-08,
+          "status": 0.0,
+          "slope": -0.15378950536251068,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 5,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.26259775214179e-08,
+          "status": 0.0,
+          "slope": -0.1493459790945053,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.447422970736706e-08,
+          "status": 0.0,
+          "slope": -0.14934596419334412,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.505644549712982e-08,
+          "status": 0.0,
+          "slope": -0.1493459790945053,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 10,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.159592126220419e-07,
+          "status": 0.0,
+          "slope": -0.15077754855155945,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1311674573083367e-07,
+          "status": 0.0,
+          "slope": -0.15077756345272064,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1396451408537203e-07,
+          "status": 0.0,
+          "slope": -0.15077756345272064,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 10,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.1813143573678202e-07,
+          "status": 0.0,
+          "slope": -0.15273791551589966,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1512194861484046e-07,
+          "status": 0.0,
+          "slope": -0.15273791551589966,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.181270140136043e-07,
+          "status": 0.0,
+          "slope": -0.15273791551589966,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 2049,
+      "count": 10,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.163840860685295e-07,
+          "status": 0.0,
+          "slope": -0.15226972103118896,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.160266402756379e-07,
+          "status": 0.0,
+          "slope": -0.15226972103118896,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1299837125840495e-07,
+          "status": 0.0,
+          "slope": -0.15226973593235016,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 0,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.6242527961730957,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.6242527961730957,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.6242529153823853,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 0,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.6016968488693237,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.6016969680786133,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.6016970872879028,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 0,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.60691499710083,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.60691499710083,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 0.0,
+          "status": 0.0,
+          "slope": -1.60691499710083,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 1,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.417640039022546e-08,
+          "status": 0.0,
+          "slope": -0.30468273162841797,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.3907400523299244e-08,
+          "status": 0.0,
+          "slope": -0.30468273162841797,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.394542768683525e-08,
+          "status": 0.0,
+          "slope": -0.30468276143074036,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 1,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.288326464538177e-08,
+          "status": 0.0,
+          "slope": -0.3126656413078308,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.287582350649567e-08,
+          "status": 0.0,
+          "slope": -0.3126656711101532,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.2929819843816644e-08,
+          "status": 0.0,
+          "slope": -0.3126656711101532,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 1,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 4.3914514366821095e-08,
+          "status": 0.0,
+          "slope": -0.30779075622558594,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 4.428294951041758e-08,
+          "status": 0.0,
+          "slope": -0.30779075622558594,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 4.3438558635876475e-08,
+          "status": 0.0,
+          "slope": -0.30779075622558594,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 5,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.369794066076267e-08,
+          "status": 0.0,
+          "slope": -0.3194293677806854,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.229172418865595e-08,
+          "status": 0.0,
+          "slope": -0.3194293677806854,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.160693274573252e-08,
+          "status": 0.0,
+          "slope": -0.3194293677806854,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 5,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.461263800535126e-08,
+          "status": 0.0,
+          "slope": -0.3115224242210388,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.339327896050083e-08,
+          "status": 0.0,
+          "slope": -0.3115224242210388,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.312793045712747e-08,
+          "status": 0.0,
+          "slope": -0.31152236461639404,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 5,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 8.598044895237035e-08,
+          "status": 0.0,
+          "slope": -0.30944567918777466,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 8.543945503610745e-08,
+          "status": 0.0,
+          "slope": -0.30944570899009705,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 8.62062016088091e-08,
+          "status": 0.0,
+          "slope": -0.30944567918777466,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 10,
+      "head": 0,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.2042096541582173e-07,
+          "status": 0.0,
+          "slope": -0.30843907594680786,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1762855666063659e-07,
+          "status": 0.0,
+          "slope": -0.30843907594680786,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1680204514988529e-07,
+          "status": 0.0,
+          "slope": -0.30843910574913025,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 10,
+      "head": 4,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.1374074129186176e-07,
+          "status": 0.0,
+          "slope": -0.3116597533226013,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1398201424075849e-07,
+          "status": 0.0,
+          "slope": -0.3116597831249237,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1481856377052926e-07,
+          "status": 0.0,
+          "slope": -0.3116597831249237,
+          "descent": true
+        }
+      ]
+    },
+    {
+      "features": 4096,
+      "count": 10,
+      "head": 9,
+      "checks": [
+        {
+          "threads": 32,
+          "relative_l2_error": 1.202576728887725e-07,
+          "status": 0.0,
+          "slope": -0.3016479015350342,
+          "descent": true
+        },
+        {
+          "threads": 256,
+          "relative_l2_error": 1.1632387854833976e-07,
+          "status": 0.0,
+          "slope": -0.3016478717327118,
+          "descent": true
+        },
+        {
+          "threads": 512,
+          "relative_l2_error": 1.1703553649569178e-07,
+          "status": 0.0,
+          "slope": -0.3016479015350342,
+          "descent": true
+        }
+      ]
+    }
+  ],
+  "max_relative_error": 1.3038272212838908e-07,
+  "all_descent": true
+}

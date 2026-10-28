@@ -1,0 +1,564 @@
+{
+  "description": "Exploratory convergence diagnosis; not a performance benchmark.",
+  "limitations": "No binary hash or in-run source-integrity audit was captured. Tolerance sweeps used the then-current implementation before the present edits; iteration and step traces used the immutable frozen prior implementation. Budget-truncated fits may emit convergence warnings by design. Timings are diagnostic and not quality-qualified performance claims.",
+  "parameters": {
+    "seed": 41,
+    "dtype": "float32",
+    "n_samples": 20000,
+    "public_tol": 0.0001
+  },
+  "frozen_prior_archive": "benchmarks/reference/overhead-logistic-2026-10-26.zip",
+  "frozen_prior_sha256": "e519e6bde4cfa1e45213ee43a1739d185d85d6235f1d26c586aea5cbe8a52261",
+  "data": [
+    {
+      "width": 1024,
+      "weighted": false,
+      "rows": [
+        {
+          "iteration": 1,
+          "objective": 0.37993665105227414,
+          "gradient_max": 0.09533428588837523,
+          "gradient_l2": 0.10430451573727129,
+          "slope": -0.06716876477003098,
+          "half_newton_proxy_relative": 0.08839468972524772,
+          "previous_relative_decrease": null
+        },
+        {
+          "iteration": 2,
+          "objective": 0.33154172585700314,
+          "gradient_max": 0.05491158476260515,
+          "gradient_l2": 0.0572146695676944,
+          "slope": -0.04882928729057312,
+          "half_newton_proxy_relative": 0.07363973141593891,
+          "previous_relative_decrease": 0.1459693348406594
+        },
+        {
+          "iteration": 3,
+          "objective": 0.3008941339309284,
+          "gradient_max": 0.02246365528654235,
+          "gradient_l2": 0.02900008449451991,
+          "slope": -0.022192055359482765,
+          "half_newton_proxy_relative": 0.036876849457917735,
+          "previous_relative_decrease": 0.10185506618454064
+        },
+        {
+          "iteration": 4,
+          "objective": 0.2930976319893896,
+          "gradient_max": 0.006306672897161367,
+          "gradient_l2": 0.03072906936962424,
+          "slope": -0.006924551911652088,
+          "half_newton_proxy_relative": 0.01181270531708486,
+          "previous_relative_decrease": 0.026600358005693624
+        },
+        {
+          "iteration": 5,
+          "objective": 0.2891568472702621,
+          "gradient_max": 0.0023145058101855763,
+          "gradient_l2": 0.007719716913866111,
+          "slope": -0.0007115368498489261,
+          "half_newton_proxy_relative": 0.001230364863509326,
+          "previous_relative_decrease": 0.013628536748584181
+        },
+        {
+          "iteration": 6,
+          "objective": 0.2887369129820977,
+          "gradient_max": 0.000828539168433944,
+          "gradient_l2": 0.0018886683555617697,
+          "slope": -8.735564188100398e-05,
+          "half_newton_proxy_relative": 0.00015127203684971898,
+          "previous_relative_decrease": 0.0014543837981340084
+        },
+        {
+          "iteration": 7,
+          "objective": 0.2886941783579053,
+          "gradient_max": 0.0001007718868069855,
+          "gradient_l2": 0.0008974898321434636,
+          "slope": -1.0609136552375276e-05,
+          "half_newton_proxy_relative": 1.837435138581617e-05,
+          "previous_relative_decrease": 0.00014802731539473215
+        },
+        {
+          "iteration": 8,
+          "objective": 0.2886928342644117,
+          "gradient_max": 7.337997051632372e-05,
+          "gradient_l2": 0.0007354452575044097,
+          "slope": -4.0134709706762806e-06,
+          "half_newton_proxy_relative": 6.951109439384926e-06,
+          "previous_relative_decrease": 4.655790979312688e-06
+        },
+        {
+          "iteration": 9,
+          "objective": 0.288690786908328,
+          "gradient_max": 5.955175320113324e-06,
+          "gradient_l2": 5.765992820393926e-05,
+          "slope": -2.5474305331840696e-08,
+          "half_newton_proxy_relative": 4.4120398861100313e-08,
+          "previous_relative_decrease": 7.0918649869253e-06
+        },
+        {
+          "iteration": 10,
+          "objective": 0.2886907704695313,
+          "gradient_max": 2.302075511738302e-06,
+          "gradient_l2": 2.098039454939693e-05,
+          "slope": -6.349531123106544e-09,
+          "half_newton_proxy_relative": 1.0997114858884413e-08,
+          "previous_relative_decrease": 5.694257799105426e-08
+        },
+        {
+          "iteration": 11,
+          "objective": 0.2886907669739424,
+          "gradient_max": 9.373696284172646e-07,
+          "gradient_l2": 7.206716194066487e-06,
+          "slope": -7.669803681054077e-10,
+          "half_newton_proxy_relative": 1.3283770314944576e-09,
+          "previous_relative_decrease": 1.2108419367044107e-08
+        },
+        {
+          "iteration": 12,
+          "objective": 0.2886907666309511,
+          "gradient_max": 4.743871888378482e-07,
+          "gradient_l2": 3.851579774955726e-06,
+          "slope": -1.2263658144551215e-10,
+          "half_newton_proxy_relative": 2.1240128819617752e-10,
+          "previous_relative_decrease": 1.1880923869845754e-09
+        },
+        {
+          "iteration": 13,
+          "objective": 0.2886907665781341,
+          "gradient_max": 8.444977114573584e-08,
+          "gradient_l2": 8.546911877149327e-07,
+          "slope": -5.276301097423275e-12,
+          "half_newton_proxy_relative": 9.1383267292604e-12,
+          "previous_relative_decrease": 1.8295364675009885e-10
+        },
+        {
+          "iteration": 14,
+          "objective": 0.2886907665752387,
+          "gradient_max": 2.4177717242843366e-08,
+          "gradient_l2": 1.9255590739750526e-07,
+          "slope": -3.471483083633542e-13,
+          "half_newton_proxy_relative": 6.012459499165871e-13,
+          "previous_relative_decrease": 1.0029437974132697e-11
+        },
+        {
+          "iteration": 15,
+          "objective": 0.28869076657499504,
+          "gradient_max": 1.2468362203825342e-08,
+          "gradient_l2": 9.133445630419146e-08,
+          "slope": -7.053575388701883e-14,
+          "half_newton_proxy_relative": 1.2216489415967398e-13,
+          "previous_relative_decrease": 8.43942622912739e-13
+        },
+        {
+          "iteration": 16,
+          "objective": 0.2886907665749416,
+          "gradient_max": 6.584146234226899e-09,
+          "gradient_l2": 5.148450378774129e-08,
+          "slope": -2.141900006425064e-14,
+          "half_newton_proxy_relative": 3.709678753908199e-14,
+          "previous_relative_decrease": 1.8517127953181093e-13
+        }
+      ],
+      "fit_metadata": {
+        "backend": "mlx",
+        "n_iter": [
+          16
+        ],
+        "implementation": "native_metal",
+        "warnings": [],
+        "solutions": [
+          {
+            "n_iter": 16,
+            "n_fev": null,
+            "converged": true,
+            "stop_reason": "gtol",
+            "grad_max_abs": 6.567063337570289e-09,
+            "objective": 0.2886907626714557
+          }
+        ],
+        "solver_calls": [
+          {
+            "implementation": "native_metal",
+            "n_iter": 16,
+            "n_fev": 129,
+            "converged": true,
+            "stop_reason": "gtol",
+            "grad_max_abs": 6.567063337570289e-09,
+            "objective": 0.2886907626714557
+          }
+        ],
+        "native_loop_calls": []
+      }
+    },
+    {
+      "width": 1024,
+      "weighted": true,
+      "rows": [
+        {
+          "iteration": 1,
+          "objective": 0.378131059767866,
+          "gradient_max": 0.09490514632599809,
+          "gradient_l2": 0.10594708153713946,
+          "slope": -0.0698377713561058,
+          "half_newton_proxy_relative": 0.09234598633471038,
+          "previous_relative_decrease": null
+        },
+        {
+          "iteration": 2,
+          "objective": 0.3281974527529169,
+          "gradient_max": 0.05475386887951458,
+          "gradient_l2": 0.05773372660680486,
+          "slope": -0.0498717799782753,
+          "half_newton_proxy_relative": 0.07597831665046653,
+          "previous_relative_decrease": 0.15214501695886576
+        },
+        {
+          "iteration": 3,
+          "objective": 0.2968412735627818,
+          "gradient_max": 0.02315240593779578,
+          "gradient_l2": 0.030135055875291694,
+          "slope": -0.02447904646396637,
+          "half_newton_proxy_relative": 0.04123255194629979,
+          "previous_relative_decrease": 0.10563281451325299
+        },
+        {
+          "iteration": 4,
+          "objective": 0.2883075270221146,
+          "gradient_max": 0.006735888984541528,
+          "gradient_l2": 0.033542637326487205,
+          "slope": -0.007793682627379894,
+          "half_newton_proxy_relative": 0.013516266307507956,
+          "previous_relative_decrease": 0.0295994580121129
+        },
+        {
+          "iteration": 5,
+          "objective": 0.2838613587629543,
+          "gradient_max": 0.0025801751335989232,
+          "gradient_l2": 0.008723895717806587,
+          "slope": -0.0008615836268290877,
+          "half_newton_proxy_relative": 0.0015176134409132015,
+          "previous_relative_decrease": 0.01566316838098828
+        },
+        {
+          "iteration": 6,
+          "objective": 0.28334702860900796,
+          "gradient_max": 0.0009440919106420865,
+          "gradient_l2": 0.0022312464137746128,
+          "slope": -0.00012002080620732158,
+          "half_newton_proxy_relative": 0.0002117911855234927,
+          "previous_relative_decrease": 0.0018151951565233803
+        },
+        {
+          "iteration": 7,
+          "objective": 0.28328709916437167,
+          "gradient_max": 0.00012418317523528967,
+          "gradient_l2": 0.0011150016422901033,
+          "slope": -1.7230782759725116e-05,
+          "half_newton_proxy_relative": 3.0412226343084015e-05,
+          "previous_relative_decrease": 0.00021155020759174598
+        },
+        {
+          "iteration": 8,
+          "objective": 0.28328535749391354,
+          "gradient_max": 0.00013574575551072055,
+          "gradient_l2": 0.0010242554861293344,
+          "slope": -7.228418326121755e-06,
+          "half_newton_proxy_relative": 1.2758192640219781e-05,
+          "previous_relative_decrease": 6.148113243623701e-06
+        },
+        {
+          "iteration": 9,
+          "objective": 0.2832816536799074,
+          "gradient_max": 8.943213203725828e-06,
+          "gradient_l2": 9.334153421024245e-05,
+          "slope": -6.467614355187834e-08,
+          "half_newton_proxy_relative": 1.1415519274142407e-07,
+          "previous_relative_decrease": 1.3074669531359508e-05
+        },
+        {
+          "iteration": 10,
+          "objective": 0.2832816084748149,
+          "gradient_max": 4.584018850906533e-06,
+          "gradient_l2": 4.348085513393412e-05,
+          "slope": -3.235383161381833e-08,
+          "half_newton_proxy_relative": 5.7105422035710336e-08,
+          "previous_relative_decrease": 1.5957651712895115e-07
+        },
+        {
+          "iteration": 11,
+          "objective": 0.28328159054131075,
+          "gradient_max": 2.0265967185597884e-06,
+          "gradient_l2": 1.6844265947556034e-05,
+          "slope": -4.144744991663174e-09,
+          "half_newton_proxy_relative": 7.3155918528683014e-09,
+          "previous_relative_decrease": 6.330628173683303e-08
+        },
+        {
+          "iteration": 12,
+          "objective": 0.28328158910663004,
+          "gradient_max": 1.1497341485431408e-06,
+          "gradient_l2": 1.2477739332363434e-05,
+          "slope": -1.0436583819384282e-09,
+          "half_newton_proxy_relative": 1.8420864999200225e-09,
+          "previous_relative_decrease": 5.064503881430217e-09
+        },
+        {
+          "iteration": 13,
+          "objective": 0.28328158860243874,
+          "gradient_max": 2.0779035177166527e-07,
+          "gradient_l2": 1.7045162596840013e-06,
+          "slope": -2.18309328947619e-11,
+          "half_newton_proxy_relative": 3.853221277539454e-11,
+          "previous_relative_decrease": 1.779823751727078e-09
+        },
+        {
+          "iteration": 14,
+          "objective": 0.2832815885895032,
+          "gradient_max": 6.711930970539049e-08,
+          "gradient_l2": 5.752060971054904e-07,
+          "slope": -3.894242567303863e-12,
+          "half_newton_proxy_relative": 6.8734480533906485e-12,
+          "previous_relative_decrease": 4.5663191848163775e-11
+        },
+        {
+          "iteration": 15,
+          "objective": 0.28328158858697916,
+          "gradient_max": 2.645485859020199e-08,
+          "gradient_l2": 2.480529367197311e-07,
+          "slope": -1.1421684995363557e-12,
+          "half_newton_proxy_relative": 2.0159596414887772e-12,
+          "previous_relative_decrease": 8.909991460878435e-12
+        },
+        {
+          "iteration": 16,
+          "objective": 0.2832815885864423,
+          "gradient_max": 1.6412565765740138e-08,
+          "gradient_l2": 1.2364187830484594e-07,
+          "slope": -1.9202522872577982e-13,
+          "half_newton_proxy_relative": 3.3892994896698705e-13,
+          "previous_relative_decrease": 1.8951049598257856e-12
+        }
+      ],
+      "fit_metadata": {
+        "backend": "mlx",
+        "n_iter": [
+          16
+        ],
+        "implementation": "native_metal",
+        "warnings": [
+          {
+            "category": "ConvergenceWarning",
+            "message": "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 1.6e-08 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+          }
+        ],
+        "solutions": [
+          {
+            "n_iter": 16,
+            "n_fev": null,
+            "converged": false,
+            "stop_reason": "max_iter",
+            "grad_max_abs": 1.6009039427444804e-08,
+            "objective": 0.2832815859633931
+          }
+        ],
+        "solver_calls": [
+          {
+            "implementation": "native_metal",
+            "n_iter": 16,
+            "n_fev": 129,
+            "converged": false,
+            "stop_reason": "max_iter",
+            "grad_max_abs": 1.6009039427444804e-08,
+            "objective": 0.2832815859633931
+          }
+        ],
+        "native_loop_calls": []
+      }
+    },
+    {
+      "width": 4096,
+      "weighted": false,
+      "rows": [
+        {
+          "iteration": 1,
+          "objective": 0.3517444540894692,
+          "gradient_max": 0.08700946476527466,
+          "gradient_l2": 0.12750753077495192,
+          "slope": -0.09185309708118439,
+          "half_newton_proxy_relative": 0.13056793932822147,
+          "previous_relative_decrease": null
+        },
+        {
+          "iteration": 2,
+          "objective": 0.2875159485790755,
+          "gradient_max": 0.05464339991167436,
+          "gradient_l2": 0.06877795525960781,
+          "slope": -0.06842443346977234,
+          "half_newton_proxy_relative": 0.11899241382596482,
+          "previous_relative_decrease": 0.2233911051815234
+        },
+        {
+          "iteration": 3,
+          "objective": 0.24202806917177877,
+          "gradient_max": 0.03026595190984656,
+          "gradient_l2": 0.04255861719452125,
+          "slope": -0.053338970988988876,
+          "half_newton_proxy_relative": 0.11019170456450587,
+          "previous_relative_decrease": 0.18794464444953202
+        },
+        {
+          "iteration": 4,
+          "objective": 0.21933310536022196,
+          "gradient_max": 0.015077137100049593,
+          "gradient_l2": 0.06201056942498703,
+          "slope": -0.02595357410609722,
+          "half_newton_proxy_relative": 0.059164744107991225,
+          "previous_relative_decrease": 0.10347258693248203
+        },
+        {
+          "iteration": 5,
+          "objective": 0.20292338678162955,
+          "gradient_max": 0.008692685837553338,
+          "gradient_l2": 0.025658549138949136,
+          "slope": -0.009455175139009953,
+          "half_newton_proxy_relative": 0.02329740127288749,
+          "previous_relative_decrease": 0.08086657156107534
+        },
+        {
+          "iteration": 6,
+          "objective": 0.19630226835848358,
+          "gradient_max": 0.005017308499474847,
+          "gradient_l2": 0.015612514752923698,
+          "slope": -0.007462557405233383,
+          "half_newton_proxy_relative": 0.019007822649317017,
+          "previous_relative_decrease": 0.03372919976173993
+        },
+        {
+          "iteration": 7,
+          "objective": 0.19180361247273436,
+          "gradient_max": 0.0021339384197003536,
+          "gradient_l2": 0.01636019568120302,
+          "slope": -0.006046184338629246,
+          "half_newton_proxy_relative": 0.01576139328316544,
+          "previous_relative_decrease": 0.023454489869885613
+        },
+        {
+          "iteration": 8,
+          "objective": 0.19020798772328243,
+          "gradient_max": 0.0013715867014234256,
+          "gradient_l2": 0.021193516849440937,
+          "slope": -0.002281759399920702,
+          "half_newton_proxy_relative": 0.005998064085616219,
+          "previous_relative_decrease": 0.008388841964793165
+        },
+        {
+          "iteration": 9,
+          "objective": 0.18883416556290275,
+          "gradient_max": 0.00046714645227148186,
+          "gradient_l2": 0.006721088680110298,
+          "slope": -0.00042431324254721403,
+          "half_newton_proxy_relative": 0.0011235076059524583,
+          "previous_relative_decrease": 0.007275283878234647
+        },
+        {
+          "iteration": 10,
+          "objective": 0.18852388359276145,
+          "gradient_max": 0.00027296415148736177,
+          "gradient_l2": 0.004500520722169809,
+          "slope": -0.00043298417585901916,
+          "half_newton_proxy_relative": 0.0011483536398876836,
+          "previous_relative_decrease": 0.0016458496622717025
+        },
+        {
+          "iteration": 11,
+          "objective": 0.1882205492203248,
+          "gradient_max": 0.00024549719861885244,
+          "gradient_l2": 0.004478183343862014,
+          "slope": -0.00039287935942411423,
+          "half_newton_proxy_relative": 0.0010436675513156178,
+          "previous_relative_decrease": 0.0016115900930752255
+        },
+        {
+          "iteration": 12,
+          "objective": 0.18797852985688637,
+          "gradient_max": 0.00023649730730652518,
+          "gradient_l2": 0.003998442794575303,
+          "slope": -0.0003420075518079102,
+          "half_newton_proxy_relative": 0.0009096984428708179,
+          "previous_relative_decrease": 0.0012874840739667702
+        },
+        {
+          "iteration": 13,
+          "objective": 0.1878969863538728,
+          "gradient_max": 0.00018295526692523335,
+          "gradient_l2": 0.00294831471077226,
+          "slope": -6.937462603673339e-05,
+          "half_newton_proxy_relative": 0.00018460813923347813,
+          "previous_relative_decrease": 0.0004339798343545067
+        },
+        {
+          "iteration": 14,
+          "objective": 0.18785037453761586,
+          "gradient_max": 7.948717533532042e-05,
+          "gradient_l2": 0.0013839403101478234,
+          "slope": -3.3329073630739003e-05,
+          "half_newton_proxy_relative": 8.87117571971225e-05,
+          "previous_relative_decrease": 0.0002481326767204244
+        },
+        {
+          "iteration": 15,
+          "objective": 0.18782743389056272,
+          "gradient_max": 6.582404356191555e-05,
+          "gradient_l2": 0.0012062838830640113,
+          "slope": -2.7575855710892938e-05,
+          "half_newton_proxy_relative": 7.340742281279303e-05,
+          "previous_relative_decrease": 0.00012213682835329948
+        },
+        {
+          "iteration": 16,
+          "objective": 0.18780990108609857,
+          "gradient_max": 6.549645442662739e-05,
+          "gradient_l2": 0.001115114934481915,
+          "slope": -2.8162725357105955e-05,
+          "half_newton_proxy_relative": 7.497667906282317e-05,
+          "previous_relative_decrease": 9.335399445267311e-05
+        }
+      ],
+      "fit_metadata": {
+        "backend": "mlx",
+        "n_iter": [
+          16
+        ],
+        "implementation": "native_metal",
+        "warnings": [
+          {
+            "category": "ConvergenceWarning",
+            "message": "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 6.55e-05 against tol=0.0001. Increase max_iter, scale the data, or relax tol."
+          }
+        ],
+        "solutions": [
+          {
+            "n_iter": 16,
+            "n_fev": null,
+            "converged": false,
+            "stop_reason": "max_iter",
+            "grad_max_abs": 6.549631507368758e-05,
+            "objective": 0.18780989776644855
+          }
+        ],
+        "solver_calls": [
+          {
+            "implementation": "native_metal",
+            "n_iter": 16,
+            "n_fev": 129,
+            "converged": false,
+            "stop_reason": "max_iter",
+            "grad_max_abs": 6.549631507368758e-05,
+            "objective": 0.18780989776644855
+          }
+        ],
+        "native_loop_calls": []
+      }
+    }
+  ]
+}

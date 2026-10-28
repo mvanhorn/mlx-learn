@@ -1,0 +1,1186 @@
+{
+  "method": "accepted-iteration budget trace at tol 1e-8; centered float64 reference",
+  "rows": [
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 16,
+      "n_iter": [
+        16
+      ],
+      "duration_ms": 141.44429203588516,
+      "score": {
+        "objective_float64": 0.18780990108780513,
+        "gradient_max_abs_float64": 6.552934509249645e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 9.648088572714295e-05,
+        "prediction_agreement_sklearn": 0.9989
+      },
+      "recent_relative": 0.00010774970666373216,
+      "events": [
+        [
+          16,
+          0,
+          128,
+          -1.7532507627038285e-05,
+          -2.294041587447282e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 6.55e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 18,
+      "n_iter": [
+        18
+      ],
+      "duration_ms": 63.75187495723367,
+      "score": {
+        "objective_float64": 0.1877973661864675,
+        "gradient_max_abs_float64": 2.8582616274560556e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.973195160067858e-05,
+        "prediction_agreement_sklearn": 0.9996
+      },
+      "recent_relative": 3.337426596541741e-05,
+      "events": [
+        [
+          18,
+          0,
+          144,
+          -9.79737251327606e-06,
+          -2.7378259801480453e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 2.86e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 20,
+      "n_iter": [
+        20
+      ],
+      "duration_ms": 67.46287504211068,
+      "score": {
+        "objective_float64": 0.18779379131109247,
+        "gradient_max_abs_float64": 1.830987625792297e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.0695573531879602e-05,
+        "prediction_agreement_sklearn": 0.9998
+      },
+      "recent_relative": 9.519171972789853e-06,
+      "events": [
+        [
+          20,
+          0,
+          160,
+          -2.1083492356410716e-06,
+          -1.4669335541839246e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 20 iterations; max|gradient| is 1.83e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 22,
+      "n_iter": [
+        22
+      ],
+      "duration_ms": 69.50920901726931,
+      "score": {
+        "objective_float64": 0.18779239492290303,
+        "gradient_max_abs_float64": 9.826998287210641e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 3.2597413094022103e-06,
+        "prediction_agreement_sklearn": 0.99985
+      },
+      "recent_relative": 3.717613736788526e-06,
+      "events": [
+        [
+          22,
+          0,
+          176,
+          -1.3109445262671215e-06,
+          -8.533464779247879e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 22 iterations; max|gradient| is 9.83e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 24,
+      "n_iter": [
+        24
+      ],
+      "duration_ms": 73.45749996602535,
+      "score": {
+        "objective_float64": 0.18779203307855755,
+        "gradient_max_abs_float64": 5.723369645595712e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.332903296850058e-06,
+        "prediction_agreement_sklearn": 0.99995
+      },
+      "recent_relative": 9.612355225615794e-07,
+      "events": [
+        [
+          24,
+          0,
+          192,
+          -1.898964114843693e-07,
+          -1.7112833461396804e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 24 iterations; max|gradient| is 5.72e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 28,
+      "n_iter": [
+        28
+      ],
+      "duration_ms": 82.26266701240093,
+      "score": {
+        "objective_float64": 0.18779181074487544,
+        "gradient_max_abs_float64": 1.6998880802270586e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.489660722065447e-07,
+        "prediction_agreement_sklearn": 1.0
+      },
+      "recent_relative": 1.9047245243422846e-07,
+      "events": [
+        [
+          28,
+          0,
+          224,
+          -8.451695343580923e-09,
+          -6.308663813570092e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 28 iterations; max|gradient| is 1.7e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 16,
+      "n_iter": [
+        16
+      ],
+      "duration_ms": 64.7418750450015,
+      "score": {
+        "objective_float64": 0.18780993880291333,
+        "gradient_max_abs_float64": 8.02659017823083e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 9.66817204369838e-05,
+        "prediction_agreement_sklearn": 0.9988
+      },
+      "recent_relative": 9.276527430040927e-05,
+      "events": [
+        [
+          16,
+          0,
+          128,
+          -1.177595004264731e-05,
+          -2.306853093614336e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 8.03e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 18,
+      "n_iter": [
+        18
+      ],
+      "duration_ms": 66.60729204304516,
+      "score": {
+        "objective_float64": 0.18779654094431525,
+        "gradient_max_abs_float64": 2.5550132628865163e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.533749865881541e-05,
+        "prediction_agreement_sklearn": 0.9997
+      },
+      "recent_relative": 3.567244610762563e-05,
+      "events": [
+        [
+          18,
+          0,
+          144,
+          -3.0089140636846423e-06,
+          -1.038940990838455e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 2.56e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 20,
+      "n_iter": [
+        20
+      ],
+      "duration_ms": 70.5252499319613,
+      "score": {
+        "objective_float64": 0.18779310440437225,
+        "gradient_max_abs_float64": 2.2184560613407476e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 7.037763216149622e-06,
+        "prediction_agreement_sklearn": 0.9998
+      },
+      "recent_relative": 9.149665598457811e-06,
+      "events": [
+        [
+          20,
+          0,
+          160,
+          -1.08763401840406e-06,
+          -2.348854195588501e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 20 iterations; max|gradient| is 2.22e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 22,
+      "n_iter": [
+        22
+      ],
+      "duration_ms": 74.99674998689443,
+      "score": {
+        "objective_float64": 0.18779223836433595,
+        "gradient_max_abs_float64": 7.287493469867129e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.4260596393466433e-06,
+        "prediction_agreement_sklearn": 0.99985
+      },
+      "recent_relative": 2.3019430511658735e-06,
+      "events": [
+        [
+          22,
+          0,
+          176,
+          -3.223225348847336e-07,
+          -5.422515414466034e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 22 iterations; max|gradient| is 7.29e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 24,
+      "n_iter": [
+        24
+      ],
+      "duration_ms": 77.77129102032632,
+      "score": {
+        "objective_float64": 0.18779201822687278,
+        "gradient_max_abs_float64": 1.3520349869820406e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.2538173829096307e-06,
+        "prediction_agreement_sklearn": 0.9998
+      },
+      "recent_relative": 5.837773630681198e-07,
+      "events": [
+        [
+          24,
+          0,
+          192,
+          -2.5906643941198126e-08,
+          -1.9335081447025004e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 24 iterations; max|gradient| is 1.35e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 28,
+      "n_iter": [
+        28
+      ],
+      "duration_ms": 87.92187506332994,
+      "score": {
+        "objective_float64": 0.1877917982587781,
+        "gradient_max_abs_float64": 2.39807242620752e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 8.247702158727866e-08,
+        "prediction_agreement_sklearn": 1.0
+      },
+      "recent_relative": 9.95005323984648e-08,
+      "events": [
+        [
+          28,
+          0,
+          224,
+          -8.905601589503931e-09,
+          -2.8465166224123095e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 28 iterations; max|gradient| is 2.4e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 16,
+      "n_iter": [
+        16
+      ],
+      "duration_ms": 83.85516609996557,
+      "score": {
+        "objective_float64": 0.1816357292829491,
+        "gradient_max_abs_float64": 7.290299074105362e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 0.00019010778238161147,
+        "prediction_agreement_sklearn": 0.999
+      },
+      "recent_relative": 0.00017005621943930033,
+      "events": [
+        [
+          16,
+          0,
+          128,
+          -3.611959982663393e-05,
+          -2.565697104728315e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 7.29e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 18,
+      "n_iter": [
+        18
+      ],
+      "duration_ms": 62.16187495738268,
+      "score": {
+        "objective_float64": 0.1816133444910826,
+        "gradient_max_abs_float64": 3.8090120629451e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 6.684432822515117e-05,
+        "prediction_agreement_sklearn": 0.99935
+      },
+      "recent_relative": 6.162734735714681e-05,
+      "events": [
+        [
+          18,
+          0,
+          144,
+          -1.1397817615943495e-05,
+          -1.0986879715346731e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 3.81e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 20,
+      "n_iter": [
+        20
+      ],
+      "duration_ms": 64.7237499943003,
+      "score": {
+        "objective_float64": 0.18160508427183272,
+        "gradient_max_abs_float64": 2.8410654053955863e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.1358841341831593e-05,
+        "prediction_agreement_sklearn": 0.99955
+      },
+      "recent_relative": 2.274376359310271e-05,
+      "events": [
+        [
+          20,
+          0,
+          160,
+          -3.018066763615934e-06,
+          -5.2426994443521835e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 20 iterations; max|gradient| is 2.84e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 22,
+      "n_iter": [
+        22
+      ],
+      "duration_ms": 69.15333308279514,
+      "score": {
+        "objective_float64": 0.18160238968913403,
+        "gradient_max_abs_float64": 1.102492608408946e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 6.520929382146055e-06,
+        "prediction_agreement_sklearn": 0.9997
+      },
+      "recent_relative": 7.417614220023483e-06,
+      "events": [
+        [
+          22,
+          0,
+          176,
+          -1.7346219465252943e-06,
+          -9.594909897714388e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 22 iterations; max|gradient| is 1.1e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 24,
+      "n_iter": [
+        24
+      ],
+      "duration_ms": 73.82658310234547,
+      "score": {
+        "objective_float64": 0.18160164597900413,
+        "gradient_max_abs_float64": 7.661543783233904e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.425636468593821e-06,
+        "prediction_agreement_sklearn": 0.99985
+      },
+      "recent_relative": 2.044740503549166e-06,
+      "events": [
+        [
+          24,
+          0,
+          192,
+          -4.013539296465751e-07,
+          -3.413025524423574e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 24 iterations; max|gradient| is 7.66e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 0,
+      "budget": 28,
+      "n_iter": [
+        28
+      ],
+      "duration_ms": 83.55479198507965,
+      "score": {
+        "objective_float64": 0.1816012496493037,
+        "gradient_max_abs_float64": 3.1468750163799353e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.4321868453460847e-07,
+        "prediction_agreement_sklearn": 0.99995
+      },
+      "recent_relative": 2.3998032319281515e-07,
+      "events": [
+        [
+          28,
+          0,
+          224,
+          -3.382126578799216e-08,
+          -5.334018737812585e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 28 iterations; max|gradient| is 3.15e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 16,
+      "n_iter": [
+        16
+      ],
+      "duration_ms": 59.721625060774386,
+      "score": {
+        "objective_float64": 0.18162333393382596,
+        "gradient_max_abs_float64": 7.134574319275181e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 0.00012185190770088637,
+        "prediction_agreement_sklearn": 0.99925
+      },
+      "recent_relative": 0.0001509845260650346,
+      "events": [
+        [
+          16,
+          0,
+          128,
+          -2.382956154178828e-05,
+          -3.101506445091218e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 7.13e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 18,
+      "n_iter": [
+        18
+      ],
+      "duration_ms": 65.54320792201906,
+      "score": {
+        "objective_float64": 0.1816087921356183,
+        "gradient_max_abs_float64": 3.214771635735823e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 4.177645793077263e-05,
+        "prediction_agreement_sklearn": 0.99945
+      },
+      "recent_relative": 4.003712098003067e-05,
+      "events": [
+        [
+          18,
+          0,
+          144,
+          -4.873655598203186e-06,
+          -9.668530765338801e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 3.21e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 20,
+      "n_iter": [
+        20
+      ],
+      "duration_ms": 70.36458305083215,
+      "score": {
+        "objective_float64": 0.18160374882410002,
+        "gradient_max_abs_float64": 3.4415170134954134e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.4005103082386843e-05,
+        "prediction_agreement_sklearn": 0.9996
+      },
+      "recent_relative": 1.388343549172916e-05,
+      "events": [
+        [
+          20,
+          0,
+          160,
+          -1.214188614540035e-06,
+          -3.828379249171121e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 20 iterations; max|gradient| is 3.44e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 22,
+      "n_iter": [
+        22
+      ],
+      "duration_ms": 76.59366610459983,
+      "score": {
+        "objective_float64": 0.18160205226645704,
+        "gradient_max_abs_float64": 7.925147510665317e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 4.662887327299144e-06,
+        "prediction_agreement_sklearn": 0.99975
+      },
+      "recent_relative": 4.666577066960049e-06,
+      "events": [
+        [
+          22,
+          0,
+          176,
+          -4.3240703462288366e-07,
+          -1.2625129102161736e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 22 iterations; max|gradient| is 7.93e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 24,
+      "n_iter": [
+        24
+      ],
+      "duration_ms": 80.77799994498491,
+      "score": {
+        "objective_float64": 0.18160160323965652,
+        "gradient_max_abs_float64": 1.985123859365252e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 2.190289200366847e-06,
+        "prediction_agreement_sklearn": 0.9998
+      },
+      "recent_relative": 1.2350791293962022e-06,
+      "events": [
+        [
+          24,
+          0,
+          192,
+          -6.255433504520624e-08,
+          -3.860303650071728e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 24 iterations; max|gradient| is 1.99e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 83,
+      "C": 1.0,
+      "sketch": 4,
+      "budget": 28,
+      "n_iter": [
+        28
+      ],
+      "duration_ms": 87.26062497589737,
+      "score": {
+        "objective_float64": 0.181601238424121,
+        "gradient_max_abs_float64": 4.4498019816795335e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.8140641478494058e-07,
+        "prediction_agreement_sklearn": 0.99995
+      },
+      "recent_relative": 1.6499987834094343e-07,
+      "events": [
+        [
+          28,
+          0,
+          224,
+          -1.9017630137341257e-08,
+          -4.091073435574799e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 28 iterations; max|gradient| is 4.45e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 0,
+      "budget": 16,
+      "n_iter": [
+        16
+      ],
+      "duration_ms": 76.37754105962813,
+      "score": {
+        "objective_float64": 0.18622409540617077,
+        "gradient_max_abs_float64": 5.718842943383386e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 0.00013177928388760144,
+        "prediction_agreement_sklearn": 0.9987
+      },
+      "recent_relative": 0.00012625379363702567,
+      "events": [
+        [
+          16,
+          0,
+          128,
+          -2.931349808932282e-05,
+          -1.7709498933982104e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 5.72e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 0,
+      "budget": 18,
+      "n_iter": [
+        18
+      ],
+      "duration_ms": 76.02975005283952,
+      "score": {
+        "objective_float64": 0.18620838382170524,
+        "gradient_max_abs_float64": 3.844366433318906e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 4.7398930783402504e-05,
+        "prediction_agreement_sklearn": 0.9994
+      },
+      "recent_relative": 4.218778903946291e-05,
+      "events": [
+        [
+          18,
+          0,
+          144,
+          -8.003663424460683e-06,
+          -7.707776603638195e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 3.84e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 0,
+      "budget": 20,
+      "n_iter": [
+        20
+      ],
+      "duration_ms": 72.50341703183949,
+      "score": {
+        "objective_float64": 0.1862022792056243,
+        "gradient_max_abs_float64": 2.2476128668536457e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.461358939370669e-05,
+        "prediction_agreement_sklearn": 0.99935
+      },
+      "recent_relative": 1.6392400336141473e-05,
+      "events": [
+        [
+          20,
+          0,
+          160,
+          -2.093201828756719e-06,
+          -4.011402779724449e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 20 iterations; max|gradient| is 2.25e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 0,
+      "budget": 22,
+      "n_iter": [
+        22
+      ],
+      "duration_ms": 69.34795796405524,
+      "score": {
+        "objective_float64": 0.1862003963463817,
+        "gradient_max_abs_float64": 1.0953654139899523e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 4.501539391059215e-06,
+        "prediction_agreement_sklearn": 0.99975
+      },
+      "recent_relative": 5.054520394253516e-06,
+      "events": [
+        [
+          22,
+          0,
+          176,
+          -8.813359499981743e-07,
+          -1.000971451503574e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 22 iterations; max|gradient| is 1.1e-05 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 0,
+      "budget": 24,
+      "n_iter": [
+        24
+      ],
+      "duration_ms": 73.355249944143,
+      "score": {
+        "objective_float64": 0.18619987074254535,
+        "gradient_max_abs_float64": 7.033768963312028e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.678740875679765e-06,
+        "prediction_agreement_sklearn": 0.99985
+      },
+      "recent_relative": 1.409948940945373e-06,
+      "events": [
+        [
+          24,
+          0,
+          192,
+          -2.546504731526511e-07,
+          -2.7041414796258323e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 24 iterations; max|gradient| is 7.03e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 0,
+      "budget": 28,
+      "n_iter": [
+        28
+      ],
+      "duration_ms": 83.75766698736697,
+      "score": {
+        "objective_float64": 0.1861995909337139,
+        "gradient_max_abs_float64": 2.3559590387147457e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.760045953114626e-07,
+        "prediction_agreement_sklearn": 0.99995
+      },
+      "recent_relative": 1.674367965721548e-07,
+      "events": [
+        [
+          28,
+          0,
+          224,
+          -2.7912943068031382e-08,
+          -3.444038298994201e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 28 iterations; max|gradient| is 2.36e-06 against tol=1e-08. Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 4,
+      "budget": 16,
+      "n_iter": [
+        16
+      ],
+      "duration_ms": 60.458334046415985,
+      "score": {
+        "objective_float64": 0.18621870046873915,
+        "gradient_max_abs_float64": 9.181698288367167e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 0.0001028053298949819,
+        "prediction_agreement_sklearn": 0.9982
+      },
+      "recent_relative": 0.00010596280136647426,
+      "events": [
+        [
+          16,
+          0,
+          128,
+          -1.4647301213699393e-05,
+          -2.4817209123284556e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 16 iterations; max|gradient| is 9.18e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 4,
+      "budget": 18,
+      "n_iter": [
+        18
+      ],
+      "duration_ms": 64.45924995932728,
+      "score": {
+        "objective_float64": 0.1862058237133986,
+        "gradient_max_abs_float64": 2.5382603175966038e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 3.364965913151987e-05,
+        "prediction_agreement_sklearn": 0.9992
+      },
+      "recent_relative": 3.4578023083441313e-05,
+      "events": [
+        [
+          18,
+          0,
+          144,
+          -2.6520606297708582e-06,
+          -1.0225197911495343e-05
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 18 iterations; max|gradient| is 2.54e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 4,
+      "budget": 20,
+      "n_iter": [
+        20
+      ],
+      "duration_ms": 68.80125007592142,
+      "score": {
+        "objective_float64": 0.18620240324499152,
+        "gradient_max_abs_float64": 4.763684653784623e-05,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.5279752989617037e-05,
+        "prediction_agreement_sklearn": 0.99935
+      },
+      "recent_relative": 9.18416709366052e-06,
+      "events": [
+        [
+          20,
+          0,
+          160,
+          -1.986217483818109e-07,
+          -3.221606220904505e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 20 iterations; max|gradient| is 4.76e-05 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 4,
+      "budget": 22,
+      "n_iter": [
+        22
+      ],
+      "duration_ms": 75.76316595077515,
+      "score": {
+        "objective_float64": 0.1862002787427347,
+        "gradient_max_abs_float64": 7.671905711011256e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 3.869939358553889e-06,
+        "prediction_agreement_sklearn": 0.9997
+      },
+      "recent_relative": 5.701793392698835e-06,
+      "events": [
+        [
+          22,
+          0,
+          176,
+          -2.646532095695875e-07,
+          -1.8586978285384248e-06
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 22 iterations; max|gradient| is 7.67e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 4,
+      "budget": 24,
+      "n_iter": [
+        24
+      ],
+      "duration_ms": 77.79366697650403,
+      "score": {
+        "objective_float64": 0.1861997561166393,
+        "gradient_max_abs_float64": 8.655173185772158e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.0631330451544498e-06,
+        "prediction_agreement_sklearn": 0.99985
+      },
+      "recent_relative": 1.400689654311413e-06,
+      "events": [
+        [
+          24,
+          0,
+          192,
+          -2.09191640010431e-07,
+          -3.1242450404533884e-07
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 24 iterations; max|gradient| is 8.66e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    },
+    {
+      "seed": 41,
+      "C": 10.0,
+      "sketch": 4,
+      "budget": 28,
+      "n_iter": [
+        28
+      ],
+      "duration_ms": 90.32504202332348,
+      "score": {
+        "objective_float64": 0.18619957926219277,
+        "gradient_max_abs_float64": 2.277479406134213e-06,
+        "nullspace_coefficient_relative": null,
+        "objective_relative_gap_to_sklearn": 1.1332173368878076e-07,
+        "prediction_agreement_sklearn": 1.0
+      },
+      "recent_relative": 1.1485961679320462e-07,
+      "events": [
+        [
+          28,
+          0,
+          224,
+          -2.42736852840153e-08,
+          -1.8499939358207484e-08
+        ]
+      ],
+      "warnings": [
+        "LogisticRegression failed to converge (max_iter) after 28 iterations; max|gradient| is 2.28e-06 against tol=5e-09 (internal safety threshold; requested tol=1e-08). Increase max_iter, scale the data, or relax tol."
+      ]
+    }
+  ],
+  "sources_before": {
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "0e1ed2231e28f5cfb9a7269b6c89d5a3c2423ff70af25e9593ad19c12efe2c6b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "ca38ed41a1d35c115b1ed3416d0689fd2382dc9eba6673246aada69ba190898a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "sources_after": {
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "0e1ed2231e28f5cfb9a7269b6c89d5a3c2423ff70af25e9593ad19c12efe2c6b",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "a026b70bd817465f8f3e7eef67945a8c8bcbf44e2da68789625196e055393677",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "a257cf458aebbaa8c17f0c75855351630e56c5038fc70bb72110d618ab1bca2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "2481a976d4c0f59c4bd71d9bc576643683af4a941d8eb9be8cffc653e5678b24",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "6324da6a8ddab7ecdc60d78f9c1ab0d514a5993442a4dd9f136c363ec03f2be9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "97292ad46cb6c4921b0e4a882d4771d27ff7eac2849ffe4fd26facba6e889d2d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "ca38ed41a1d35c115b1ed3416d0689fd2382dc9eba6673246aada69ba190898a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "2aef18c2821e5a5d7a9afbe8eae19cd2f477897082dcce3226ce6dd95f6e4354",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_integrity_pass": true
+}

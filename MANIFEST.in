@@ -1,0 +1,2 @@
+include src/mlxlearn/_solvers/_metal_loop.mm
+include src/mlxlearn/_solvers/_metal_cg.h

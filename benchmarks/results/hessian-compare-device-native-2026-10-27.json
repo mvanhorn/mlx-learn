@@ -1,0 +1,76 @@
+{
+  "fixture": "ill_conditioned_4096",
+  "tol": 2.5e-05,
+  "cases": [
+    {
+      "mode": "host",
+      "ms": 477.6387920137495,
+      "iterations": 200,
+      "status": 0,
+      "n_fev": 1600,
+      "last_difference": -6.832669896539301e-07,
+      "previous_difference": -1.2347081792540848e-06,
+      "initial_metric": "compiled",
+      "sketch_pairs": 4,
+      "independent": {
+        "objective": 0.261397853922927,
+        "gradient_max": 0.0008327271211878241
+      }
+    },
+    {
+      "mode": "device",
+      "ms": 433.5217080079019,
+      "iterations": 200,
+      "status": 0,
+      "n_fev": 1600,
+      "last_difference": -6.832669896539301e-07,
+      "previous_difference": -1.2347081792540848e-06,
+      "initial_metric": "compiled",
+      "sketch_pairs": 4,
+      "independent": {
+        "objective": 0.261397853922927,
+        "gradient_max": 0.0008327271211878241
+      }
+    },
+    {
+      "mode": "host",
+      "ms": 377.14966700877994,
+      "iterations": 172,
+      "status": 1,
+      "n_fev": 1376,
+      "last_difference": -1.9295285369480553e-08,
+      "previous_difference": -3.19217861033394e-08,
+      "initial_metric": "uncompiled",
+      "sketch_pairs": 4,
+      "independent": {
+        "objective": 0.26137796343358344,
+        "gradient_max": 2.0446570385423525e-05
+      }
+    },
+    {
+      "mode": "device",
+      "ms": 378.9523340528831,
+      "iterations": 172,
+      "status": 1,
+      "n_fev": 1376,
+      "last_difference": -1.9295285369480553e-08,
+      "previous_difference": -3.19217861033394e-08,
+      "initial_metric": "uncompiled",
+      "sketch_pairs": 4,
+      "independent": {
+        "objective": 0.26137796343358344,
+        "gradient_max": 2.0446570385423525e-05
+      }
+    }
+  ],
+  "initial_metric_differences": {
+    "g_max_abs": 0.0,
+    "h0_max_abs": 2.9802322387695312e-08,
+    "h0_compiled": 0.3678774833679199,
+    "h0_uncompiled": 0.36787745356559753
+  },
+  "max_parameter_difference": {
+    "compiled_host_vs_device": 0.0,
+    "uncompiled_host_vs_device": 0.0
+  }
+}

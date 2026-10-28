@@ -1,0 +1,284 @@
+[
+  {
+    "budget": 1,
+    "factor": 1,
+    "n_iter": 1,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 1,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 1 iterations; original-coordinate max gradient 0.349 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.6791470167807362,
+      "gradient_max_abs_float64": 0.34933279003349643,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 68.13204195350409
+  },
+  {
+    "budget": 1,
+    "factor": 0.95,
+    "n_iter": 1,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 1,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 1 iterations; original-coordinate max gradient 0.349 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.6791470167807362,
+      "gradient_max_abs_float64": 0.34933279003349643,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 12.062290916219354
+  },
+  {
+    "budget": 3,
+    "factor": 1,
+    "n_iter": 3,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 3,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 3 iterations; original-coordinate max gradient 0.279 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.6099277169774906,
+      "gradient_max_abs_float64": 0.2794014527594089,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 8.854083018377423
+  },
+  {
+    "budget": 3,
+    "factor": 0.95,
+    "n_iter": 3,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 3,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 3 iterations; original-coordinate max gradient 0.279 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.6099277169774906,
+      "gradient_max_abs_float64": 0.2794014527594089,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 7.1650410536676645
+  },
+  {
+    "budget": 151,
+    "factor": 1,
+    "n_iter": 151,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 151,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 151 iterations; original-coordinate max gradient 6.74e-05 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.29716220906736923,
+      "gradient_max_abs_float64": 6.738613570891605e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 83.52216705679893
+  },
+  {
+    "budget": 151,
+    "factor": 0.95,
+    "n_iter": 151,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 151,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 151 iterations; original-coordinate max gradient 6.74e-05 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.29716220906736923,
+      "gradient_max_abs_float64": 6.738613570891605e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 82.21045893151313
+  },
+  {
+    "budget": 152,
+    "factor": 1,
+    "n_iter": 152,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 152,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 152 iterations; original-coordinate max gradient 2.46e-05 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.29716220643552177,
+      "gradient_max_abs_float64": 2.460221700417424e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 82.14791701175272
+  },
+  {
+    "budget": 152,
+    "factor": 0.95,
+    "n_iter": 152,
+    "converged": false,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 152,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 152 iterations; original-coordinate max gradient 2.46e-05 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.29716220643552177,
+      "gradient_max_abs_float64": 2.460221700417424e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 83.41116702649742
+  },
+  {
+    "budget": 153,
+    "factor": 1,
+    "n_iter": 153,
+    "converged": false,
+    "fallback": true,
+    "events": [
+      {
+        "n_iter": 152,
+        "status": 1,
+        "seeded": true
+      },
+      {
+        "n_iter": 1,
+        "status": 0,
+        "seeded": false
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 153 iterations; original-coordinate max gradient 2.46e-05 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.29716220643552177,
+      "gradient_max_abs_float64": 2.460221700417424e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 85.8788329642266
+  },
+  {
+    "budget": 153,
+    "factor": 0.95,
+    "n_iter": 153,
+    "converged": true,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 153,
+        "status": 0,
+        "seeded": true
+      }
+    ],
+    "warnings": [],
+    "score": {
+      "objective_float64": 0.29716220470833077,
+      "gradient_max_abs_float64": 1.6405568278767826e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 84.00600007735193
+  },
+  {
+    "budget": 154,
+    "factor": 1,
+    "n_iter": 154,
+    "converged": false,
+    "fallback": true,
+    "events": [
+      {
+        "n_iter": 152,
+        "status": 1,
+        "seeded": true
+      },
+      {
+        "n_iter": 2,
+        "status": 0,
+        "seeded": false
+      }
+    ],
+    "warnings": [
+      "Device logistic did not converge (max_iter) after 154 iterations; original-coordinate max gradient 2.46e-05 versus tol=0.0001"
+    ],
+    "score": {
+      "objective_float64": 0.29716220643552177,
+      "gradient_max_abs_float64": 2.460221700417424e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 85.58012498542666
+  },
+  {
+    "budget": 154,
+    "factor": 0.95,
+    "n_iter": 153,
+    "converged": true,
+    "fallback": false,
+    "events": [
+      {
+        "n_iter": 153,
+        "status": 1,
+        "seeded": true
+      }
+    ],
+    "warnings": [],
+    "score": {
+      "objective_float64": 0.29716220470833077,
+      "gradient_max_abs_float64": 1.6405568278767826e-05,
+      "nullspace_coefficient_relative": null
+    },
+    "ms": 82.87333301268518
+  }
+]

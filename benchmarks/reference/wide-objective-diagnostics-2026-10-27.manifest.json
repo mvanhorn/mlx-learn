@@ -1,0 +1,13 @@
+{
+  "description": "Source-only exploratory convergence diagnostic scripts; no binaries.",
+  "archive_sha256": "b41a8300768d06ac7f2ad1e1f29fab8fc6eb64b2b827ee20aba8aef931efb313",
+  "members": {
+    "README.md": "2a619f4b32e47ab7d514f1220fce2a4a2a3a704060e55b7af3c5c400e97f53b2",
+    "scripts/tolerance_sweep.py": "6f714776eb11e40d998a7bbf8b8c8f3479fbadf4ebf340a0ee83ba12cd313065",
+    "scripts/fine_sweep.py": "50a07b1fb0a5c146ebedad90e8c57da7cb2a1b4ac0c9afcb3d04f410ceea3652",
+    "scripts/iteration_sweep.py": "ff3479f747726feea01f47e3a7246e7d1f0f26da58efc05f97bcce0839650af9",
+    "scripts/step_progress.py": "d699ae523de2508834244eb2f5f330b29ea4db5905d0ffba843eb2140c890cec"
+  },
+  "frozen_prior_sha256": "e519e6bde4cfa1e45213ee43a1739d185d85d6235f1d26c586aea5cbe8a52261",
+  "measurement_limitations": "No in-run binary/source integrity audit; exploratory timing only."
+}

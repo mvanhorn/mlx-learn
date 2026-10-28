@@ -1,0 +1,11 @@
+{
+  "description": "Exploratory positive rank-one diagonal corrections within the accepted-step row space; four measured fits per variant after two warmups. The held-out unbalanced weighted case failed the objective gate; no production changes. In-run source/binary hashes and every measured fit are in the result JSON. Source-only archive; extension binary omitted.",
+  "archive": {
+    "filename": "projected-rowspace-metric-2026-10-27.zip",
+    "sha256": "ce00411be89c979be3804e07ef75ba8b603f48fb34c27fd8fc443cf3f86eec63"
+  },
+  "files": {
+    "explore.py": "62f6c6df34d01697ec9f96c10b71a9617c118f50d8a75f2eae363e103c319256"
+  },
+  "reproduction": "Extract explore.py into bench/projected_metric in a matching source checkout and run PYTHONPATH=. python3 bench/projected_metric/explore.py on Apple silicon MLX 0.32.x."
+}

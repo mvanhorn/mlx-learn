@@ -1,0 +1,1810 @@
+{
+  "method": "rotated full GPU fits, original float32 data, one BLAS thread; independent untimed centered float64 sklearn Newton-CG reference",
+  "parameters": {
+    "C": null,
+    "seed": 41,
+    "repeats": 2,
+    "warmup": 1,
+    "tol": 0.0001,
+    "max_iter": 200,
+    "reference_max_iter": 300,
+    "output": "benchmarks/results/rank-safe-regularization-controls-2026-10-27.json"
+  },
+  "environment": {
+    "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "mlx": "0.32.2",
+    "numpy": "2.5.2",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.0",
+    "cpu": "Apple M4 Max",
+    "memory_bytes": 137438953472,
+    "cores": 16,
+    "device": "mlx 0.32.2 on gpu (128 GiB)",
+    "mlxlearn": "0.1.0a2",
+    "threadpools": [
+      {
+        "user_api": "openmp",
+        "internal_api": "openmp",
+        "num_threads": 16,
+        "prefix": "libomp",
+        "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+        "version": null
+      }
+    ],
+    "numpy_configuration": "Build Dependencies:\n  blas:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\n  lapack:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\nCompilers:\n  c:\n    commands: cc\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  c++:\n    commands: c++\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  cython:\n    commands: cython\n    linker: cython\n    name: cython\n    version: 3.2.9\nMachine Information:\n  build:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\n  host:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\nPython Information:\n  path: /private/var/folders/g3/pffjr_y96bq06blnkf72x_hw0000gn/T/build-env-jzdn7by7/bin/python\n  version: '3.13'\nSIMD Extensions:\n  baseline:\n  - NEON\n  - NEON_FP16\n  - NEON_VFPV4\n  - ASIMD\n  found:\n  - ASIMDHP\n  - ASIMDDP\n  not found:\n  - ASIMDFHM\n\n",
+    "tuning": {
+      "knn_min_train_samples": 256,
+      "knn_min_work": 2048,
+      "logreg_min_samples": 20000,
+      "logreg_min_work": 20000000,
+      "logreg_tall_min_samples": 250000,
+      "logreg_tall_min_work": 8000000,
+      "svc_min_samples": 2048,
+      "svc_min_work": 1000000,
+      "distance_block_bytes": 268435456,
+      "distance_block_bytes_max": 1073741824,
+      "query_block_rows": 1024,
+      "query_block_align": 128,
+      "cpu_distance_block_bytes": 134217728,
+      "cpu_query_block_rows": 256,
+      "lbfgs_history": 10,
+      "lbfgs_sketch_size": 0,
+      "lbfgs_max_line_search": 32,
+      "smo_kernel_cache_fraction": 0.05,
+      "smo_kernel_cache_min_bytes": 33554432,
+      "smo_kernel_cache_max_bytes": 2147483648,
+      "smo_max_iter_factor": 100,
+      "smo_min_iter_budget": 10000000,
+      "force_backend": "",
+      "diagnostics_capacity": 512
+    },
+    "git_head": "fb79a1b11dad401e82808885884fc633da9c3e86",
+    "source_sha256": {
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "0a17af0c6f46aad7f594f32f443a5b9f75178555ae9c71303be489a6737941a3",
+      "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+      "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd"
+    }
+  },
+  "source_integrity_before": {
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "bae2db39c7624dc53ec92b12a62eff9667f14c1894b6e9795b6c63dd2597ac35",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "efc2e98bf947df81e6c57475adbe7b419cb678c4e2bc1f15823c6dfc17ba0ea7",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/regularization_controls.py": "456fdf9590fa32b1baa8906aeca974ef8e7f4c9c907041c75d0bf3dca693c802",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/sketch_weighted.py": "bd69d130cb6a8d04b18b665e8bc4985ef100832e8e26ffd1f477ac5a226d7008",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "7580361972bf4db760702bd72071183931ec2cbf5a9632be47480f5bd5396675",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "9ead9a843d749d0907a9b610149a2b993cceecc7bd34f87d65f693ab5317d591",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "0a17af0c6f46aad7f594f32f443a5b9f75178555ae9c71303be489a6737941a3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "cf785ff3a1c88e91c42b42e72bb293e025c4e30b3fbe87d37637ba00e67ca485",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "4ef3c1aa9ca638b7ec505a2b7cabb86604aecff0626724b346b11d767fbe3b53",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "0d40ba1068be1434052a4385c4a37fb0ce04b08d625aa6bfee69487563084bf8",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "ill_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": false,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 0.1
+      },
+      "samples_ms": {
+        "current": [
+          156.34612506255507,
+          156.5042909933254
+        ],
+        "sketch": [
+          172.53999994136393,
+          161.29637497942895
+        ],
+        "device": [
+          152.5942919543013,
+          153.4914579242468
+        ]
+      },
+      "median_ms": {
+        "current": 156.42520802794024,
+        "sketch": 166.91818746039644,
+        "device": 153.04287493927404
+      },
+      "device_upload_ms": 16.664374968968332,
+      "fit_details": {
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.117747953889193e-06,
+                "objective": 0.26704955101013184
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.002455868059769273,
+                "objective": 0.2674218508772552
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26704955101013184,
+                "grad_max_abs": 2.117747953889193e-06,
+                "relative_duality_gap": 4.700661065726308e-06,
+                "hvp_count": 135,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.117747953889193e-06,
+                "objective": 0.26704955101013184
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.002455868059769273,
+                "objective": 0.2674218508772552
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26704955101013184,
+                "grad_max_abs": 2.117747953889193e-06,
+                "relative_duality_gap": 4.700661065726308e-06,
+                "hvp_count": 135,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.7290911955569754e-06,
+                "objective": 0.26704955101013184
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.002025518100708723,
+                "objective": 0.2673379745975137
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26704955101013184,
+                "grad_max_abs": 1.7290911955569754e-06,
+                "relative_duality_gap": 4.231761522532906e-06,
+                "hvp_count": 134,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.7290911955569754e-06,
+                "objective": 0.26704955101013184
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.002025518100708723,
+                "objective": 0.2673379745975137
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.26704955101013184,
+                "grad_max_abs": 1.7290911955569754e-06,
+                "relative_duality_gap": 4.231761522532906e-06,
+                "hvp_count": 134,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.7290911955569754e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 2,
+            "newton_hvp_count": 134,
+            "relative_duality_gap": 4.231761522532906e-06,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.7290911955569754e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 2,
+            "newton_hvp_count": 134,
+            "relative_duality_gap": 4.231761522532906e-06,
+            "warnings": []
+          }
+        ]
+      },
+      "quality_each_fit": {
+        "current": [
+          {
+            "objective_float64": 0.26704956555588666,
+            "gradient_max_abs_float64": 2.117747381052881e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 4.827879053389374e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.827879053389374e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.26704956555588666,
+            "gradient_max_abs_float64": 2.117747381052881e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 4.827879053389374e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.827879053389374e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.2670495574740678,
+            "gradient_max_abs_float64": 1.729091821700557e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 1.8015422555192614e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.8015422555192614e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2670495574740678,
+            "gradient_max_abs_float64": 1.729091821700557e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 1.8015422555192614e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.8015422555192614e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.2670495574740678,
+            "gradient_max_abs_float64": 1.729091821700557e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 1.8015422555192614e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.8015422555192614e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2670495574740678,
+            "gradient_max_abs_float64": 1.729091821700557e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 1.8015422555192614e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.8015422555192614e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ]
+      },
+      "reference": {
+        "warnings": [],
+        "n_iter": [
+          12
+        ],
+        "solver": "newton-cg",
+        "tol": 1e-10,
+        "fit_ms": 3045.9250409621745,
+        "valid": true,
+        "score": {
+          "objective_float64": 0.26704955266305724,
+          "gradient_max_abs_float64": 9.893608769052768e-11,
+          "nullspace_coefficient_relative": null
+        }
+      },
+      "device_prediction_audit": [
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        },
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        }
+      ],
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": true,
+        "passed": true,
+        "failures": []
+      },
+      "passed": true
+    },
+    {
+      "case": {
+        "name": "weighted_ill_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": true,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 0.1
+      },
+      "samples_ms": {
+        "current": [
+          149.3025830714032,
+          148.32379203289747
+        ],
+        "sketch": [
+          193.28533299267292,
+          167.9266249993816
+        ],
+        "device": [
+          163.24954200536013,
+          163.59966597519815
+        ]
+      },
+      "median_ms": {
+        "current": 148.81318755215034,
+        "sketch": 180.60597899602726,
+        "device": 163.42460399027914
+      },
+      "device_upload_ms": 22.723749978467822,
+      "fit_details": {
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 3.057295998587506e-06,
+                "objective": 0.25525960326194763
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0011151020880788565,
+                "objective": 0.25585662432505346
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.25525960326194763,
+                "grad_max_abs": 3.057295998587506e-06,
+                "relative_duality_gap": 5.593035893980414e-06,
+                "hvp_count": 124,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 3.057295998587506e-06,
+                "objective": 0.25525960326194763
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0011151020880788565,
+                "objective": 0.25585662432505346
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.25525960326194763,
+                "grad_max_abs": 3.057295998587506e-06,
+                "relative_duality_gap": 5.593035893980414e-06,
+                "hvp_count": 124,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.5827207562324475e-06,
+                "objective": 0.25525960326194763
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0013830155367031693,
+                "objective": 0.2557397162199343
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.25525960326194763,
+                "grad_max_abs": 1.5827207562324475e-06,
+                "relative_duality_gap": 4.648960839404026e-06,
+                "hvp_count": 148,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              34
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 34,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 1.5827207562324475e-06,
+                "objective": 0.25525960326194763
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0013830155367031693,
+                "objective": 0.2557397162199343
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 2,
+                "n_fev": 5,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.25525960326194763,
+                "grad_max_abs": 1.5827207562324475e-06,
+                "relative_duality_gap": 4.648960839404026e-06,
+                "hvp_count": 148,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.5827207562324475e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 2,
+            "newton_hvp_count": 148,
+            "relative_duality_gap": 4.648960839404026e-06,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              34
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 1.5827207562324475e-06,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 2,
+            "newton_hvp_count": 148,
+            "relative_duality_gap": 4.648960839404026e-06,
+            "warnings": []
+          }
+        ]
+      },
+      "quality_each_fit": {
+        "current": [
+          {
+            "objective_float64": 0.2552596142213965,
+            "gradient_max_abs_float64": 3.0560425096660122e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.858387574698943e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.858387574698943e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2552596142213965,
+            "gradient_max_abs_float64": 3.0560425096660122e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.858387574698943e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.858387574698943e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.25525961552650694,
+            "gradient_max_abs_float64": 1.5828976004465667e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 4.36967508035547e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.36967508035547e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.25525961552650694,
+            "gradient_max_abs_float64": 1.5828976004465667e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 4.36967508035547e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.36967508035547e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.25525961552650694,
+            "gradient_max_abs_float64": 1.5828976004465667e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 4.36967508035547e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.36967508035547e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.25525961552650694,
+            "gradient_max_abs_float64": 1.5828976004465667e-06,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 4.36967508035547e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 4.36967508035547e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ]
+      },
+      "reference": {
+        "warnings": [],
+        "n_iter": [
+          13
+        ],
+        "solver": "newton-cg",
+        "tol": 1e-10,
+        "fit_ms": 4095.4870829591528,
+        "valid": true,
+        "score": {
+          "objective_float64": 0.2552596043724916,
+          "gradient_max_abs_float64": 8.094851667838081e-14,
+          "nullspace_coefficient_relative": null
+        }
+      },
+      "device_prediction_audit": [
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        },
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        }
+      ],
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": true,
+        "passed": true,
+        "failures": []
+      },
+      "passed": true
+    },
+    {
+      "case": {
+        "name": "ill_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": false,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 10.0
+      },
+      "samples_ms": {
+        "current": [
+          814.3919169669971,
+          808.9145839912817
+        ],
+        "sketch": [
+          847.0018749358132,
+          829.710541991517
+        ],
+        "device": [
+          837.802333990112,
+          827.4696250446141
+        ]
+      },
+      "median_ms": {
+        "current": 811.6532504791394,
+        "sketch": 838.3562084636651,
+        "device": 832.635979517363
+      },
+      "device_upload_ms": 15.616249991580844,
+      "fit_details": {
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              41
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 41,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.590055032669625e-07,
+                "objective": 0.2521142065525055
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.008648691698908806,
+                "objective": 0.26274174275625845
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 9,
+                "n_fev": 19,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2521142065525055,
+                "grad_max_abs": 2.590055032669625e-07,
+                "relative_duality_gap": 6.274442057474516e-06,
+                "hvp_count": 950,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              41
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 41,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.590055032669625e-07,
+                "objective": 0.2521142065525055
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.008648691698908806,
+                "objective": 0.26274174275625845
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 9,
+                "n_fev": 19,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2521142065525055,
+                "grad_max_abs": 2.590055032669625e-07,
+                "relative_duality_gap": 6.274442057474516e-06,
+                "hvp_count": 950,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 40,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.7852357220581325e-07,
+                "objective": 0.2521142065525055
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0020266438368707895,
+                "objective": 0.26262961563015125
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 8,
+                "n_fev": 17,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2521142065525055,
+                "grad_max_abs": 2.7852357220581325e-07,
+                "relative_duality_gap": 6.0092329476901796e-06,
+                "hvp_count": 1005,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              40
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 40,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.7852357220581325e-07,
+                "objective": 0.2521142065525055
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0020266438368707895,
+                "objective": 0.26262961563015125
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 8,
+                "n_fev": 17,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2521142065525055,
+                "grad_max_abs": 2.7852357220581325e-07,
+                "relative_duality_gap": 6.0092329476901796e-06,
+                "hvp_count": 1005,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              40
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 2.7852357220581325e-07,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 8,
+            "newton_hvp_count": 1005,
+            "relative_duality_gap": 6.0092329476901796e-06,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              40
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 2.7852357220581325e-07,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 8,
+            "newton_hvp_count": 1005,
+            "relative_duality_gap": 6.0092329476901796e-06,
+            "warnings": []
+          }
+        ]
+      },
+      "quality_each_fit": {
+        "current": [
+          {
+            "objective_float64": 0.2521142303522337,
+            "gradient_max_abs_float64": 2.590056932370644e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 1.669025438323912e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.669025438323912e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2521142303522337,
+            "gradient_max_abs_float64": 2.590056932370644e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 1.669025438323912e-08,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 1.669025438323912e-08,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.2521142271126993,
+            "gradient_max_abs_float64": 2.785229939381928e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.840783678911346e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.840783678911346e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2521142271126993,
+            "gradient_max_abs_float64": 2.785229939381928e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.840783678911346e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.840783678911346e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.2521142271126993,
+            "gradient_max_abs_float64": 2.785229939381928e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.840783678911346e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.840783678911346e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2521142271126993,
+            "gradient_max_abs_float64": 2.785229939381928e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.840783678911346e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.840783678911346e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ]
+      },
+      "reference": {
+        "warnings": [],
+        "n_iter": [
+          17
+        ],
+        "solver": "newton-cg",
+        "tol": 1e-10,
+        "fit_ms": 10463.173875003122,
+        "valid": true,
+        "score": {
+          "objective_float64": 0.2521142261443831,
+          "gradient_max_abs_float64": 3.869769833629078e-11,
+          "nullspace_coefficient_relative": null
+        }
+      },
+      "device_prediction_audit": [
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        },
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        }
+      ],
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": true,
+        "passed": true,
+        "failures": []
+      },
+      "passed": true
+    },
+    {
+      "case": {
+        "name": "weighted_ill_4096",
+        "rows": 20000,
+        "features": 4096,
+        "seed": 41,
+        "weighted": true,
+        "shifted": false,
+        "ill_conditioned": true,
+        "rank_deficient": false,
+        "C": 10.0
+      },
+      "samples_ms": {
+        "current": [
+          1243.9674159977585,
+          1251.3764169998467
+        ],
+        "sketch": [
+          1175.8282500086352,
+          1175.1065000426024
+        ],
+        "device": [
+          1194.5468749618158,
+          1200.1193329924718
+        ]
+      },
+      "median_ms": {
+        "current": 1247.6719164988026,
+        "sketch": 1175.4673750256188,
+        "device": 1197.3331039771438
+      },
+      "device_upload_ms": 10.531291016377509,
+      "fit_details": {
+        "current": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              45
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 45,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.8592009471140045e-07,
+                "objective": 0.2365627884864807
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0011993927182629704,
+                "objective": 0.2525973350951739
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 13,
+                "n_fev": 27,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2365627884864807,
+                "grad_max_abs": 2.8592009471140045e-07,
+                "relative_duality_gap": 9.281888196710497e-06,
+                "hvp_count": 1469,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              45
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": false,
+                "pairs": 0
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 45,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 2.8592009471140045e-07,
+                "objective": 0.2365627884864807
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.0011993927182629704,
+                "objective": 0.2525973350951739
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 13,
+                "n_fev": 27,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2365627884864807,
+                "grad_max_abs": 2.8592009471140045e-07,
+                "relative_duality_gap": 9.281888196710497e-06,
+                "hvp_count": 1469,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "sketch": [
+          {
+            "backend": "mlx",
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 44,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 3.158122012791864e-07,
+                "objective": 0.2365628033876419
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.002061710227280855,
+                "objective": 0.25246107983108557
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 12,
+                "n_fev": 25,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2365628033876419,
+                "grad_max_abs": 3.158122012791864e-07,
+                "relative_duality_gap": 9.16120370675344e-06,
+                "hvp_count": 1430,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          },
+          {
+            "backend": "mlx",
+            "n_iter": [
+              44
+            ],
+            "warnings": [],
+            "sketch_calls": [
+              {
+                "seeded": true,
+                "pairs": 4
+              }
+            ],
+            "solutions": [
+              {
+                "n_iter": 44,
+                "n_fev": null,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "grad_max_abs": 3.158122012791864e-07,
+                "objective": 0.2365628033876419
+              }
+            ],
+            "solver_calls": [
+              {
+                "implementation": "native_command_loop",
+                "n_iter": 32,
+                "n_fev": 257,
+                "converged": false,
+                "stop_reason": "max_iter",
+                "grad_max_abs": 0.002061710227280855,
+                "objective": 0.25246107983108557
+              }
+            ],
+            "native_loop_calls": [
+              "terminal_nonconvergence"
+            ],
+            "native_loop_attempts": [
+              {
+                "status": 0,
+                "native_n_iter": 32,
+                "final_n_iter": 32,
+                "native_converged": false,
+                "outcome": "terminal_nonconvergence"
+              }
+            ],
+            "newton_calls": [
+              {
+                "n_iter": 12,
+                "n_fev": 25,
+                "converged": true,
+                "stop_reason": "duality-gap",
+                "objective": 0.2365628033876419,
+                "grad_max_abs": 3.158122012791864e-07,
+                "relative_duality_gap": 9.16120370675344e-06,
+                "hvp_count": 1430,
+                "budget": 168,
+                "resumed": true
+              }
+            ]
+          }
+        ],
+        "device": [
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              44
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 3.158122012791864e-07,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 12,
+            "newton_hvp_count": 1430,
+            "relative_duality_gap": 9.16120370675344e-06,
+            "warnings": []
+          },
+          {
+            "backend": "mlx_device",
+            "n_iter": [
+              44
+            ],
+            "converged": true,
+            "stop_reason": "duality-gap",
+            "gradient_max_abs": 3.158122012791864e-07,
+            "sketch_pairs": 4,
+            "used_unsketched_fallback": false,
+            "newton_iterations": 12,
+            "newton_hvp_count": 1430,
+            "relative_duality_gap": 9.16120370675344e-06,
+            "warnings": []
+          }
+        ]
+      },
+      "quality_each_fit": {
+        "current": [
+          {
+            "objective_float64": 0.23656279994132223,
+            "gradient_max_abs_float64": 2.854555914580839e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.4217189918575556e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.4217189918575556e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.23656279994132223,
+            "gradient_max_abs_float64": 2.854555914580839e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.4217189918575556e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.4217189918575556e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "sketch": [
+          {
+            "objective_float64": 0.2365627999382644,
+            "gradient_max_abs_float64": 3.154504698690524e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.408792902984768e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.408792902984768e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2365627999382644,
+            "gradient_max_abs_float64": 3.154504698690524e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.408792902984768e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.408792902984768e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ],
+        "device": [
+          {
+            "objective_float64": 0.2365627999382644,
+            "gradient_max_abs_float64": 3.154504698690524e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.408792902984768e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.408792902984768e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          },
+          {
+            "objective_float64": 0.2365627999382644,
+            "gradient_max_abs_float64": 3.154504698690524e-07,
+            "nullspace_coefficient_relative": null,
+            "objective_relative_gap_to_sklearn": 3.408792902984768e-09,
+            "prediction_agreement_sklearn": 1.0,
+            "objective_relative_gap_to_trusted_reference": 3.408792902984768e-09,
+            "prediction_agreement_trusted_reference": 1.0
+          }
+        ]
+      },
+      "reference": {
+        "warnings": [],
+        "n_iter": [
+          20
+        ],
+        "solver": "newton-cg",
+        "tol": 1e-10,
+        "fit_ms": 12374.066874966957,
+        "valid": true,
+        "score": {
+          "objective_float64": 0.2365627991318708,
+          "gradient_max_abs_float64": 3.934647527860641e-11,
+          "nullspace_coefficient_relative": null
+        }
+      },
+      "device_prediction_audit": [
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        },
+        {
+          "agreement_with_reference": 1.0,
+          "agreement_with_scored_model": 1.0
+        }
+      ],
+      "quality_audit": {
+        "sklearn_reference_gradient_and_warning_ok": true,
+        "trusted_centered_reference_used": true,
+        "passed": true,
+        "failures": []
+      },
+      "passed": true
+    }
+  ],
+  "source_integrity_after": {
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/hessian_logistic.py": "bae2db39c7624dc53ec92b12a62eff9667f14c1894b6e9795b6c63dd2597ac35",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_gpu.py": "1f6439201e2d12315abddd1b5e6cb26fdd975337121c50dfdeff6a8b5306efdd",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/logistic_wide.py": "efc2e98bf947df81e6c57475adbe7b419cb678c4e2bc1f15823c6dfc17ba0ea7",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/regularization_controls.py": "456fdf9590fa32b1baa8906aeca974ef8e7f4c9c907041c75d0bf3dca693c802",
+    "/Users/tunguz/Programming/mlxlearn/benchmarks/sketch_weighted.py": "bd69d130cb6a8d04b18b665e8bc4985ef100832e8e26ffd1f477ac5a226d7008",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py": "9d518704988b5083d0b70dfb44f548b2ddb2260cb1a65bdfdbe980dfb85e90d2",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/logistic_input.py": "b59a0f6f2c17ab797549aa6382225a4436812f24c4c593dca39691d413c2bf0a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/validation.py": "0d6b0a03155c72cbc4614b85de133dbecf9aa874b4d204a6b3eb4c9da8b01b3f",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.abi3.so": "7580361972bf4db760702bd72071183931ec2cbf5a9632be47480f5bd5396675",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_metal_loop.mm": "9ead9a843d749d0907a9b610149a2b993cceecc7bd34f87d65f693ab5317d591",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/fused_lbfgs.py": "3346154fe5325723643dbd6f93b451c77f8d883c862deff92cae24c57e651a50",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/lbfgs.py": "6a3fddfc2d0c1256295b6c767538f6284c70c773016f5dd6505e5b5f3df866cc",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/logistic.py": "0a17af0c6f46aad7f594f32f443a5b9f75178555ae9c71303be489a6737941a3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_command.py": "cf785ff3a1c88e91c42b42e72bb293e025c4e30b3fbe87d37637ba00e67ca485",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic.py": "4ef3c1aa9ca638b7ec505a2b7cabb86604aecff0626724b346b11d767fbe3b53",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_logistic_fused.py": "5c31f8c4b9a89e04feb60d6cf09d78dd67e67fc61ada98aed747b6909c0bad33",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/linear_model/_logistic.py": "4649ce5aabd2edb6393bcdbb50345235e20240d3d1750109b5c89e4126f5f1f6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py": "8eb27b6d462e714251ad4f357287ac3cb55c2bcb6bca65d301bb910cd2c080f3",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_classification.py": "9da3433a599485efc6e847963128536b5eabd134b2bb6ac9a49f39718a5efa09",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_regression.py": "90f837034079015c42c01a1f0d3568e00e04f39e832172ce3f58f2a34ebfe7fe",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py": "e4de36511fdeac3065cfdb806eb5c3ed8380513a694c566ecda3f86962e78a65",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_logistic.py": "0d40ba1068be1434052a4385c4a37fb0ce04b08d625aa6bfee69487563084bf8",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native.py": "39c2033919e0074e931ec71c0f31e35cff031bb31b934c561f2c2c90b4e4f982",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+    "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "source_integrity_pass": true,
+  "quality_audit_pass": true
+}

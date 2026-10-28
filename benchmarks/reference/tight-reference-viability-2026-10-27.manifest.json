@@ -1,0 +1,14 @@
+{
+  "archive": {
+    "path": "benchmarks/reference/tight-reference-viability-2026-10-27.zip",
+    "sha256": "1bb322d5c327a21479fb9900788244b9b2d9f92c2154ce8993529ce659946083"
+  },
+  "files": {
+    "bench/tight-reference-centered-viability.py": "25ed779e0d6497dcd0a0fbf54c95b285135c9af7617a6a705316cc4d3f15e232",
+    "bench/tight-reference-centered-viability.log": "f632fd572c34345f4511b7c403a937a387509440e0b4c8c22fb68ca37b191e31",
+    "bench/tight-reference-viability.log": "e39e2fe81916ac37ff311153af4c12362a69fdbbd7fdb7c7a323f5dbfcf58521",
+    "benchmarks/sketch_weighted.py": "526fc8f1580fd40e6c8ae65578893b65be1288b55b40302d743bdc8a523bfe37",
+    "benchmarks/hessian_logistic.py": "0e1ed2231e28f5cfb9a7269b6c89d5a3c2423ff70af25e9593ad19c12efe2c6b"
+  },
+  "notes": "Single CPU-only independent-reference viability check. The source script is a reformatted transcription of the code submitted to the shell, not an exact capture. Timing is informational. No in-run source hash audit was made; helper source was archived immediately afterward."
+}

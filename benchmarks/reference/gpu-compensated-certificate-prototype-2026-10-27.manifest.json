@@ -1,0 +1,24 @@
+{
+  "description": "Experimental binary-only GPU compensated certificate; not production code. IEEE decoder omits important floating-point cases; GPU-only timings exclude input transport.",
+  "archive": {
+    "filename": "gpu-compensated-certificate-prototype-2026-10-27.zip",
+    "sha256": "61270fd28de43812aaed34a39278a461a5dbc50d91515504420411a5e5a5e8a9"
+  },
+  "files": {
+    "prototype.py": "5f1d6ed5b77c44733860acb896f1b40762859da09a91e22573f908de6e64aa7d",
+    "prototype64.py": "9f28a323b04811393747c075e465ecf394d7b370fc0f1be8cea0e3b1f4456e75"
+  },
+  "reproduction": [
+    "unzip -o benchmarks/reference/gpu-compensated-certificate-prototype-2026-10-27.zip -d bench/gpu_cert",
+    "PYTHONPATH=.:bench/gpu_cert python3 bench/gpu_cert/prototype.py",
+    "PYTHONPATH=.:bench/gpu_cert python3 bench/gpu_cert/prototype64.py"
+  ],
+  "limitations": [
+    "Scratch experiment only; not integrated in the library.",
+    "Metal timing excludes GPU input allocation and transport; small number of warm repetitions; not end-to-end.",
+    "Binary only; objective partial reduction, bias splitting, weighting setup and float64 byte-view transport use NumPy on host.",
+    "Float64 byte decoder assumes little-endian normal finite values in float32-representable exponent range, and does not correctly handle zeros, subnormals, infinities, NaNs or larger exponents.",
+    "Compensated polynomial sigmoid and double-float arithmetic have no proven global error bounds; no universal certification claim.",
+    "The float32 fixture reads model parameters from benchmarks/results/certified-offset-final-2026-10-27.json. CPU float64 calculations provide fixture generation and independent verification."
+  ]
+}
